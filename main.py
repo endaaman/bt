@@ -10,7 +10,7 @@ import pandas as pd
 from PIL import Image
 from sklearn import metrics
 
-from models import create_model
+from models import create_model, CrossEntropyLoss
 from datasets import BTDataset
 
 from endaaman.torch import Trainer
@@ -44,8 +44,8 @@ class C(Trainer):
             scale=20,
         )) for t in ['train', 'test']]
 
-        model = create_model(self.args.model).to(self.device)
-        criterion = nn.BCELoss()
+        model = create_model(self.args.model, 3).to(self.device)
+        criterion = CrossEntropyLoss()
 
         def eval_fn(inputs, labels):
             outputs = model(inputs.to(self.device))

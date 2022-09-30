@@ -106,8 +106,9 @@ class BTDataset(Dataset):
 
         image = item.image
         x = self.albu(image=np.array(item.image))['image']
-        # y = self.identity[Diag[item.diag]]
-        return x, torch.LongTensor(y)
+        y = torch.tensor(Diag[item.diag])
+        print('y', y)
+        return x, y
 
 
 class C(Commander):
