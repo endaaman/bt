@@ -30,6 +30,10 @@ Diag = {
     'X': 2,
 }
 
+
+MEAN = [0.8032, 0.5991, 0.8318]
+STD = [0.1203, 0.1435, 0.0829]
+
 class Item(NamedTuple):
     path: str
     diag: str
@@ -37,13 +41,14 @@ class Item(NamedTuple):
 
 
 class BTDataset(Dataset):
-    def __init__(self, test=False, size=256, normalize=True, scale=1):
-        self.test = test
+    def __init__(self, target='train', size=256, normalize=True, scale=1):
+        self.target = target
         self.size = size
+        self.scale = scale
+        self.identity = np.identity(len(Diag))
 
         train_augs = [
-            A.RandomResizedCrop(width=size, height=size, scale=[0.7, 1.0]),
-            A.Resize(size, size),
+            A.RandomCrop(width=size, height=size),
             A.HorizontalFlip(p=0.5),
             A.GaussNoise(p=0.2),
             A.OneOf([
@@ -65,15 +70,12 @@ class BTDataset(Dataset):
             A.Resize(size, size),
         ]
 
-        if normalize:
-            common_augs = [
-                # A.Normalize(mean=[E_MEAN, P_STD, 1], std=[E_MEAN, P_STD, 1]),
-                ToTensorV2(),
-            ]
-        else:
-            common_augs = [ToTensorV2()]
 
-        if test:
+        common_augs = [ToTensorV2()]
+        if normalize:
+            common_augs = [A.Normalize(mean=MEAN, std=STD)] + common_augs
+
+        if self.target == 'test':
             self.albu = A.Compose(test_augs + common_augs)
         else:
             self.albu = A.Compose(train_augs + common_augs)
@@ -82,7 +84,10 @@ class BTDataset(Dataset):
 
     def load_data(self):
         df = pd.read_csv('data/cache/labels.csv', index_col=0)
-        df = df[df['test'] == self.test]
+        if self.target == 'train':
+            df = df[df['test'] == 0]
+        elif self.target == 'test':
+            df = df[df['test'] == 1]
 
         self.df = df
         self.items = []
@@ -101,8 +106,8 @@ class BTDataset(Dataset):
 
         image = item.image
         x = self.albu(image=np.array(item.image))['image']
-        y = np.identity(len(Diag))[Diag[item.diag]]
-        return x, torch.FloatTensor(y)
+        # y = self.identity[Diag[item.diag]]
+        return x, torch.LongTensor(y)
 
 
 class C(Commander):
@@ -129,22 +134,18 @@ class C(Commander):
         print(f'wrote {p}')
 
     def arg_common(self, parser):
-        parser.add_argument('--test', '-t', action='store_true')
+        parser.add_argument('--target', '-t', default='all')
 
     def pre_common(self):
         self.ds = BTDataset(
-            test=self.args.test,
+            target=self.args.target,
             normalize=self.args.function != 'samples',
         )
 
     def run_mean_std(self):
-        e_mean, e_std = calc_mean_and_std([item.enhance_image for item in self.ds.items])
-        print('e_mean', e_mean)
-        print('e_std', e_std)
-
-        p_mean, p_std = calc_mean_and_std([item.plain_image for item in self.ds.items])
-        print('p_mean', p_mean)
-        print('p_std', p_std)
+        mean, std = calc_mean_and_std([item.image for item in self.ds.items], dim=[1,2])
+        print('mean', mean)
+        print('std', std)
 
     def run_samples(self):
         t = 'test' if self.args.test else 'train'
