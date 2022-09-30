@@ -49,10 +49,11 @@ class BTDataset(Dataset):
 
         train_augs = [
             A.RandomCrop(width=size, height=size),
+            A.RandomRotate90(p=1),
             A.HorizontalFlip(p=0.5),
             A.GaussNoise(p=0.2),
             A.OneOf([
-                A.MotionBlur(p=.2),
+                A.MotionBlur(p=0.2),
                 A.MedianBlur(blur_limit=3, p=0.1),
                 A.Blur(blur_limit=3, p=0.1),
             ], p=0.2),
@@ -66,8 +67,7 @@ class BTDataset(Dataset):
         ]
 
         test_augs = [
-            # MaximumSquareCrop(),
-            A.Resize(size, size),
+            A.RandomCrop(width=size, height=size),
         ]
 
 
@@ -107,7 +107,6 @@ class BTDataset(Dataset):
         image = item.image
         x = self.albu(image=np.array(item.image))['image']
         y = torch.tensor(Diag[item.diag])
-        print('y', y)
         return x, y
 
 
