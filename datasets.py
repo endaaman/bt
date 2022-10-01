@@ -148,7 +148,7 @@ class C(Commander):
         print('std', std)
 
     def run_samples(self):
-        t = 'test' if self.args.test else 'train'
+        t = self.args.target
         d = f'tmp/samples_{t}'
         os.makedirs(d, exist_ok=True)
         for i, (x, y) in enumerate(self.ds):
