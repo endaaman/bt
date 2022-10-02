@@ -5,16 +5,6 @@ from torch import nn
 from torchvision import transforms, models
 
 
-class CrossEntropyLoss(nn.Module):
-    def __init__(self, eps=1e-24):
-        super().__init__()
-        self.eps = eps
-        self.loss_fn = nn.NLLLoss()
-        # self.num_classes = num_classes
-
-    def forward(self, x, y):
-        return self.loss_fn((x + self.eps).log(), y)
-
 class EffNet(nn.Module):
     def __init__(self, name='b0', num_classes=1):
         super().__init__()
@@ -60,7 +50,7 @@ class VGG(nn.Module):
         x = torch.flatten(x, 1)
         x = self.classifier(x)
         if self.num_classes > 1:
-            x = nn.functional.softmax(x)
+            x = torch.softmax(x, dim=1)
         else:
             x = torch.sigmoid(x)
         x = torch.where(torch.isnan(x), torch.zeros_like(x), x)
@@ -80,7 +70,7 @@ def create_model(name, num_classes):
 if __name__ == '__main__':
     # m = EffNet('b0')
     m = create_model('eff_b0', 3)
-    x = torch.rand([2, 3, 256, 256])
+    x = torch.rand([2, 3, 512, 512])
     y = m(x)
     loss = CrossEntropyLoss()
     print('y', y, y.shape, 'loss', loss(y, torch.LongTensor([1, 1])))

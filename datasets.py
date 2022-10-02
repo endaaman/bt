@@ -14,7 +14,7 @@ import numpy as np
 from tqdm import tqdm
 import pandas as pd
 import torchvision.transforms.functional as F
-from PIL import Image, ImageOps
+from PIL import Image, ImageOps, ImageFile
 from PIL.Image import Image as img
 from torch.utils.data import Dataset
 from sklearn.model_selection import train_test_split
@@ -22,6 +22,8 @@ import albumentations as A
 from albumentations.pytorch.transforms import ToTensorV2
 from albumentations.core.transforms_interface import ImageOnlyTransform
 from albumentations.augmentations.crops.functional import center_crop
+
+ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 
 Diag = {
@@ -70,15 +72,14 @@ class BTDataset(Dataset):
             A.RandomCrop(width=size, height=size),
         ]
 
-
-        common_augs = [ToTensorV2()]
+        post_aug = [ToTensorV2()]
         if normalize:
-            common_augs = [A.Normalize(mean=MEAN, std=STD)] + common_augs
+            post_aug = [A.Normalize(mean=MEAN, std=STD)] + post_aug
 
         if self.target == 'test':
-            self.albu = A.Compose(test_augs + common_augs)
+            self.albu = A.Compose(test_augs + post_aug)
         else:
-            self.albu = A.Compose(train_augs + common_augs)
+            self.albu = A.Compose(train_augs + post_aug)
 
         self.load_data()
 
@@ -103,8 +104,6 @@ class BTDataset(Dataset):
 
     def __getitem__(self, idx):
         item = self.items[idx % len(self.items)]
-
-        image = item.image
         x = self.albu(image=np.array(item.image))['image']
         y = torch.tensor(Diag[item.diag])
         return x, y

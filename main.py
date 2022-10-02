@@ -10,12 +10,23 @@ import pandas as pd
 from PIL import Image
 from sklearn import metrics
 
-from models import create_model, CrossEntropyLoss
+from models import create_model
 from datasets import BTDataset
 
 from endaaman.torch import Trainer
 
-def binary_acc_fn(outputs, labels):
+
+class CrossEntropyLoss(nn.Module):
+    def __init__(self, eps=1e-24):
+        super().__init__()
+        self.eps = eps
+        self.loss_fn = nn.NLLLoss()
+        # self.num_classes = num_classes
+
+    def forward(self, x, y):
+        return self.loss_fn((x + self.eps).log(), y)
+
+def acc_fn(outputs, labels):
     y_pred = outputs.cpu().argmax(dim=1).detach().numpy()
     y_true = labels.detach().numpy()
     correct = np.sum(y_true == y_pred)
@@ -39,12 +50,14 @@ class C(Trainer):
         pass
 
     def run_train(self):
+        model = create_model(self.args.model, 3).to(self.device)
+
         train_loader, test_loader = [self.as_loader(BTDataset(
             target=t,
-            scale=20,
+            size=512,
+            scale=2,
         )) for t in ['train', 'test']]
 
-        model = create_model(self.args.model, 3).to(self.device)
         criterion = CrossEntropyLoss()
 
         def eval_fn(inputs, labels):
@@ -58,7 +71,7 @@ class C(Trainer):
             train_loader,
             test_loader,
             eval_fn, {
-                'acc': binary_acc_fn,
+                'acc': acc_fn,
             }, {
                 # 'auc': binary_auc_fn,
             })
