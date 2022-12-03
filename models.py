@@ -10,7 +10,8 @@ class EffNet(nn.Module):
         super().__init__()
         self.num_classes = num_classes
         self.m = timm.create_model(f'tf_efficientnetv2_{name}', pretrained=True)
-        self.m.classifier = nn.Linear(1280, num_classes)
+        c = self.m.classifier.in_features
+        self.m.classifier = nn.Linear(c, num_classes)
 
     def get_cam_layer(self):
         return self.m.conv_head
@@ -72,7 +73,7 @@ def create_model(name, num_classes):
 
 
 available_models = \
-    [f'eff_b{i}' for i in range(6)] + \
+    [f'eff_b{i}' for i in range(4)] + \
     [f'vgg{i}' for i in [11, 13, 16, 19]] + \
     [f'vgg{i}_bn' for i in [11, 13, 16, 19]]
 
