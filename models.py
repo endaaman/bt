@@ -53,7 +53,7 @@ class VGG(nn.Module):
             x = torch.softmax(x, dim=1)
         else:
             x = torch.sigmoid(x)
-        x = torch.where(torch.isnan(x), torch.zeros_like(x), x)
+        # x = torch.where(torch.isnan(x), torch.zeros_like(x), x)
         return x
 
 
@@ -61,16 +61,16 @@ def create_model(name, num_classes):
     if re.match(r'^vgg', name):
         return VGG(name=name, num_classes=num_classes)
 
-    m = re.match(r'^eff_(b[0-4])$', name)
-    if m:
-        return EffNet(name=m[1], num_classes=num_classes)
+    match = re.match(r'^eff_(b[0-4])$', name)
+    if match:
+        return EffNet(name=match[1], num_classes=num_classes)
 
     raise ValueError(f'Invalid name: {name}')
 
 if __name__ == '__main__':
     # m = EffNet('b0')
-    m = create_model('eff_b0', 3)
+    m = create_model('vgg16', 3)
     x = torch.rand([2, 3, 512, 512])
     y = m(x)
-    loss = CrossEntropyLoss()
+    # loss = CrossEntropyLoss()
     print('y', y, y.shape, 'loss', loss(y, torch.LongTensor([1, 1])))

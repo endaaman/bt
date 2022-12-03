@@ -15,7 +15,7 @@ from tqdm import tqdm
 import pandas as pd
 import torchvision.transforms.functional as F
 from PIL import Image, ImageOps, ImageFile
-from PIL.Image import Image as img
+from PIL.Image import Image as ImageType
 from torch.utils.data import Dataset
 from sklearn.model_selection import train_test_split
 import albumentations as A
@@ -32,25 +32,35 @@ Diag = {
     'X': 2,
 }
 
+# MEAN = [0.8032, 0.5991, 0.8318]
+# STD = [0.1203, 0.1435, 0.0829]
+# MEAN = np.array([216, 172, 212]) / 255
+# STD = np.array([34, 61, 30]) / 255
+MEAN = [0.807, 0.611, 0.832]
+STD = [0.123, 0.147, 0.087]
 
-MEAN = [0.8032, 0.5991, 0.8318]
-STD = [0.1203, 0.1435, 0.0829]
 
 class Item(NamedTuple):
     path: str
     diag: str
-    image: img
+    image: ImageType
 
 
 class BTDataset(Dataset):
-    def __init__(self, target='train', size=256, normalize=True, scale=1):
+    def __init__(self, target='train', crop_size=768, size=512, aug_mode='same', normalize=True, test_ratio=0.25, seed=42, scale=1):
         self.target = target
         self.size = size
         self.scale = scale
+        self.seed = seed
+        self.test_ratio = test_ratio
+
         self.identity = np.identity(len(Diag))
 
-        train_augs = [
-            A.RandomCrop(width=size, height=size),
+        augs = {}
+
+        augs['train'] = [
+            A.RandomCrop(width=crop_size, height=crop_size),
+            A.Resize(width=size, height=size),
             A.RandomRotate90(p=1),
             A.HorizontalFlip(p=0.5),
             A.GaussNoise(p=0.2),
@@ -68,31 +78,41 @@ class BTDataset(Dataset):
             A.HueSaturationValue(p=0.3),
         ]
 
-        test_augs = [
+        augs['test'] = [
             A.RandomCrop(width=size, height=size),
         ]
 
-        post_aug = [ToTensorV2()]
-        if normalize:
-            post_aug = [A.Normalize(mean=MEAN, std=STD)] + post_aug
+        augs['all'] = augs['test']
 
-        if self.target == 'test':
-            self.albu = A.Compose(test_augs + post_aug)
+        # select aug
+        if aug_mode == 'same':
+            aug = augs[target]
         else:
-            self.albu = A.Compose(train_augs + post_aug)
+            aug = augs[aug_mode]
 
+        if normalize:
+            aug += [A.Normalize(mean=MEAN, std=STD)]
+        aug += [ToTensorV2()]
+
+        self.albu = A.Compose(aug)
         self.load_data()
 
     def load_data(self):
-        df = pd.read_csv('data/cache/labels.csv', index_col=0)
+        df_all = pd.read_csv('data/labels.csv')
+        df_train, df_test = train_test_split(df_all, test_size=self.test_ratio, stratify=df_all.diag, random_state=self.seed)
+
         if self.target == 'train':
-            df = df[df['test'] == 0]
+            df = df_train
         elif self.target == 'test':
-            df = df[df['test'] == 1]
+            df = df_test
+        elif self.target == 'all':
+            df = df_all
+        else:
+            raise ValueError(f'invalid target: {self.target}')
 
         self.df = df
         self.items = []
-        for idx, row in self.df.iterrows():
+        for __idx, row in self.df.iterrows():
             self.items.append(Item(
                 path=row.path,
                 diag=row.diag,
@@ -109,54 +129,51 @@ class BTDataset(Dataset):
         return x, y
 
 
-class C(Commander):
-    def arg_split(self, parser):
-        parser.add_argument('--ratio', '-r', type=float, default=0.3)
-
-    def run_split(self):
-        dd = ['L', 'M', 'X']
-        data = []
-        for d in dd:
-            for p in glob(f'data/{d}/*.jpg'):
-                data.append({
-                    'diag': d,
-                    'path': p,
-                    'test': 0,
-                })
-        df = pd.DataFrame(data)
-
-        df_train, df_test = train_test_split(df, test_size=self.args.ratio, stratify=df.diag)
-        df.at[df_test.index, 'test'] = 1
-        os.makedirs('data/cache', exist_ok=True)
-        p = 'data/cache/labels.csv'
-        df.to_csv(p)
-        print(f'wrote {p}')
-
+class CMD(Commander):
     def arg_common(self, parser):
-        parser.add_argument('--target', '-t', default='all')
+        parser.add_argument('--target', '-t', default='all', choices=['all', 'train', 'test'])
+        parser.add_argument('--aug', '-a', default='same', choices=['same', 'train', 'test'])
+        parser.add_argument('--size', '-s', type=int, default=512)
+        parser.add_argument('--csize', '-c', type=int, default=768)
 
     def pre_common(self):
         self.ds = BTDataset(
             target=self.args.target,
+            aug_mode=self.args.aug,
+            size=self.args.size,
             normalize=self.args.function != 'samples',
+            # normalize=False,
         )
 
     def run_mean_std(self):
-        mean, std = calc_mean_and_std([item.image for item in self.ds.items], dim=[1,2])
+        pp = glob('data/*/*.jpg')
+        mm = []
+        ss = []
+        scale = 0
+        for p in tqdm(pp):
+            i = np.array(Image.open(p)).reshape(-1, 3)
+            size = i.shape[0]
+            print(np.mean(i, axis=0))
+            mm.append(np.mean(i, axis=0) * size)
+            ss.append(np.std(i, axis=0) * size)
+            scale += size
+            break
+
+        mean = np.round(np.sum(mm, axis=0) / scale)
+        std = np.round(np.sum(ss, axis=0) // scale)
         print('mean', mean)
         print('std', std)
 
     def run_samples(self):
         t = self.args.target
-        d = f'tmp/samples_{t}'
+        d = f'tmp/samples/{t}'
         os.makedirs(d, exist_ok=True)
-        for i, (x, y) in enumerate(self.ds):
-            if i > len(self.ds):
+        total = len(self.ds)
+        for i, (x, y) in tqdm(enumerate(self.ds), total=total):
+            if i > total:
                 break
-            self.x = x
-            self.y = y
             img = tensor_to_pil(x)
-            img.save(f'{d}/{i}_{int(y)}.png')
+            img.save(f'{d}/{i}_{int(y)}.jpg')
 
     def run_t(self):
         for (x, y) in self.ds:
@@ -167,5 +184,5 @@ class C(Commander):
             break
 
 if __name__ == '__main__':
-    c = C(options={'no_pre_common': ['split']})
-    c.run()
+    cmd = CMD(options={'no_pre_common': ['split']})
+    cmd.run()

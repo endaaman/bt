@@ -9,11 +9,12 @@ from tqdm import tqdm
 import pandas as pd
 from PIL import Image
 from sklearn import metrics
+from endaaman.torch import Trainer, TrainCommander
+from endaaman.metrics import MultiAccuracy
 
 from models import create_model
 from datasets import BTDataset
 
-from endaaman.torch import Trainer
 
 
 class CrossEntropyLoss(nn.Module):
@@ -42,7 +43,30 @@ available_models = \
     [f'vgg{i}' for i in [11, 13, 16, 19]] + \
     [f'vgg{i}_bn' for i in [11, 13, 16, 19]]
 
-class C(Trainer):
+
+class T(Trainer):
+    def prepare(self):
+        self.criterion = CrossEntropyLoss()
+
+    # def get_scheduler(self, optimizer):
+    #     return optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lambda x: 0.99 ** x)
+
+    def eval(self, inputs, labels, device):
+        outputs = self.model(inputs.to(device))
+        loss = self.criterion(outputs, labels.to(device))
+        return loss, outputs
+
+
+    def get_batch_metrics(self):
+        return {
+            'acc': MultiAccuracy(),
+        }
+
+    def get_epoch_metrics(self):
+        return { }
+
+
+class C(TrainCommander):
     def arg_common(self, parser):
         parser.add_argument('--model', '-m', choices=available_models, default=available_models[0])
 
@@ -52,34 +76,26 @@ class C(Trainer):
     def run_train(self):
         model = create_model(self.args.model, 3).to(self.device)
 
-        train_loader, test_loader = [self.as_loader(BTDataset(
+        loaders = [self.as_loader(BTDataset(
             target=t,
-            size=512,
-            scale=2,
+            crop_size=768,
+            size=768,
+            scale=5,
         )) for t in ['train', 'test']]
 
-        criterion = CrossEntropyLoss()
+        trainer = T(
+            name=self.args.model,
+            model=model,
+            loaders=loaders,
+        )
 
-        def eval_fn(inputs, labels):
-            outputs = model(inputs.to(self.device))
-            loss = criterion(outputs, labels.to(self.device))
-            return loss, outputs
+        trainer.train(self.args.lr, self.args.epoch, device=self.device)
 
-        self.train_model(
-            self.args.model,
-            model,
-            train_loader,
-            test_loader,
-            eval_fn, {
-                'acc': acc_fn,
-            }, {
-                # 'auc': binary_auc_fn,
-            })
 
 if __name__ == '__main__':
     c = C({
         'epoch': 50,
-        'lr': 0.001,
-        'batch_size': 128,
+        'lr': 0.0001,
+        'batch_size': 16,
     })
     c.run()
