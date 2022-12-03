@@ -6,10 +6,15 @@ from torchvision import transforms, models
 
 
 class EffNet(nn.Module):
-    def __init__(self, name='b0', num_classes=1):
+    def __init__(self, name='v2_b0', num_classes=1):
         super().__init__()
         self.num_classes = num_classes
-        self.m = timm.create_model(f'tf_efficientnetv2_{name}', pretrained=True)
+        if m := re.match('^v2_(.+)$', name):
+            model_name = f'tf_efficientnetv2_{m[1]}'
+        else:
+            model_name = f'tf_efficientnet_{name}'
+
+        self.m = timm.create_model(model_name, pretrained=True)
         c = self.m.classifier.in_features
         self.m.classifier = nn.Linear(c, num_classes)
 
@@ -65,7 +70,19 @@ def create_model(name, num_classes):
     if re.match(r'^vgg', name):
         return VGG(name=name, num_classes=num_classes)
 
-    match = re.match(r'^eff_(b[0-4])$', name)
+    match = re.match(r'^eff_(b[0-7])$', name)
+    if match:
+        return EffNet(name=match[1], num_classes=num_classes)
+
+    match = re.match(r'^eff_(b[0-7]_ns)$', name)
+    if match:
+        return EffNet(name=match[1], num_classes=num_classes)
+
+    match = re.match(r'^eff_(v2_b[0-4])$', name)
+    if match:
+        return EffNet(name=match[1], num_classes=num_classes)
+
+    match = re.match(r'^eff_(v2_s|m|l)$', name)
     if match:
         return EffNet(name=match[1], num_classes=num_classes)
 
@@ -73,15 +90,20 @@ def create_model(name, num_classes):
 
 
 available_models = \
-    [f'eff_b{i}' for i in range(4)] + \
+    [f'eff_b{i}_ns' for i in range(8)] + \
+    [f'eff_v2_b{i}' for i in range(4)] + \
+    ['eff_s', 'eff_s','eff_l' ] + \
     [f'vgg{i}' for i in [11, 13, 16, 19]] + \
     [f'vgg{i}_bn' for i in [11, 13, 16, 19]]
 
 
 if __name__ == '__main__':
-    # m = EffNet('b0')
-    m = create_model('vgg16', 3)
+    name = 'eff_v2_b3'
+    model = create_model(name, 3)
+    count = sum(p.numel() for p in model.parameters()) / 1000000
+    print(f'count: {count}M')
     x = torch.rand([2, 3, 512, 512])
-    y = m(x)
+    y = model(x)
     # loss = CrossEntropyLoss()
     # print('y', y, y.shape, 'loss', loss(y, torch.LongTensor([1, 1])))
+    print('y', y, y.shape)

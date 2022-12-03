@@ -45,7 +45,7 @@ class CMD(TorchCommander):
         for image in tqdm(images):
             t = transform(image).unsqueeze(0).to(self.device)
             with torch.no_grad():
-                o = self.model(t).detach().cpu().tolist()
+                o = self.model(t).detach().cpu()
             outputs += o
         return outputs
 
