@@ -26,11 +26,13 @@ from albumentations.augmentations.crops.functional import center_crop
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 
-Diag = {
+DiagToNum = {
     'L': 0,
     'M': 1,
     'X': 2,
 }
+
+NumToDiag = list(DiagToNum.keys())
 
 # MEAN = [0.8032, 0.5991, 0.8318]
 # STD = [0.1203, 0.1435, 0.0829]
@@ -44,17 +46,19 @@ class Item(NamedTuple):
     path: str
     diag: str
     image: ImageType
+    test: bool
 
 
 class BTDataset(Dataset):
-    def __init__(self, target='train', crop_size=768, size=512, aug_mode='same', normalize=True, test_ratio=0.25, seed=42, scale=1):
+    def __init__(self, target='train', crop_size=768, size=512, aug_mode='same',
+                 normalize=True, test_ratio=0.25, seed=42, scale=1):
         self.target = target
         self.size = size
         self.scale = scale
         self.seed = seed
         self.test_ratio = test_ratio
 
-        self.identity = np.identity(len(Diag))
+        self.identity = np.identity(len(DiagToNum))
 
         augs = {}
 
@@ -77,16 +81,16 @@ class BTDataset(Dataset):
             ], p=0.3),
             A.HueSaturationValue(p=0.3),
         ]
-
         augs['test'] = [
-            A.RandomCrop(width=size, height=size),
+            A.CenterCrop(width=size, height=size),
         ]
-
         augs['all'] = augs['test']
 
         # select aug
         if aug_mode == 'same':
             aug = augs[target]
+        elif aug_mode == 'none':
+            aug = []
         else:
             aug = augs[aug_mode]
 
@@ -102,22 +106,23 @@ class BTDataset(Dataset):
         df_train, df_test = train_test_split(df_all, test_size=self.test_ratio, stratify=df_all.diag, random_state=self.seed)
 
         if self.target == 'train':
-            df = df_train
+            dfs = [(df_train, False)]
         elif self.target == 'test':
-            df = df_test
+            dfs = [(df_test, True)]
         elif self.target == 'all':
-            df = df_all
+            dfs = [(df_train, False), (df_test, True)]
         else:
             raise ValueError(f'invalid target: {self.target}')
 
-        self.df = df
         self.items = []
-        for __idx, row in self.df.iterrows():
-            self.items.append(Item(
-                path=row.path,
-                diag=row.diag,
-                image=Image.open(row.path),
-            ))
+        for (df, t) in dfs:
+            for __idx, row in df.iterrows():
+                self.items.append(Item(
+                    path=row.path,
+                    diag=row.diag,
+                    image=Image.open(row.path),
+                    test=t,
+                ))
 
     def __len__(self):
         return len(self.items) * self.scale
@@ -125,7 +130,7 @@ class BTDataset(Dataset):
     def __getitem__(self, idx):
         item = self.items[idx % len(self.items)]
         x = self.albu(image=np.array(item.image))['image']
-        y = torch.tensor(Diag[item.diag])
+        y = torch.tensor(DiagToNum[item.diag])
         return x, y
 
 

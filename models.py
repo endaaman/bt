@@ -67,6 +67,13 @@ def create_model(name, num_classes):
 
     raise ValueError(f'Invalid name: {name}')
 
+
+available_models = \
+    [f'eff_b{i}' for i in range(6)] + \
+    [f'vgg{i}' for i in [11, 13, 16, 19]] + \
+    [f'vgg{i}_bn' for i in [11, 13, 16, 19]]
+
+
 if __name__ == '__main__':
     # m = EffNet('b0')
     m = create_model('vgg16', 3)

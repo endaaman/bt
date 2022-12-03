@@ -12,7 +12,7 @@ from sklearn import metrics
 from endaaman.torch import Trainer, TrainCommander
 from endaaman.metrics import MultiAccuracy
 
-from models import create_model
+from models import create_model, available_models
 from datasets import BTDataset
 
 
@@ -26,22 +26,6 @@ class CrossEntropyLoss(nn.Module):
 
     def forward(self, x, y):
         return self.loss_fn((x + self.eps).log(), y)
-
-def acc_fn(outputs, labels):
-    y_pred = outputs.cpu().argmax(dim=1).detach().numpy()
-    y_true = labels.detach().numpy()
-    correct = np.sum(y_true == y_pred)
-    return correct / len(y_true)
-
-# def binary_auc_fn(outputs, labels):
-#     y_true = labels.cpu().flatten().detach().numpy()
-#     y_pred = outputs.cpu().flatten().detach().numpy()
-#     return metrics.roc_auc_score(y_true, y_pred)
-
-available_models = \
-    [f'eff_b{i}' for i in range(6)] + \
-    [f'vgg{i}' for i in [11, 13, 16, 19]] + \
-    [f'vgg{i}_bn' for i in [11, 13, 16, 19]]
 
 
 class T(Trainer):
