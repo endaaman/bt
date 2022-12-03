@@ -151,7 +151,7 @@ class CMD(Commander):
         )
 
     def run_mean_std(self):
-        pp = glob('data/*/*.jpg')
+        pp = glob('data/images/*/*.jpg')
         mm = []
         ss = []
         scale = 0

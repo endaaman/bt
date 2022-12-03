@@ -12,6 +12,9 @@ class EffNet(nn.Module):
         self.m = timm.create_model(f'tf_efficientnetv2_{name}', pretrained=True)
         self.m.classifier = nn.Linear(1280, num_classes)
 
+    def get_cam_layer(self):
+        return self.m.conv_head
+
     def forward(self, x):
         x =  self.m(x)
         if self.num_classes > 1:
@@ -80,4 +83,4 @@ if __name__ == '__main__':
     x = torch.rand([2, 3, 512, 512])
     y = m(x)
     # loss = CrossEntropyLoss()
-    print('y', y, y.shape, 'loss', loss(y, torch.LongTensor([1, 1])))
+    # print('y', y, y.shape, 'loss', loss(y, torch.LongTensor([1, 1])))
