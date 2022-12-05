@@ -90,7 +90,7 @@ def create_model(name, num_classes):
 available_models = \
     [f'eff_b{i}_ns' for i in range(8)] + \
     [f'eff_v2_b{i}' for i in range(4)] + \
-    ['eff_s', 'eff_s','eff_l' ] + \
+    ['eff_v2_s', 'eff_v2_s','eff_v2_l' ] + \
     [f'vgg{i}' for i in [11, 13, 16, 19]] + \
     [f'vgg{i}_bn' for i in [11, 13, 16, 19]]
 

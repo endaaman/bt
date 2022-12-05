@@ -11,7 +11,8 @@ import pandas as pd
 from PIL import Image
 from sklearn import metrics
 from timm.scheduler.cosine_lr import CosineLRScheduler
-from endaaman.torch import Trainer, TrainCommander
+from endaaman.torch import TrainCommander
+from endaaman.trainer import Trainer
 from endaaman.metrics import MultiAccuracy
 
 from models import create_model, available_models
@@ -34,22 +35,25 @@ class T(Trainer):
     def prepare(self):
         self.criterion = CrossEntropyLoss()
 
-    def eval(self, inputs, labels, device):
-        outputs = self.model(inputs.to(device))
-        loss = self.criterion(outputs, labels.to(device))
+    def eval(self, inputs, labels):
+        outputs = self.model(inputs.to(self.device))
+        loss = self.criterion(outputs, labels.to(self.device))
         return loss, outputs
 
-    def get_optimizer(self, lr):
+    def create_optimizer(self, lr):
         return optim.RAdam(self.model.parameters(), lr=lr)
 
-    def get_scheduler(self, optimizer, lr):
+    def create_scheduler(self, lr):
         # return optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lambda x: 0.95 ** x)
         return CosineLRScheduler(
-            optimizer, t_initial=100, lr_min=0.00001,
+            self.optimizer, t_initial=150, lr_min=0.00001,
             warmup_t=50, warmup_lr_init=0.00005, warmup_prefix=True)
 
-    def step(self, scheduler, epoch, last_loss):
-        scheduler.step(epoch)
+    def hook_load_state(self, checkpoint):
+        self.scheduler.step(checkpoint.epoch-1)
+
+    def step(self, train_loss):
+        self.scheduler.step(self.current_epoch)
 
     def get_batch_metrics(self):
         return {
@@ -62,28 +66,51 @@ class T(Trainer):
 
 class C(TrainCommander):
     def arg_common(self, parser):
+        parser.add_argument('--size', '-s', type=int, default=768)
+
+    def create_loaders(self):
+        return [self.as_loader(BTDataset(
+            target=t,
+            crop_size=self.args.size,
+            size=self.args.size,
+        )) for t in ['train', 'test']]
+
+    def arg_start(self, parser):
         parser.add_argument('--model', '-m', choices=available_models, default=available_models[0])
 
-    def arg_train(self, parser):
-        pass
-
-    def run_train(self):
+    def run_start(self):
         model = create_model(self.args.model, 3).to(self.device)
-
-        loaders = [self.as_loader(BTDataset(
-            target=t,
-            crop_size=768,
-            size=768,
-        )) for t in ['train', 'test']]
+        loaders = self.create_loaders()
 
         trainer = T(
             name=self.args.model,
             model=model,
             loaders=loaders,
+            device=self.device,
+            save_period=self.args.save_period,
+            suffix=self.args.suffix,
         )
 
-        trainer.train(self.args.lr, self.args.epoch, device=self.device,
-                      save_period=self.args.save_period)
+        trainer.start(self.args.epoch, lr=self.args.lr)
+
+    def arg_resume(self, parser):
+        parser.add_argument('--checkpoint', '-c', required=True)
+
+    def run_resume(self):
+        checkpoint = torch.load(self.args.checkpoint)
+        model = create_model(checkpoint.name, 3).to(self.device)
+        loaders = self.create_loaders()
+
+        trainer = T(
+            name=checkpoint.name,
+            model=model,
+            loaders=loaders,
+            device=self.device,
+            save_period=self.args.save_period,
+            suffix=self.args.suffix,
+        )
+
+        trainer.start(self.args.epoch, checkpoint=checkpoint)
 
 
 if __name__ == '__main__':
