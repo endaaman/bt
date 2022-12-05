@@ -82,7 +82,7 @@ class C(TrainCommander):
 
     def run_start(self):
         loaders = self.create_loaders()
-        model = create_model(self.args.model, 5).to(self.device)
+        model = create_model(self.args.model, 3).to(self.device)
 
         trainer = T(
             name=self.args.model,
@@ -100,7 +100,7 @@ class C(TrainCommander):
 
     def run_resume(self):
         checkpoint = torch.load(self.args.checkpoint)
-        model = create_model(checkpoint.name, 5).to(self.device)
+        model = create_model(checkpoint.name, 3).to(self.device)
         loaders = self.create_loaders()
 
         trainer = T(
