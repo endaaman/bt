@@ -5,10 +5,12 @@ from glob import glob
 import numpy as np
 import torch
 from torch import nn
+from torch import optim
 from tqdm import tqdm
 import pandas as pd
 from PIL import Image
 from sklearn import metrics
+from timm.scheduler.cosine_lr import CosineLRScheduler
 from endaaman.torch import Trainer, TrainCommander
 from endaaman.metrics import MultiAccuracy
 
@@ -32,14 +34,22 @@ class T(Trainer):
     def prepare(self):
         self.criterion = CrossEntropyLoss()
 
-    # def get_scheduler(self, optimizer):
-    #     return optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lambda x: 0.99 ** x)
-
     def eval(self, inputs, labels, device):
         outputs = self.model(inputs.to(device))
         loss = self.criterion(outputs, labels.to(device))
         return loss, outputs
 
+    def get_optimizer(self, lr):
+        return optim.RAdam(self.model.parameters(), lr=lr)
+
+    def get_scheduler(self, optimizer, lr):
+        # return optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lambda x: 0.95 ** x)
+        return CosineLRScheduler(
+            optimizer, t_initial=100, lr_min=0.00001,
+            warmup_t=50, warmup_lr_init=0.00005, warmup_prefix=True)
+
+    def step(self, scheduler, epoch, last_loss):
+        scheduler.step(epoch)
 
     def get_batch_metrics(self):
         return {
@@ -64,7 +74,6 @@ class C(TrainCommander):
             target=t,
             crop_size=768,
             size=768,
-            scale=5,
         )) for t in ['train', 'test']]
 
         trainer = T(
@@ -73,13 +82,15 @@ class C(TrainCommander):
             loaders=loaders,
         )
 
-        trainer.train(self.args.lr, self.args.epoch, device=self.device)
+        trainer.train(self.args.lr, self.args.epoch, device=self.device,
+                      save_period=self.args.save_period)
 
 
 if __name__ == '__main__':
     c = C({
-        'epoch': 50,
+        'epoch': 200,
         'lr': 0.0001,
         'batch_size': 16,
+        'save_pediod': 50,
     })
     c.run()

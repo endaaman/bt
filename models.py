@@ -14,15 +14,13 @@ class EffNet(nn.Module):
         else:
             model_name = f'tf_efficientnet_{name}'
 
-        self.m = timm.create_model(model_name, pretrained=True)
-        c = self.m.classifier.in_features
-        self.m.classifier = nn.Linear(c, num_classes)
+        self.base = timm.create_model(model_name, pretrained=True, num_classes=num_classes)
 
     def get_cam_layer(self):
-        return self.m.conv_head
+        return self.base.conv_head
 
     def forward(self, x):
-        x =  self.m(x)
+        x =  self.base(x)
         if self.num_classes > 1:
             x = torch.softmax(x, dim=1)
         else:
@@ -98,8 +96,8 @@ available_models = \
 
 
 if __name__ == '__main__':
-    name = 'eff_v2_b3'
-    model = create_model(name, 3)
+    n = 'eff_v2_b3'
+    model = create_model(n, 3)
     count = sum(p.numel() for p in model.parameters()) / 1000000
     print(f'count: {count}M')
     x = torch.rand([2, 3, 512, 512])

@@ -125,7 +125,10 @@ class BTDataset(Dataset):
                 ))
 
     def __len__(self):
-        return len(self.items) * self.scale
+        l = len(self.items)
+        if self.target == 'train':
+            return l * self.scale
+        return l
 
     def __getitem__(self, idx):
         item = self.items[idx % len(self.items)]
