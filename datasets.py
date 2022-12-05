@@ -29,7 +29,9 @@ ImageFile.LOAD_TRUNCATED_IMAGES = True
 DiagToNum = {
     'L': 0,
     'M': 1,
-    'X': 2,
+    'G': 2,
+    'A': 3,
+    'O': 4,
 }
 
 NumToDiag = list(DiagToNum.keys())
@@ -51,12 +53,14 @@ class Item(NamedTuple):
 
 class BTDataset(Dataset):
     def __init__(self, target='train', crop_size=768, size=512, aug_mode='same',
-                 normalize=True, test_ratio=0.25, seed=42, scale=1):
+                 normalize=True, test_ratio=0.25, seed=42, scale=1,
+                 base_dir='data/images'):
         self.target = target
         self.size = size
         self.scale = scale
         self.seed = seed
         self.test_ratio = test_ratio
+        self.base_dir = base_dir
 
         self.identity = np.identity(len(DiagToNum))
 
@@ -102,7 +106,16 @@ class BTDataset(Dataset):
         self.load_data()
 
     def load_data(self):
-        df_all = pd.read_csv('data/labels.csv')
+        # df_all = pd.read_csv('data/labels.csv')
+        data = []
+        for diag in NumToDiag:
+            for path in glob(os.path.join(self.base_dir, diag, '*.jpg')):
+                data.append({
+                    'path': path,
+                    'diag': diag
+                })
+
+        df_all = pd.DataFrame(data)
         df_train, df_test = train_test_split(df_all, test_size=self.test_ratio, stratify=df_all.diag, random_state=self.seed)
 
         if self.target == 'train':

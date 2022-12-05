@@ -6,6 +6,7 @@ import numpy as np
 import torch
 from torch import nn
 from torch import optim
+import torch_optimizer as optim2
 from tqdm import tqdm
 import pandas as pd
 from PIL import Image
@@ -46,7 +47,7 @@ class T(Trainer):
     def create_scheduler(self, lr):
         # return optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lambda x: 0.95 ** x)
         return CosineLRScheduler(
-            self.optimizer, t_initial=150, lr_min=0.00001,
+            self.optimizer, t_initial=100, lr_min=0.00001,
             warmup_t=50, warmup_lr_init=0.00005, warmup_prefix=True)
 
     def hook_load_state(self, checkpoint):
@@ -73,14 +74,15 @@ class C(TrainCommander):
             target=t,
             crop_size=self.args.size,
             size=self.args.size,
+            seed=self.args.seed,
         )) for t in ['train', 'test']]
 
     def arg_start(self, parser):
         parser.add_argument('--model', '-m', choices=available_models, default=available_models[0])
 
     def run_start(self):
-        model = create_model(self.args.model, 3).to(self.device)
         loaders = self.create_loaders()
+        model = create_model(self.args.model, 5).to(self.device)
 
         trainer = T(
             name=self.args.model,
@@ -98,7 +100,7 @@ class C(TrainCommander):
 
     def run_resume(self):
         checkpoint = torch.load(self.args.checkpoint)
-        model = create_model(checkpoint.name, 3).to(self.device)
+        model = create_model(checkpoint.name, 5).to(self.device)
         loaders = self.create_loaders()
 
         trainer = T(
@@ -118,6 +120,6 @@ if __name__ == '__main__':
         'epoch': 200,
         'lr': 0.0001,
         'batch_size': 16,
-        'save_pediod': 50,
+        'save_period': 50,
     })
     c.run()

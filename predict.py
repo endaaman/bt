@@ -14,7 +14,7 @@ from PIL import Image, ImageDraw, ImageFont
 from sklearn import metrics
 from gradcam.utils import visualize_cam
 from gradcam import GradCAM, GradCAMpp
-from endaaman.torch import Trainer, TorchCommander, pil_to_tensor
+from endaaman.torch import TorchCommander, pil_to_tensor
 from endaaman.metrics import MultiAccuracy
 
 from models import create_model, available_models
@@ -24,15 +24,16 @@ from datasets import BTDataset, MEAN, STD, NumToDiag, DiagToNum
 
 class CMD(TorchCommander):
     def arg_common(self, parser):
-        parser.add_argument('--weights', '-w', required=True)
+        parser.add_argument('--checkpoint', '-c', required=True)
 
     def pre_common(self):
-        self.weights = torch.load(self.args.weights, map_location=lambda storage, loc: storage)
-        self.model_name = self.weights['name']
+        self.checkpoint = torch.load(self.args.checkpoint, map_location=lambda storage, loc: storage)
+        # self.checkpoint = torch.load(self.args.checkpoint)
+        self.model_name = self.checkpoint.name
         self.model = create_model(self.model_name, 3).to(self.device)
-        self.model.load_state_dict(self.weights['state_dict'])
+        self.model.load_state_dict(self.checkpoint.model_state)
+        self.model.eval()
 
-        self.model.to(self.device).eval()
         self.font = ImageFont.truetype('/usr/share/fonts/ubuntu/Ubuntu-R.ttf', 24)
 
     def predict_images(self, images):
@@ -107,7 +108,7 @@ class CMD(TorchCommander):
                 'correct': int(item.diag == pred),
                 'L': result[DiagToNum['L']],
                 'M': result[DiagToNum['M']],
-                'X': result[DiagToNum['X']],
+                'G': result[DiagToNum['G']],
             })
         df = pd.DataFrame(oo)
         df.to_excel(f'out/{self.model_name}/report_{self.args.target}.xlsx', index=False)
