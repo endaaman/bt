@@ -68,23 +68,17 @@ def create_model(name, num_classes):
     if re.match(r'^vgg', name):
         return VGG(name=name, num_classes=num_classes)
 
-    match = re.match(r'^eff_(b[0-7])$', name)
-    if match:
-        return EffNet(name=match[1], num_classes=num_classes)
+    if m := re.match(r'^eff_(b[0-7])$', name):
+        return EffNet(name=m[1], num_classes=num_classes)
 
-    match = re.match(r'^eff_(b[0-7]_ns)$', name)
-    if match:
-        return EffNet(name=match[1], num_classes=num_classes)
+    if m := re.match(r'^eff_(b[0-7]_ns)$', name):
+        return EffNet(name=m[1], num_classes=num_classes)
 
-    match = re.match(r'^eff_(v2_b[0-4])$', name)
-    if match:
-        return EffNet(name=match[1], num_classes=num_classes)
+    if m := re.match(r'^eff_(v2_b[0-4])$', name):
+        return EffNet(name=m[1], num_classes=num_classes)
 
-    match = re.match(r'^eff_(v2_s|m|l)$', name)
-    if match:
-        return EffNet(name=match[1], num_classes=num_classes)
-
-    raise ValueError(f'Invalid name: {name}')
+    if m := re.match(r'^eff_(v2_s|m|l)$', name):
+        return EffNet(name=m[1], num_classes=num_classes)
 
 
 available_models = \
