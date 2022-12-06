@@ -52,7 +52,7 @@ class Item(NamedTuple):
 
 
 class BTDataset(Dataset):
-    def __init__(self, target='train', crop_size=768, size=512, aug_mode='same',
+    def __init__(self, target='train', crop_size=768, size=768, aug_mode='same',
                  normalize=True, test_ratio=0.25, seed=42, scale=1,
                  base_dir='data/images'):
         self.target = target
