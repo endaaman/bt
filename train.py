@@ -58,7 +58,7 @@ class C(TrainCommander):
     def arg_common(self, parser):
         parser.add_argument('--size', '-s', type=int, default=768)
 
-    def create_loaders(self):
+    def create_loaders(self, num_classes):
         return [self.as_loader(BTDataset(
             target=t,
             crop_size=self.args.size,
@@ -67,11 +67,11 @@ class C(TrainCommander):
         )) for t in ['train', 'test']]
 
     def arg_start(self, parser):
-        parser.add_argument('--model', '-m', choices=available_models, default=available_models[0])
+        parser.add_argument('--model', '-m', default='eff_v2_b0_3')
 
     def run_start(self):
-        loaders = self.create_loaders()
-        model = create_model(self.args.model, 3).to(self.device)
+        model = create_model(self.args.model).to(self.device)
+        loaders = self.create_loaders(model.num_classes)
 
         trainer = T(
             name=self.args.model,
@@ -89,8 +89,8 @@ class C(TrainCommander):
 
     def run_resume(self):
         checkpoint = torch.load(self.args.checkpoint)
-        model = create_model(checkpoint.name, 3).to(self.device)
-        loaders = self.create_loaders()
+        model = create_model(checkpoint.name).to(self.device)
+        loaders = self.create_loaders(model.num_classes)
 
         trainer = T(
             name=checkpoint.name,

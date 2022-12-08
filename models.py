@@ -65,7 +65,13 @@ class VGG(nn.Module):
         return x
 
 
-def create_model(name, num_classes):
+def create_model_with(name):
+    m = re.match(r'^(.*)_(\d)$', name)
+    if not m:
+        raise ValueError(f'Invalid name: {name}')
+    name = m[1]
+    num_classes = m[2]
+
     if re.match(r'^vgg', name):
         return VGG(name=name, num_classes=num_classes)
 
@@ -190,10 +196,11 @@ def compare_nested():
 
 
 if __name__ == '__main__':
-    compare_nested()
-    exit(0)
+    # compare_nested()
+    # exit(0)
 
-    model = create_model('eff_v2_b3', 3)
+    model = create_model('eff_v2_b3_3')
+    exit(0)
     count = sum(p.numel() for p in model.parameters()) / 1000000
     print(f'count: {count}M')
     x = torch.rand([2, 3, 512, 512])
