@@ -16,20 +16,9 @@ from endaaman.torch import TrainCommander
 from endaaman.trainer import Trainer
 from endaaman.metrics import MultiAccuracy
 
-from models import create_model, available_models
+from models import create_model, available_models, CrossEntropyLoss, NestedCrossEntroyLoss
 from datasets import BTDataset
 
-
-
-class CrossEntropyLoss(nn.Module):
-    def __init__(self, eps=1e-24):
-        super().__init__()
-        self.eps = eps
-        self.loss_fn = nn.NLLLoss()
-        # self.num_classes = num_classes
-
-    def forward(self, x, y):
-        return self.loss_fn((x + self.eps).log(), y)
 
 
 class T(Trainer):

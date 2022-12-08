@@ -3,6 +3,7 @@ import torch
 import timm
 from torch import nn
 from torchvision import transforms, models
+from torch.nn import functional as F
 
 
 class EffNet(nn.Module):
@@ -88,10 +89,111 @@ available_models = \
     [f'vgg{i}' for i in [11, 13, 16, 19]] + \
     [f'vgg{i}_bn' for i in [11, 13, 16, 19]]
 
+class CrossEntropyLoss(nn.Module):
+    def __init__(self, eps=1e-24):
+        super().__init__()
+        self.eps = eps
+        self.loss_fn = nn.NLLLoss()
+
+    # y: target index
+    def forward(self, x, y):
+        return self.loss_fn((x + self.eps).log(), y)
+
+def sumup_by_index(t, idx, rescale=False):
+    # TODO: NEED EXPERIMENT!!!
+    if rescale:
+        group_sum = torch.mean(t[idx])
+    else:
+        group_sum = torch.sum(t[idx])
+    new_idx = torch.ones(t.numel(), dtype=torch.bool)
+    new_idx[idx] = False
+    new_t = t[new_idx]
+    if rescale:
+        scale = t.numel() / (t.numel() - len(idx) + 1)
+        new_t *= scale
+    # append to last
+    return torch.cat([new_t, torch.tensor([group_sum])])
+
+
+class NestedCrossEntropyLoss(nn.Module):
+    def __init__(self, groups=None, rescale=False, eps=1e-24, ):
+        super().__init__()
+        self.groups = groups
+        self.rescale = rescale
+        self.eps = eps
+
+    def calc_cross_entropy(self, x, y):
+        return - torch.sum(y * (x + self.eps).log())
+
+    # y: one hot
+    def forward(self, x, y):
+        base = self.calc_cross_entropy(x, y)
+        if not self.groups:
+            return base
+
+        ll = [base]
+        for group in self.groups:
+            new_x = sumup_by_index(x, group['index'], rescale=self.rescale)
+            new_y = sumup_by_index(y, group['index'], rescale=self.rescale)
+            group_loss = self.calc_cross_entropy(x, y)
+            ll.append(group_loss * group['weight'])
+        print(ll)
+        return torch.tensor(ll).sum()
+
+
+def compare_nested_vs_default():
+    n = NestedCrossEntropyLoss(groups=[
+        {
+            'weight': 0.4,
+            'index': [2, 3, 4],
+        }
+    ])
+
+    x = F.softmax(torch.tensor([0.3, 0, 0, 0, 0.7]), dim=0)
+    y = torch.tensor([1.0, 0, 0, 0, 0])
+
+    print('n')
+    print( n(x, y) )
+
+    c = CrossEntropyLoss()
+    print('c')
+    print( c(x, torch.argmax(y)) )
+
+
+def compare_nested():
+    n = NestedCrossEntropyLoss(groups=[
+        {
+            'weight': 0.5,
+            'index': [1, 2],
+        }
+    ])
+
+    x0 = F.softmax(torch.tensor([0.0, 0.8, 0.1]), dim=0)
+    y0 = torch.tensor([0.0, 1.0, 0.0])
+
+    x1 = F.softmax(torch.tensor([0.1, 0.1, 0.8]), dim=0)
+    y1 = torch.tensor([0.0, 1.0, 0.0])
+
+    print('n x0 y0')
+    print( n(x0, y0) )
+
+    print('n x1 y1')
+    print( n(x1, y1) )
+
+    c = CrossEntropyLoss()
+    print('c x0 y0')
+    print( c(x0, torch.argmax(y0)) )
+
+    print('c x1 y1')
+    print( c(x1, torch.argmax(y1)) )
+    exit(0)
+
 
 if __name__ == '__main__':
-    n = 'eff_v2_b3'
-    model = create_model(n, 3)
+    compare_nested()
+    exit(0)
+
+    model = create_model('eff_v2_b3', 3)
     count = sum(p.numel() for p in model.parameters()) / 1000000
     print(f'count: {count}M')
     x = torch.rand([2, 3, 512, 512])

@@ -29,8 +29,7 @@ class CMD(TorchCommander):
     def pre_common(self):
         self.checkpoint = torch.load(self.args.checkpoint, map_location=lambda storage, loc: storage)
         # self.checkpoint = torch.load(self.args.checkpoint)
-        self.model_name = self.checkpoint.name
-        self.model = create_model(self.model_name, 3).to(self.device)
+        self.model = create_model(self.checkpoint.name, 3).to(self.device)
         self.model.load_state_dict(self.checkpoint.model_state)
         self.model.eval()
 
@@ -79,7 +78,8 @@ class CMD(TorchCommander):
         text = self.label_to_text(cam['result'])
         if text_hook:
             text = text_hook(text)
-        grid = make_grid([pil_to_tensor(image), cam['heatmap'], cam['masked']], nrow=3)
+        # stack vertical
+        grid = make_grid([pil_to_tensor(image), cam['heatmap'], cam['masked']], nrow=1)
         grid_image = F.to_pil_image(grid)
         draw = ImageDraw.Draw(grid_image)
         draw.text((20, 20), text, (0, 0, 0), align='left', font=self.font)
@@ -111,7 +111,7 @@ class CMD(TorchCommander):
                 'G': result[DiagToNum['G']],
             })
         df = pd.DataFrame(oo)
-        df.to_excel(f'out/{self.model_name}/report_{self.args.target}.xlsx', index=False)
+        df.to_excel(f'out/{self.checkpoint.full_name()}/report_{self.args.target}.xlsx', index=False)
 
     def load_images_from_dir_or_file(self, src):
         paths = []
@@ -146,7 +146,7 @@ class CMD(TorchCommander):
     def run_cam(self):
         images, paths = self.load_images_from_dir_or_file(self.args.src)
         cams = self.cam_images(images)
-        dest = os.path.join('out', self.model_name, self.args.dest)
+        dest = os.path.join('out', self.checkpoint.full_name(), self.args.dest)
         os.makedirs(dest, exist_ok=True)
 
         for (path, image, cam) in zip(paths, images, cams):
@@ -166,7 +166,7 @@ class CMD(TorchCommander):
         )
 
         cams = self.cam_images([i.image for i in dataset.items])
-        dest = os.path.join('out', self.model_name, self.args.dest)
+        dest = os.path.join('out', self.checkpoint.full_name(), self.args.dest)
         os.makedirs(dest, exist_ok=True)
 
         for (item, cam) in tqdm(zip(dataset.items, cams)):
