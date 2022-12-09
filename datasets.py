@@ -13,10 +13,10 @@ import torch
 import numpy as np
 from tqdm import tqdm
 import pandas as pd
-import torchvision.transforms.functional as F
+from torch.nn import functional as F
+from torch.utils.data import Dataset
 from PIL import Image, ImageOps, ImageFile
 from PIL.Image import Image as ImageType
-from torch.utils.data import Dataset
 from sklearn.model_selection import train_test_split
 import albumentations as A
 from albumentations.pytorch.transforms import ToTensorV2
@@ -26,15 +26,23 @@ from albumentations.augmentations.crops.functional import center_crop
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 
-DiagToNum = {
-    'L': 0,
-    'M': 1,
-    'G': 2,
-    'A': 3,
-    'O': 4,
-}
+DiagToNum = OrderedDict((
+    ('L', 0),
+    ('M', 1),
+    ('G', 2),
+    ('A', 3),
+    ('O', 4),
+))
 
 NumToDiag = list(DiagToNum.keys())
+
+Map5to3 = {
+    'L': 'L',
+    'M': 'M',
+    'G': 'G',
+    'A': 'G',
+    'O': 'G',
+}
 
 # MEAN = [0.8032, 0.5991, 0.8318]
 # STD = [0.1203, 0.1435, 0.0829]
@@ -52,17 +60,18 @@ class Item(NamedTuple):
 
 
 class BTDataset(Dataset):
-    def __init__(self, target='train', crop_size=768, size=768, aug_mode='same',
+    def __init__(self, target='train', crop_size=768, size=768, aug_mode='same', merge_G=True,
                  normalize=True, test_ratio=0.25, seed=42, scale=1,
                  base_dir='data/images'):
         self.target = target
         self.size = size
+        self.merge_G = merge_G
         self.scale = scale
         self.seed = seed
         self.test_ratio = test_ratio
         self.base_dir = base_dir
 
-        self.identity = np.identity(len(DiagToNum))
+        self.num_classes = 3 if merge_G else 5
 
         augs = {}
 
@@ -112,7 +121,7 @@ class BTDataset(Dataset):
             for path in glob(os.path.join(self.base_dir, diag, '*.jpg')):
                 data.append({
                     'path': path,
-                    'diag': diag
+                    'diag': Map5to3[diag] if self.merge_G else diag
                 })
 
         df_all = pd.DataFrame(data)
@@ -147,6 +156,7 @@ class BTDataset(Dataset):
         item = self.items[idx % len(self.items)]
         x = self.albu(image=np.array(item.image))['image']
         y = torch.tensor(DiagToNum[item.diag])
+        # y = F.one_hot(torch.tensor(DiagToNum[item.diag]))
         return x, y
 
 
