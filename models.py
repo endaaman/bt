@@ -8,9 +8,10 @@ from torchvision import transforms, models
 
 
 class EffNet(nn.Module):
-    def __init__(self, name='v2_b0', num_classes=1):
+    def __init__(self, name='v2_b0', num_classes=1, activation=True):
         super().__init__()
         self.num_classes = num_classes
+        self.activation = activation
         if m := re.match('^v2_(.+)$', name):
             model_name = f'tf_efficientnetv2_{m[1]}'
         else:
@@ -21,12 +22,13 @@ class EffNet(nn.Module):
     def get_cam_layer(self):
         return self.base.conv_head
 
-    def forward(self, x):
-        x =  self.base(x)
-        if self.num_classes > 1:
-            x = torch.softmax(x, dim=1)
-        else:
-            x = torch.sigmoid(x)
+    def forward(self, x, activate=True):
+        x = self.base(x)
+        if activate:
+            if self.num_classes > 1:
+                x = torch.softmax(x, dim=1)
+            else:
+                x = torch.sigmoid(x)
         return x
 
 
@@ -58,46 +60,59 @@ available_models = \
     ['eff_v2_s', 'eff_v2_s','eff_v2_l' ]
 
 class CrossEntropyLoss(nn.Module):
-    def __init__(self, eps=1e-32):
+    def __init__(self, eps=1e-32, input_logits=True):
         super().__init__()
         self.eps = eps
+        self.input_logits = input_logits
 
     # y: target index
     def forward(self, x, y):
+        if self.input_logits:
+            x = torch.softmax(x, dim=-1)
         return F.nll_loss(torch.clamp(x, self.eps).log(), y)
 
-def sumup_by_index(t, idxs, rescale=False):
-    new_sums = []
-    drop_idx = []
-    for idx in idxs:
-        new_sums.append(torch.sum(t[..., idx], dim=-1))
-        drop_idx += idx
-
-    new_idx = torch.ones(t.size(), dtype=torch.bool)
-    new_idx[..., drop_idx] = False
-    new_t = t[new_idx]
-
-    # (1, 2, 3, 4, 5) [0, 1] -(sum)> (3, 3, 4, 5,)
-    return torch.cat([new_t, torch.tensor(new_sums)])
 
 
 class NestedCrossEntropyLoss(nn.Module):
-    def __init__(self, groups=None, reduction='sum', rescale=False, by_index=True, eps=1e-32):
+    def __init__(self, groups=None, reduction='sum', sum_logits=True, by_index=True, eps=1e-32):
         super().__init__()
         self.groups = groups
         self.by_index = by_index
-        self.rescale = rescale
+        self.sum_logits = sum_logits
         self.eps = eps
+        self.C = 1
 
         self.reduce = {
             'mean': torch.mean,
             'sum': torch.sum,
         }[reduction]
 
+    def sumup_by_index(self, t, idxs):
+        new_sums = []
+        drop_idx = []
+        for idx in idxs:
+            target = t[..., idx]
+            new_sums.append(torch.sum(target, dim=-1))
+            drop_idx += idx
+
+        new_idx = torch.ones(t.size(), dtype=torch.bool)
+        new_idx[..., drop_idx] = False
+        rest_t = t[new_idx]
+
+        # (1, 2, 3, 4, 5) [0, 1] -(sum)> (3, 3, 4, 5,)
+        new_t = torch.cat([rest_t, torch.tensor(new_sums)])
+
+        return new_t
+
     def calc_cross_entropy(self, x, y):
+        x = torch.softmax(x, dim=-1)
         return - torch.sum(y * torch.clamp(x, self.eps).log())
 
     def forward(self, x, y):
+        """
+        x: logits
+        y: {yc|0<yc<1}
+        """
         if self.by_index:
             y = F.one_hot(y, x.size()[-1])
         base = self.calc_cross_entropy(x, y)
@@ -106,8 +121,8 @@ class NestedCrossEntropyLoss(nn.Module):
 
         ll = [base]
         for group in self.groups:
-            new_x = sumup_by_index(x, group['index'], rescale=self.rescale)
-            new_y = sumup_by_index(y, group['index'], rescale=self.rescale)
+            new_x = self.sumup_by_index(x, group['index'])
+            new_y = self.sumup_by_index(y, group['index'])
             group_loss = self.calc_cross_entropy(new_x, new_y)
             ll.append(group_loss * group['weight'])
         return self.reduce(torch.tensor(ll))
@@ -123,9 +138,9 @@ def compare_nested():
             }
         ])
 
-    x0 = F.softmax(torch.tensor([0.8, 0.1, 0.1]), dim=-1)
+    x0 = torch.tensor([2.0, 1, 1])
     y0 = torch.tensor(2)
-    x1 = F.softmax(torch.tensor([0.1, 0.8, 0.1]), dim=-1)
+    x1 = torch.tensor([1, 2.0, 1])
     y1 = torch.tensor(2)
 
     print('n x0 y0')

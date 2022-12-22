@@ -6,7 +6,7 @@ import numpy as np
 import torch
 from torch import nn
 from torch import optim
-import torch_optimizer as optim2
+# import torch_optimizer as optim2
 from tqdm import tqdm
 import pandas as pd
 from PIL import Image
@@ -16,7 +16,7 @@ from endaaman.torch import TrainCommander
 from endaaman.trainer import Trainer
 from endaaman.metrics import MultiAccuracy
 
-from models import create_model, available_models, CrossEntropyLoss, NestedCrossEntroyLoss
+from models import create_model, available_models, CrossEntropyLoss, NestedCrossEntropyLoss
 from datasets import BTDataset
 
 

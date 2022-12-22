@@ -24,6 +24,7 @@ from albumentations.core.transforms_interface import ImageOnlyTransform
 from albumentations.augmentations.crops.functional import center_crop
 
 ImageFile.LOAD_TRUNCATED_IMAGES = True
+Image.MAX_IMAGE_PIXELS = 1000000000
 
 
 DiagToNum = OrderedDict((
@@ -60,16 +61,26 @@ class Item(NamedTuple):
 
 
 class BTDataset(Dataset):
-    def __init__(self, target='train', crop_size=768, size=768, aug_mode='same', merge_G=True,
-                 normalize=True, test_ratio=0.25, seed=42, scale=1,
-                 base_dir='data/images'):
+    def __init__(self,
+                 # data spec
+                 target='train', merge_G=False, base_dir='data/images',
+                 # train-test spec
+                 test_ratio=0.25, seed=42, scale=1,
+                 # image spec
+                 crop_size=768, size=768, aug_mode='same', normalize=True
+                 ):
         self.target = target
-        self.size = size
         self.merge_G = merge_G
-        self.scale = scale
-        self.seed = seed
-        self.test_ratio = test_ratio
         self.base_dir = base_dir
+
+        self.test_ratio = test_ratio
+        self.seed = seed
+        self.scale = scale
+
+        self.size = size
+        self.crop_size = crop_size
+        self.aug_mode = aug_mode
+        self.normalize = normalize
 
         self.num_classes = 3 if merge_G else 5
 
@@ -119,9 +130,11 @@ class BTDataset(Dataset):
         data = []
         for diag in NumToDiag:
             for path in glob(os.path.join(self.base_dir, diag, '*.jpg')):
+                # merge A and O to G
+                diag = Map5to3[diag] if self.merge_G else diag
                 data.append({
                     'path': path,
-                    'diag': Map5to3[diag] if self.merge_G else diag
+                    'diag': diag,
                 })
 
         df_all = pd.DataFrame(data)
@@ -138,7 +151,7 @@ class BTDataset(Dataset):
 
         self.items = []
         for (df, t) in dfs:
-            for __idx, row in df.iterrows():
+            for idx, row in df.iterrows():
                 self.items.append(Item(
                     path=row.path,
                     diag=row.diag,
@@ -162,6 +175,7 @@ class BTDataset(Dataset):
 
 class CMD(Commander):
     def arg_common(self, parser):
+        parser.add_argument('--merge', '-m', action='store_true')
         parser.add_argument('--target', '-t', default='all', choices=['all', 'train', 'test'])
         parser.add_argument('--aug', '-a', default='same', choices=['same', 'train', 'test'])
         parser.add_argument('--size', '-s', type=int, default=512)
@@ -170,41 +184,54 @@ class CMD(Commander):
     def pre_common(self):
         self.ds = BTDataset(
             target=self.args.target,
+            merge_G=self.args.merge,
             aug_mode=self.args.aug,
+            crop_size=self.args.size,
             size=self.args.size,
             normalize=self.args.function != 'samples',
-            # normalize=False,
         )
 
-    def run_mean_std(self):
-        pp = glob('data/images/*/*.jpg')
-        mm = []
-        ss = []
-        scale = 0
-        for p in tqdm(pp):
-            i = np.array(Image.open(p)).reshape(-1, 3)
-            size = i.shape[0]
-            print(np.mean(i, axis=0))
-            mm.append(np.mean(i, axis=0) * size)
-            ss.append(np.std(i, axis=0) * size)
-            scale += size
-            break
-
-        mean = np.round(np.sum(mm, axis=0) / scale)
-        std = np.round(np.sum(ss, axis=0) // scale)
-        print('mean', mean)
-        print('std', std)
+    def arg_samples(self, parser):
+        parser.add_argument('--dest', '-d', default='tmp/samples')
 
     def run_samples(self):
         t = self.args.target
-        d = f'tmp/samples/{t}'
+        d = os.path.join(self.a.dest, t)
         os.makedirs(d, exist_ok=True)
         total = len(self.ds)
         for i, (x, y) in tqdm(enumerate(self.ds), total=total):
             if i > total:
                 break
             img = tensor_to_pil(x)
-            img.save(f'{d}/{i}_{int(y)}.jpg')
+            img.save(f'{d}/{i}_{NumToDiag[int(y)]}.jpg')
+
+    def arg_balance(self, parser):
+        pass
+
+    def run_balance(self):
+        data = []
+        ii = []
+        for diag in NumToDiag:
+            ii.append(diag)
+            data.append({
+                'pixels': 0,
+                'images': 0,
+                'mean': 0,
+            })
+        df = pd.DataFrame(data, index=ii)
+
+        for item in self.ds.items:
+            p = item.image.width * item.image.height
+            df.loc[item.diag, 'pixels'] += p/1000/1000
+            df.loc[item.diag, 'images'] += 1
+
+        for diag in NumToDiag:
+            m = df.loc[diag, 'pixels'] / df.loc[diag, 'images']
+            df.loc[diag, 'mean'] = m
+        self.df = df
+        print(df)
+        chan = '3' if self.a.merge else '5'
+        df.to_csv(f'out/balance_{chan}.csv')
 
     def run_t(self):
         for (x, y) in self.ds:

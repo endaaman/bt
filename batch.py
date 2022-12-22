@@ -1,3 +1,4 @@
+import os
 from glob import glob
 
 import torch
@@ -8,8 +9,11 @@ from tqdm import tqdm
 from endaaman import Commander
 
 class CMD(Commander):
+    def arg_mean_std(self, parser):
+        parser.add_argument('--src', '-s', default='data/images')
+
     def run_mean_std(self):
-        pp = glob('data/*/*.jpg')
+        pp = sorted(glob(os.path.join(self.a.src, '*/*.jpg')))
         mm = []
         ss = []
         scale = 0
