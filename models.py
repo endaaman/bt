@@ -1,5 +1,7 @@
 import sys
 import re
+from typing import NamedTuple, Callable
+
 import torch
 import timm
 from torch import nn
@@ -7,17 +9,26 @@ from torch.nn import functional as F
 from torchvision import transforms, models
 
 
-class EffNet(nn.Module):
+class ModelId(NamedTuple):
+    name: str
+    num_classes: int
+
+    def __str__(self):
+        return f'{self.name}_{self.num_classes}'
+
+    @classmethod
+    def from_str(cls, s):
+        m = re.match(r'^(.*)_(\d+)$', s)
+        if not m:
+            raise ValueError(f'Invalid model id: {s}')
+        return ModelId(m[1], m[2])
+
+class TimmModel(nn.Module):
     def __init__(self, name='v2_b0', num_classes=1, activation=True):
         super().__init__()
         self.num_classes = num_classes
         self.activation = activation
-        if m := re.match('^v2_(.+)$', name):
-            model_name = f'tf_efficientnetv2_{m[1]}'
-        else:
-            model_name = f'tf_efficientnet_{name}'
-
-        self.base = timm.create_model(model_name, pretrained=True, num_classes=num_classes)
+        self.base = timm.create_model(name, pretrained=True, num_classes=num_classes)
 
     def get_cam_layer(self):
         return self.base.conv_head
@@ -32,32 +43,9 @@ class EffNet(nn.Module):
         return x
 
 
-def create_model(name):
-    m = re.match(r'^(.*)_(\d)$', name)
-    if not m:
-        raise ValueError(f'Invalid name: {name}')
-    name = m[1]
-    num_classes = int(m[2])
+def create_model(model_id):
+    return TimmModel(name=model_id.name, num_classes=model_id.num_classes)
 
-    if m := re.match(r'^eff_(b[0-7])$', name):
-        return EffNet(name=m[1], num_classes=num_classes)
-
-    if m := re.match(r'^eff_(b[0-7]_ns)$', name):
-        return EffNet(name=m[1], num_classes=num_classes)
-
-    if m := re.match(r'^eff_(v2_b[0-4])$', name):
-        return EffNet(name=m[1], num_classes=num_classes)
-
-    if m := re.match(r'^eff_(v2_s|m|l)$', name):
-        return EffNet(name=m[1], num_classes=num_classes)
-
-    raise ValueError(f'Invalid name: {name}')
-
-
-available_models = \
-    [f'eff_b{i}_ns' for i in range(8)] + \
-    [f'eff_v2_b{i}' for i in range(4)] + \
-    ['eff_v2_s', 'eff_v2_s','eff_v2_l' ]
 
 class CrossEntropyLoss(nn.Module):
     def __init__(self, eps=1e-32, input_logits=True):
@@ -156,7 +144,9 @@ def compare_nested():
 
 
 if __name__ == '__main__':
-    compare_nested()
+    # compare_nested()
+    m = ModelId('mo', 1)
+    print(str(m))
     sys.exit()
 
     model = create_model('eff_v2_b3_3')

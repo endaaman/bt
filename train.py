@@ -12,11 +12,11 @@ import pandas as pd
 from PIL import Image
 from sklearn import metrics
 from timm.scheduler.cosine_lr import CosineLRScheduler
-from endaaman.torch import TrainCommander
-from endaaman.trainer import Trainer
+# from endaaman.torch import TrainCommander
+from endaaman.trainer import Trainer, TrainCommander
 from endaaman.metrics import MultiAccuracy
 
-from models import create_model, available_models, CrossEntropyLoss, NestedCrossEntropyLoss
+from models import create_model, CrossEntropyLoss, NestedCrossEntropyLoss
 from datasets import BTDataset
 
 
@@ -67,19 +67,17 @@ class C(TrainCommander):
         )) for t in ['train', 'test']]
 
     def arg_start(self, parser):
-        parser.add_argument('--model', '-m', default='eff_v2_b0_3')
+        parser.add_argument('--model', '-m', default='tf_efficientnetv2_b0_3')
 
     def run_start(self):
         model = create_model(self.args.model).to(self.device)
         loaders = self.create_loaders(model.num_classes)
 
-        trainer = T(
+        trainer = self.create_trainer(
+            T=T,
             name=self.args.model,
             model=model,
             loaders=loaders,
-            device=self.device,
-            save_period=self.args.save_period,
-            suffix=self.args.suffix,
         )
 
         trainer.start(self.args.epoch, lr=self.args.lr)
@@ -92,13 +90,11 @@ class C(TrainCommander):
         model = create_model(checkpoint.name).to(self.device)
         loaders = self.create_loaders(model.num_classes)
 
-        trainer = T(
+        trainer = self.create_trainer(
+            T=T,
             name=checkpoint.name,
             model=model,
             loaders=loaders,
-            device=self.device,
-            save_period=self.args.save_period,
-            suffix=self.args.suffix,
         )
 
         trainer.start(self.args.epoch, checkpoint=checkpoint)
