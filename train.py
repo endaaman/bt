@@ -13,31 +13,33 @@ from PIL import Image
 from sklearn import metrics
 from timm.scheduler.cosine_lr import CosineLRScheduler
 # from endaaman.torch import TrainCommander
-from endaaman.trainer import Trainer, TrainCommander
+from endaaman.torch import Trainer, TorchCommander
 from endaaman.metrics import MultiAccuracy
 
-from models import create_model, CrossEntropyLoss, NestedCrossEntropyLoss
+from models import ModelId, create_model, CrossEntropyLoss, NestedCrossEntropyLoss
 from datasets import BTDataset
 
 
 
-class T(Trainer):
-    def prepare(self):
-        self.criterion = CrossEntropyLoss()
+class MyTrainer(Trainer):
+    def prepare(self, **kwargs):
+        self.criterion = CrossEntropyLoss(input_logits=True)
+
+    def create_model(self):
+        model_id = ModelId.from_str(self.model_name)
+        return create_model(model_id).to(self.device)
 
     def eval(self, inputs, labels):
-        outputs = self.model(inputs.to(self.device))
+        outputs = self.model(inputs.to(self.device), activate=False)
         loss = self.criterion(outputs, labels.to(self.device))
         return loss, outputs
 
-    def create_optimizer(self, lr):
-        return optim.RAdam(self.model.parameters(), lr=lr)
-
     def create_scheduler(self, lr):
-        # return optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lambda x: 0.95 ** x)
         return CosineLRScheduler(
-            self.optimizer, t_initial=100, lr_min=0.00001,
-            warmup_t=50, warmup_lr_init=0.00005, warmup_prefix=True)
+            self.optimizer,
+            warmup_t=5, t_initial=80,
+            warmup_lr_init=lr/2, lr_min=lr/100,
+            warmup_prefix=True)
 
     def hook_load_state(self, checkpoint):
         self.scheduler.step(checkpoint.epoch-1)
@@ -45,66 +47,70 @@ class T(Trainer):
     def step(self, train_loss):
         self.scheduler.step(self.current_epoch)
 
-    def get_batch_metrics(self):
+
+    def get_metrics(self):
         return {
-            'acc': MultiAccuracy(),
+            'batch': {
+                'acc': MultiAccuracy(),
+            },
+            'epoch': { },
         }
 
-    def get_epoch_metrics(self):
-        return { }
 
-
-class C(TrainCommander):
+class CMD(TorchCommander):
     def arg_common(self, parser):
+        parser.add_argument('--crop', '-c', type=int, default=768*2)
         parser.add_argument('--size', '-s', type=int, default=768)
 
     def create_loaders(self, num_classes):
         return [self.as_loader(BTDataset(
             target=t,
-            crop_size=self.args.size,
+            crop_size=self.args.crop,
             size=self.args.size,
             seed=self.args.seed,
+            merge_G=num_classes == 3,
         )) for t in ['train', 'test']]
 
     def arg_start(self, parser):
-        parser.add_argument('--model', '-m', default='tf_efficientnetv2_b0_3')
+        parser.add_argument('--model', '-m', default='tf_efficientnetv2_b0_5')
 
     def run_start(self):
-        model = create_model(self.args.model).to(self.device)
-        loaders = self.create_loaders(model.num_classes)
+        model_id = ModelId.from_str(self.a.model)
+        assert model_id.num_classes in [3, 5]
+        loaders = self.create_loaders(model_id.num_classes)
 
         trainer = self.create_trainer(
-            T=T,
-            name=self.args.model,
-            model=model,
+            T=MyTrainer,
+            model_name=self.a.model,
             loaders=loaders,
+            log_dir='data/logs',
         )
 
         trainer.start(self.args.epoch, lr=self.args.lr)
 
-    def arg_resume(self, parser):
-        parser.add_argument('--checkpoint', '-c', required=True)
-
-    def run_resume(self):
-        checkpoint = torch.load(self.args.checkpoint)
-        model = create_model(checkpoint.name).to(self.device)
-        loaders = self.create_loaders(model.num_classes)
-
-        trainer = self.create_trainer(
-            T=T,
-            name=checkpoint.name,
-            model=model,
-            loaders=loaders,
-        )
-
-        trainer.start(self.args.epoch, checkpoint=checkpoint)
+    # def arg_resume(self, parser):
+    #     parser.add_argument('--checkpoint', '-c', required=True)
+    #
+    # def run_resume(self):
+    #     checkpoint = torch.load(self.args.checkpoint)
+    #     model = create_model(checkpoint.name).to(self.device)
+    #     loaders = self.create_loaders(model.num_classes)
+    #
+    #     trainer = self.create_trainer(
+    #         T=MyTrainer,
+    #         name=checkpoint.name,
+    #         model=model,
+    #         loaders=loaders,
+    #     )
+    #
+    #     trainer.start(self.args.epoch, checkpoint=checkpoint)
 
 
 if __name__ == '__main__':
-    c = C({
+    cmd = CMD({
         'epoch': 200,
         'lr': 0.0001,
         'batch_size': 16,
         'save_period': 50,
     })
-    c.run()
+    cmd.run()

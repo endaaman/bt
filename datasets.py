@@ -7,7 +7,7 @@ from glob import glob
 from typing import NamedTuple, Callable
 from collections import OrderedDict
 from endaaman import Commander
-from endaaman.torch import calc_mean_and_std, pil_to_tensor, tensor_to_pil
+from endaaman.torch import pil_to_tensor, tensor_to_pil
 
 import torch
 import numpy as np
@@ -106,7 +106,8 @@ class BTDataset(Dataset):
             A.HueSaturationValue(p=0.3),
         ]
         augs['test'] = [
-            A.CenterCrop(width=size, height=size),
+            A.CenterCrop(width=crop_size, height=crop_size),
+            A.Resize(width=size, height=size),
         ]
         augs['all'] = augs['test']
 
@@ -178,15 +179,15 @@ class CMD(Commander):
         parser.add_argument('--merge', '-m', action='store_true')
         parser.add_argument('--target', '-t', default='all', choices=['all', 'train', 'test'])
         parser.add_argument('--aug', '-a', default='same', choices=['same', 'train', 'test'])
-        parser.add_argument('--size', '-s', type=int, default=512)
-        parser.add_argument('--csize', '-c', type=int, default=768)
+        parser.add_argument('--size', '-s', type=int, default=768)
+        parser.add_argument('--crop', '-c', type=int, default=768)
 
     def pre_common(self):
         self.ds = BTDataset(
             target=self.args.target,
             merge_G=self.args.merge,
             aug_mode=self.args.aug,
-            crop_size=self.args.size,
+            crop_size=self.args.crop,
             size=self.args.size,
             normalize=self.args.function != 'samples',
         )
@@ -229,7 +230,6 @@ class CMD(Commander):
             m = df.loc[diag, 'pixels'] / df.loc[diag, 'images']
             df.loc[diag, 'mean'] = m
         self.df = df
-        print(df)
         chan = '3' if self.a.merge else '5'
         df.to_csv(f'out/balance_{chan}.csv')
 

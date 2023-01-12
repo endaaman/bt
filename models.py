@@ -21,10 +21,10 @@ class ModelId(NamedTuple):
         m = re.match(r'^(.*)_(\d+)$', s)
         if not m:
             raise ValueError(f'Invalid model id: {s}')
-        return ModelId(m[1], m[2])
+        return ModelId(m[1], int(m[2]))
 
 class TimmModel(nn.Module):
-    def __init__(self, name='v2_b0', num_classes=1, activation=True):
+    def __init__(self, name='tf_efficientnetv2_b0', num_classes=1, activation=True):
         super().__init__()
         self.num_classes = num_classes
         self.activation = activation
@@ -145,8 +145,8 @@ def compare_nested():
 
 if __name__ == '__main__':
     # compare_nested()
-    m = ModelId('mo', 1)
-    print(str(m))
+    model_id = ModelId('mo', 1)
+    print(str(model_id))
     sys.exit()
 
     model = create_model('eff_v2_b3_3')
