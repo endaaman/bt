@@ -18,7 +18,7 @@ from endaaman.torch import TorchCommander, pil_to_tensor
 from endaaman.metrics import MultiAccuracy
 
 from models import create_model, available_models
-from datasets import BTDataset, MEAN, STD, NumToDiag, DiagToNum
+from datasets import BTDataset, MEAN, STD, NUM_TO_DIAG, DIAG_TO_NUM
 
 
 
@@ -70,7 +70,7 @@ class CMD(TorchCommander):
     def label_to_text(self, t):
         ss = []
         for i, v in enumerate(t):
-            label = NumToDiag[i]
+            label = NUM_TO_DIAG[i]
             ss.append(f'{label}:{v:.3f}')
         return ' '.join(ss)
 
@@ -98,7 +98,7 @@ class CMD(TorchCommander):
 
         oo = []
         for (item, result) in zip(dataset.items, results):
-            pred = NumToDiag[torch.argmax(result)]
+            pred = NUM_TO_DIAG[torch.argmax(result)]
             result = result.tolist()
             oo.append({
                 'path': item.path,
@@ -106,9 +106,9 @@ class CMD(TorchCommander):
                 'gt': item.diag,
                 'pred': pred,
                 'correct': int(item.diag == pred),
-                'L': result[DiagToNum['L']],
-                'M': result[DiagToNum['M']],
-                'G': result[DiagToNum['G']],
+                'L': result[DIAG_TO_NUM['L']],
+                'M': result[DIAG_TO_NUM['M']],
+                'G': result[DIAG_TO_NUM['G']],
             })
         df = pd.DataFrame(oo)
         df.to_excel(f'out/{self.checkpoint.full_name()}/report_{self.args.target}.xlsx', index=False)
@@ -136,7 +136,7 @@ class CMD(TorchCommander):
         results = self.predict_images(images)
 
         for (path, result) in zip(paths, results):
-            s = ' '.join([f'{NumToDiag[i]}: {v:.3f}' for i, v in enumerate(result)])
+            s = ' '.join([f'{NUM_TO_DIAG[i]}: {v:.3f}' for i, v in enumerate(result)])
             print(f'{path}: {s}')
 
     def arg_cam(self, parser):

@@ -7,7 +7,7 @@ from glob import glob
 from typing import NamedTuple, Callable
 from collections import OrderedDict
 from endaaman import Commander
-from endaaman.torch import pil_to_tensor, tensor_to_pil
+from endaaman.torch import pil_to_tensor, tensor_to_pil, get_global_seed
 
 import torch
 import numpy as np
@@ -27,7 +27,7 @@ ImageFile.LOAD_TRUNCATED_IMAGES = True
 Image.MAX_IMAGE_PIXELS = 1000000000
 
 
-DiagToNum = OrderedDict((
+DIAG_TO_NUM = OrderedDict((
     ('L', 0),
     ('M', 1),
     ('G', 2),
@@ -35,7 +35,7 @@ DiagToNum = OrderedDict((
     ('O', 4),
 ))
 
-NumToDiag = list(DiagToNum.keys())
+NUM_TO_DIAG = list(DIAG_TO_NUM.keys())
 
 Map5to3 = {
     'L': 'L',
@@ -60,12 +60,12 @@ class Item(NamedTuple):
     test: bool
 
 
-class BTDataset(Dataset):
+class LMGDataset(Dataset):
     def __init__(self,
                  # data spec
                  target='train', merge_G=False, base_dir='data/images',
                  # train-test spec
-                 test_ratio=0.25, seed=42, scale=1,
+                 test_ratio=0.25, seed=None, scale=1,
                  # image spec
                  crop_size=768, size=768, aug_mode='same', normalize=True
                  ):
@@ -74,7 +74,7 @@ class BTDataset(Dataset):
         self.base_dir = base_dir
 
         self.test_ratio = test_ratio
-        self.seed = seed
+        self.seed = seed or get_global_seed()
         self.scale = scale
 
         self.size = size
@@ -129,7 +129,7 @@ class BTDataset(Dataset):
     def load_data(self):
         # df_all = pd.read_csv('data/labels.csv')
         data = []
-        for diag in NumToDiag:
+        for diag in NUM_TO_DIAG:
             for path in glob(os.path.join(self.base_dir, diag, '*.jpg')):
                 # merge A and O to G
                 diag = Map5to3[diag] if self.merge_G else diag
@@ -169,8 +169,8 @@ class BTDataset(Dataset):
     def __getitem__(self, idx):
         item = self.items[idx % len(self.items)]
         x = self.albu(image=np.array(item.image))['image']
-        y = torch.tensor(DiagToNum[item.diag])
-        # y = F.one_hot(torch.tensor(DiagToNum[item.diag]))
+        y = torch.tensor(DIAG_TO_NUM[item.diag])
+        # y = F.one_hot(torch.tensor(DIAG_TO_NUM[item.diag]))
         return x, y
 
 
@@ -179,11 +179,11 @@ class CMD(Commander):
         parser.add_argument('--merge', '-m', action='store_true')
         parser.add_argument('--target', '-t', default='all', choices=['all', 'train', 'test'])
         parser.add_argument('--aug', '-a', default='same', choices=['same', 'train', 'test'])
-        parser.add_argument('--size', '-s', type=int, default=768)
         parser.add_argument('--crop', '-c', type=int, default=768)
+        parser.add_argument('--size', '-s', type=int, default=768)
 
     def pre_common(self):
-        self.ds = BTDataset(
+        self.ds = LMGDataset(
             target=self.args.target,
             merge_G=self.args.merge,
             aug_mode=self.args.aug,
@@ -204,7 +204,7 @@ class CMD(Commander):
             if i > total:
                 break
             img = tensor_to_pil(x)
-            img.save(f'{d}/{i}_{NumToDiag[int(y)]}.jpg')
+            img.save(f'{d}/{i}_{NUM_TO_DIAG[int(y)]}.jpg')
 
     def arg_balance(self, parser):
         pass
@@ -212,7 +212,7 @@ class CMD(Commander):
     def run_balance(self):
         data = []
         ii = []
-        for diag in NumToDiag:
+        for diag in NUM_TO_DIAG:
             ii.append(diag)
             data.append({
                 'pixels': 0,
@@ -226,7 +226,7 @@ class CMD(Commander):
             df.loc[item.diag, 'pixels'] += p/1000/1000
             df.loc[item.diag, 'images'] += 1
 
-        for diag in NumToDiag:
+        for diag in NUM_TO_DIAG:
             m = df.loc[diag, 'pixels'] / df.loc[diag, 'images']
             df.loc[diag, 'mean'] = m
         self.df = df

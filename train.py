@@ -17,7 +17,7 @@ from endaaman.torch import Trainer, TorchCommander
 from endaaman.metrics import MultiAccuracy
 
 from models import ModelId, create_model, CrossEntropyLoss, NestedCrossEntropyLoss
-from datasets import BTDataset
+from datasets import LMGDataset, NUM_TO_DIAG
 
 
 
@@ -48,11 +48,13 @@ class MyTrainer(Trainer):
     def step(self, train_loss):
         self.scheduler.step(self.current_epoch)
 
-
     def get_metrics(self):
         return {
             'batch': {
                 'acc': MultiAccuracy(),
+                f'acc{NUM_TO_DIAG[0]}': AccuracyByChannel(target_channel=0),
+                f'acc{NUM_TO_DIAG[2]}': AccuracyByChannel(target_channel=1),
+                f'acc{NUM_TO_DIAG[2]}': AccuracyByChannel(target_channel=2),
             },
             'epoch': { },
         }
@@ -62,10 +64,12 @@ class CMD(TorchCommander):
     def arg_common(self, parser):
         parser.add_argument('--crop', '-c', type=int, default=768*2)
         parser.add_argument('--size', '-s', type=int, default=768)
+        parser.add_argument('--dir', '-d', default='data/images')
 
     def create_loaders(self, num_classes):
-        return [self.as_loader(BTDataset(
+        return [self.as_loader(LMGDataset(
             target=t,
+            base_dir=self.a.dir,
             crop_size=self.args.crop,
             size=self.args.size,
             seed=self.args.seed,
@@ -73,7 +77,7 @@ class CMD(TorchCommander):
         )) for t in ['train', 'test']]
 
     def arg_start(self, parser):
-        parser.add_argument('--model', '-m', default='tf_efficientnetv2_b0_5')
+        parser.add_argument('--model', '-m', default='tf_efficientnetv2_b0_3')
 
     def run_start(self):
         model_id = ModelId.from_str(self.a.model)
