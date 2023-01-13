@@ -48,12 +48,13 @@ class MyTrainer(Trainer):
         self.scheduler.step(self.current_epoch)
 
     def get_metrics(self):
+        model_id = ModelId.from_str(self.model_name)
         return {
             'batch': {
                 'acc': MultiAccuracy(),
-                f'acc{NUM_TO_DIAG[0]}': AccuracyByChannel(target_channel=0),
-                f'acc{NUM_TO_DIAG[1]}': AccuracyByChannel(target_channel=1),
-                f'acc{NUM_TO_DIAG[2]}': AccuracyByChannel(target_channel=2),
+                **{
+                    f'acc{NUM_TO_DIAG[l]}': AccuracyByChannel(target_channel=l) for l in range(model_id.num_classes)
+                }
             },
             'epoch': { },
         }
@@ -64,14 +65,20 @@ class CMD(TorchCommander):
         parser.add_argument('--crop', '-c', type=int, default=768*2)
         parser.add_argument('--size', '-s', type=int, default=768)
         parser.add_argument('--dir', '-d', default='data/images')
+        parser.add_argument('--scale', type=float, default=1.0)
+        parser.add_argument('--full', action='store_true')
+        parser.add_argument('--grid', action='store_true')
+
 
     def create_loaders(self, num_classes):
         return [self.as_loader(LMGDataset(
-            target=t,
+            target='all' if self.a.full and t == 'train' else 'train',
+            aug_mode=t,
             base_dir=self.a.dir,
             crop_size=self.a.crop,
             size=self.a.size,
             seed=self.a.seed,
+            scale=self.a.scale,
             merge_G=num_classes == 3,
         )) for t in ['train', 'test']]
 

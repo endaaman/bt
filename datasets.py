@@ -80,7 +80,7 @@ class LMGDataset(Dataset):
                  # train-test spec
                  test_ratio=0.25, seed=None, scale=1,
                  # image spec
-                 crop_size=768, size=768, aug_mode='same', normalize=True
+                 crop_size=768, size=768, aug_mode='same', grid_crop=False, normalize=True
                  ):
         self.target = target
         self.merge_G = merge_G
@@ -93,15 +93,17 @@ class LMGDataset(Dataset):
         self.size = size
         self.crop_size = crop_size
         self.aug_mode = aug_mode
+        self.grid_ = grid_crop
         self.normalize = normalize
 
         self.num_classes = 3 if merge_G else 5
 
         augs = {}
 
+        Cropper = GridRandomCrop if grid_crop else A.RandomCrop
+
         augs['train'] = [
-            # A.RandomCrop(width=crop_size, height=crop_size),
-            GridRandomCrop(width=crop_size, height=crop_size),
+            Cropper(width=crop_size, height=crop_size),
             A.Resize(width=size, height=size),
             A.RandomRotate90(p=1),
             A.HorizontalFlip(p=0.5),
@@ -177,7 +179,7 @@ class LMGDataset(Dataset):
     def __len__(self):
         l = len(self.items)
         if self.target == 'train':
-            return l * self.scale
+            return int(l * self.scale)
         return l
 
     def __getitem__(self, idx):
@@ -259,10 +261,8 @@ class CMD(Commander):
             self.i = tensor_to_pil(x)
             break
 
-if __name__ == '__main__':
-    # cmd = CMD(options={'no_pre_common': ['split']})
-    # cmd.run()
 
+def test_grid():
     img = Image.open('/home/ken/Dropbox/Pictures/osu.png')
     albu = A.Compose([
         GridRandomCrop(width=800, height=800)
@@ -271,3 +271,8 @@ if __name__ == '__main__':
     for i in range(20):
         a = albu(image=np.array(img))['image']
         Image.fromarray(a).save(f'tmp/grid/{i}.png')
+
+
+if __name__ == '__main__':
+    cmd = CMD(options={'no_pre_common': ['split']})
+    cmd.run()
