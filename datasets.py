@@ -19,6 +19,7 @@ from PIL import Image, ImageOps, ImageFile
 from PIL.Image import Image as ImageType
 from sklearn.model_selection import train_test_split
 import albumentations as A
+import albumentations.augmentations.crops.functional as albuF
 from albumentations.pytorch.transforms import ToTensorV2
 from albumentations.core.transforms_interface import ImageOnlyTransform
 from albumentations.augmentations.crops.functional import center_crop
@@ -59,6 +60,18 @@ class Item(NamedTuple):
     image: ImageType
     test: bool
 
+def select_side(W, w):
+    count = int(np.ceil(W / w))
+    overwrap = (w * count - W) / (count - 1)
+    idx = np.random.randint(0, count)
+    return int(idx * w - overwrap * idx)
+
+class GridRandomCrop(A.RandomCrop):
+    def apply(self, img, h_start=0, w_start=0, **params):
+        y = select_side(img.shape[0], self.height)
+        x = select_side(img.shape[1], self.width)
+        return albuF.crop(img, x_min=x, y_min=y, x_max=x+self.width, y_max=y+self.height)
+
 
 class LMGDataset(Dataset):
     def __init__(self,
@@ -87,7 +100,8 @@ class LMGDataset(Dataset):
         augs = {}
 
         augs['train'] = [
-            A.RandomCrop(width=crop_size, height=crop_size),
+            # A.RandomCrop(width=crop_size, height=crop_size),
+            GridRandomCrop(width=crop_size, height=crop_size),
             A.Resize(width=size, height=size),
             A.RandomRotate90(p=1),
             A.HorizontalFlip(p=0.5),
@@ -246,5 +260,14 @@ class CMD(Commander):
             break
 
 if __name__ == '__main__':
-    cmd = CMD(options={'no_pre_common': ['split']})
-    cmd.run()
+    # cmd = CMD(options={'no_pre_common': ['split']})
+    # cmd.run()
+
+    img = Image.open('/home/ken/Dropbox/Pictures/osu.png')
+    albu = A.Compose([
+        GridRandomCrop(width=800, height=800)
+    ])
+
+    for i in range(20):
+        a = albu(image=np.array(img))['image']
+        Image.fromarray(a).save(f'tmp/grid/{i}.png')
