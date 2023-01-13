@@ -18,9 +18,13 @@ class ModelId(NamedTuple):
 
     @classmethod
     def from_str(cls, s):
+        # s = s.split('_')
+        # if len(s) != 3:
+        #     raise RuntimeError(f'Invalid model id: {s}')
+        # return ModelId(m[0], int(m[1]), int(m[2]))
         m = re.match(r'^(.*)_(\d+)$', s)
         if not m:
-            raise ValueError(f'Invalid model id: {s}')
+            raise RuntimeError(f'Invalid model id: {s}')
         return ModelId(m[1], int(m[2]))
 
 class TimmModel(nn.Module):
@@ -43,8 +47,14 @@ class TimmModel(nn.Module):
         return x
 
 
-def create_model(model_id):
-    return TimmModel(name=model_id.name, num_classes=model_id.num_classes)
+def create_model(p):
+    if isinstance(p, str):
+        p = ModelId.from_str(p)
+    elif isinstance(p, ModelId):
+        pass
+    else:
+        raise RuntimeError(f'Invalid param: {p} {type(p)}')
+    return TimmModel(name=p.name, num_classes=p.num_classes)
 
 
 class CrossEntropyLoss(nn.Module):
@@ -145,11 +155,11 @@ def compare_nested():
 
 if __name__ == '__main__':
     # compare_nested()
-    model_id = ModelId('mo', 1)
-    print(str(model_id))
-    sys.exit()
+    # mid = ModelId('mo', 1)
+    # print(str(mid))
+    # sys.exit()
 
-    model = create_model('eff_v2_b3_3')
+    model = create_model('tf_efficientnetv2_b0_3')
     count = sum(p.numel() for p in model.parameters()) / 1000000
     print(f'count: {count}M')
     x_ = torch.rand([2, 3, 512, 512])

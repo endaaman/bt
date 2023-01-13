@@ -24,6 +24,7 @@ from datasets import BTDataset
 class MyTrainer(Trainer):
     def prepare(self, **kwargs):
         self.criterion = CrossEntropyLoss(input_logits=True)
+        # self.criterion = NestedCrossEntropyLoss() if use_nested else CrossEntropyLoss()
 
     def create_model(self):
         model_id = ModelId.from_str(self.model_name)
