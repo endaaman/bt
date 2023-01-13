@@ -177,6 +177,7 @@ class LMGDataset(Dataset):
 class CMD(Commander):
     def arg_common(self, parser):
         parser.add_argument('--merge', '-m', action='store_true')
+        parser.add_argument('--base-dir', '-b', default='data/images')
         parser.add_argument('--target', '-t', default='all', choices=['all', 'train', 'test'])
         parser.add_argument('--aug', '-a', default='same', choices=['same', 'train', 'test'])
         parser.add_argument('--crop', '-c', type=int, default=768)
@@ -185,6 +186,7 @@ class CMD(Commander):
     def pre_common(self):
         self.ds = LMGDataset(
             target=self.args.target,
+            base_dir=self.a.base_dir,
             merge_G=self.args.merge,
             aug_mode=self.args.aug,
             crop_size=self.args.crop,
@@ -204,7 +206,7 @@ class CMD(Commander):
             if i > total:
                 break
             img = tensor_to_pil(x)
-            item = ds.items[i]
+            item = self.ds.items[i]
             name = os.path.splitext(os.path.basename(item.path))[0]
             img.save(f'{d}/{i}_{NUM_TO_DIAG[int(y)]}_{name}.jpg')
 

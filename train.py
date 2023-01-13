@@ -69,9 +69,9 @@ class CMD(TorchCommander):
         return [self.as_loader(LMGDataset(
             target=t,
             base_dir=self.a.dir,
-            crop_size=self.args.crop,
-            size=self.args.size,
-            seed=self.args.seed,
+            crop_size=self.a.crop,
+            size=self.a.size,
+            seed=self.a.seed,
             merge_G=num_classes == 3,
         )) for t in ['train', 'test']]
 
@@ -87,27 +87,27 @@ class CMD(TorchCommander):
             T=MyTrainer,
             model_name=self.a.model,
             loaders=loaders,
-            log_dir='data/logs',
         )
 
-        trainer.start(self.args.epoch, lr=self.args.lr)
+        trainer.start(self.a.epoch, lr=self.a.lr)
 
-    # def arg_resume(self, parser):
-    #     parser.add_argument('--checkpoint', '-c', required=True)
-    #
-    # def run_resume(self):
-    #     checkpoint = torch.load(self.args.checkpoint)
-    #     model = create_model(checkpoint.name).to(self.device)
-    #     loaders = self.create_loaders(model.num_classes)
-    #
-    #     trainer = self.create_trainer(
-    #         T=MyTrainer,
-    #         name=checkpoint.name,
-    #         model=model,
-    #         loaders=loaders,
-    #     )
-    #
-    #     trainer.start(self.args.epoch, checkpoint=checkpoint)
+    def arg_resume(self, parser):
+        parser.add_argument('--weight', '-w', required=True)
+
+    def run_resume(self):
+        checkpoint = torch.load(self.a.checkpoint)
+
+        model_id = ModelId.from_str(checkpoint.model_name)
+        assert model_id.num_classes in [3, 5]
+        loaders = self.create_loaders(model_id.num_classes)
+
+        trainer = self.create_trainer(
+            T=MyTrainer,
+            model_name=checkpoint.model_name,
+            loaders=loaders,
+        )
+
+        trainer.start(self.a.epoch, lr=self.a.lr, checkpoint=checkpoint)
 
 
 if __name__ == '__main__':
