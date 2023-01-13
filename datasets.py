@@ -204,7 +204,9 @@ class CMD(Commander):
             if i > total:
                 break
             img = tensor_to_pil(x)
-            img.save(f'{d}/{i}_{NUM_TO_DIAG[int(y)]}.jpg')
+            item = ds.items[i]
+            name = os.path.splitext(os.path.basename(item.path))[0]
+            img.save(f'{d}/{i}_{NUM_TO_DIAG[int(y)]}_{name}.jpg')
 
     def arg_balance(self, parser):
         pass

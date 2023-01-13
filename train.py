@@ -14,17 +14,16 @@ from sklearn import metrics
 from timm.scheduler.cosine_lr import CosineLRScheduler
 # from endaaman.torch import TrainCommander
 from endaaman.torch import Trainer, TorchCommander
-from endaaman.metrics import MultiAccuracy
+from endaaman.metrics import MultiAccuracy, AccuracyByChannel
 
 from models import ModelId, create_model, CrossEntropyLoss, NestedCrossEntropyLoss
 from datasets import LMGDataset, NUM_TO_DIAG
 
 
-
 class MyTrainer(Trainer):
     def prepare(self, **kwargs):
-        self.criterion = CrossEntropyLoss(input_logits=True)
-        # self.criterion = NestedCrossEntropyLoss() if use_nested else CrossEntropyLoss()
+        # self.criterion = NestedCrossEntropyLoss(input_logits=True) if use_nested else CrossEntropyLoss(input_logits=True)
+        self.criterion = nn.CrossEntropyLoss()
 
     def create_model(self):
         model_id = ModelId.from_str(self.model_name)
@@ -39,7 +38,7 @@ class MyTrainer(Trainer):
         return CosineLRScheduler(
             self.optimizer,
             warmup_t=5, t_initial=80,
-            warmup_lr_init=lr/2, lr_min=lr/100,
+            warmup_lr_init=lr/2, lr_min=lr/10,
             warmup_prefix=True)
 
     def hook_load_state(self, checkpoint):
@@ -53,7 +52,7 @@ class MyTrainer(Trainer):
             'batch': {
                 'acc': MultiAccuracy(),
                 f'acc{NUM_TO_DIAG[0]}': AccuracyByChannel(target_channel=0),
-                f'acc{NUM_TO_DIAG[2]}': AccuracyByChannel(target_channel=1),
+                f'acc{NUM_TO_DIAG[1]}': AccuracyByChannel(target_channel=1),
                 f'acc{NUM_TO_DIAG[2]}': AccuracyByChannel(target_channel=2),
             },
             'epoch': { },
