@@ -39,7 +39,7 @@ DIAG_TO_NUM = OrderedDict((
 
 NUM_TO_DIAG = list(DIAG_TO_NUM.keys())
 
-Map5to3 = {
+MAP5TO3 = {
     'L': 'L',
     'M': 'M',
     'G': 'G',
@@ -163,7 +163,7 @@ class LMGDataset(Dataset):
         for diag in NUM_TO_DIAG:
             for path in glob(os.path.join(self.base_dir, diag, '*.jpg')):
                 # merge A and O to G
-                diag = Map5to3[diag] if self.merge_G else diag
+                diag = MAP5TO3[diag] if self.merge_G else diag
                 data.append({
                     'path': path,
                     'diag': diag,

@@ -1,6 +1,7 @@
 import os
 import re
 from glob import glob
+from itertools import islice
 
 import numpy as np
 import torch
@@ -14,41 +15,28 @@ from PIL import Image, ImageDraw, ImageFont
 from sklearn import metrics
 from gradcam.utils import visualize_cam
 from gradcam import GradCAM, GradCAMpp
-from endaaman.torch import TorchCommander, pil_to_tensor
+
+from endaaman import get_images_from_dir_or_file
+from endaaman.torch import TorchCommander, pil_to_tensor, Predictor
 from endaaman.metrics import MultiAccuracy
 
-from models import create_model, available_models
-from datasets import BTDataset, MEAN, STD, NUM_TO_DIAG, DIAG_TO_NUM
+from models import ModelId, create_model
+from datasets import LMGDataset, MEAN, STD, NUM_TO_DIAG, DIAG_TO_NUM, MAP5TO3
 
 
-
-class CMD(TorchCommander):
-    def arg_common(self, parser):
-        parser.add_argument('--checkpoint', '-c', required=True)
-
-    def pre_common(self):
-        self.checkpoint = torch.load(self.args.checkpoint, map_location=lambda storage, loc: storage)
-        # self.checkpoint = torch.load(self.args.checkpoint)
-        self.model = create_model(self.checkpoint.name, 3).to(self.device)
-        self.model.load_state_dict(self.checkpoint.model_state)
-        self.model.eval()
-
-        self.font = ImageFont.truetype('/usr/share/fonts/ubuntu/Ubuntu-R.ttf', 24)
-
-    def predict_images(self, images):
-        transform = transforms.Compose([
+class MyPredictor(Predictor):
+    def prepare(self, **kwargs):
+        self.transform_image = transforms.Compose([
             transforms.ToTensor(),
             transforms.Normalize(MEAN, STD),
         ])
 
-        outputs = []
-        for image in tqdm(images):
-            t = transform(image).unsqueeze(0).to(self.device)
-            with torch.no_grad():
-                o = self.model(t).detach().cpu()
-            outputs += o
-        return outputs
-
+    def create_model(self):
+        model_id = ModelId.from_str(self.checkpoint.model_name)
+        model = create_model(model_id).to(self.device)
+        model.load_state_dict(self.checkpoint.model_state)
+        model.eval()
+        return model
 
     def cam_images(self, images):
         target_layer = self.model.get_cam_layer()
@@ -66,6 +54,20 @@ class CMD(TorchCommander):
                 'result': result[0].cpu().detach(),
             })
         return oo
+
+
+class CMD(TorchCommander):
+    def arg_common(self, parser):
+        parser.add_argument('--checkpoint', '-c', required=True)
+
+    def pre_common(self):
+        self.font = ImageFont.truetype('/usr/share/fonts/ubuntu/Ubuntu-R.ttf', 24)
+        self.checkpoint = torch.load(self.args.checkpoint, map_location=lambda storage, loc: storage)
+        self.predictor = self.create_predictor(
+            P=MyPredictor,
+            checkpoint=self.checkpoint,
+        )
+        self.num_classes = self.predictor.model.num_classes
 
     def label_to_text(self, t):
         ss = []
@@ -89,12 +91,19 @@ class CMD(TorchCommander):
         parser.add_argument('--target', '-t', choices=['test', 'train', 'all'], default='all')
 
     def run_dataset(self):
-        dataset = BTDataset(
+        dataset = LMGDataset(
             target=self.args.target,
-            normalize=False, aug_mode='none'
+            normalize=False,
+            aug_mode='none',
+            grid_size=-1,
+            merge_G=self.num_classes == 3,
         )
+        print(self.num_classes)
+        print(self.ds.num_classes)
+        return
 
-        results = self.predict_images([i.image for i in dataset.items])
+        images = [i.image for i in dataset.items]
+        results = self.predictor.predict_images(images=images)
 
         oo = []
         for (item, result) in zip(dataset.items, results):
@@ -106,35 +115,21 @@ class CMD(TorchCommander):
                 'gt': item.diag,
                 'pred': pred,
                 'correct': int(item.diag == pred),
-                'L': result[DIAG_TO_NUM['L']],
-                'M': result[DIAG_TO_NUM['M']],
-                'G': result[DIAG_TO_NUM['G']],
+                **{
+                    k: result[l] for k, l in islice(DIAG_TO_NUM.items(), self.num_classes)
+                }
             })
         df = pd.DataFrame(oo)
-        df.to_excel(f'out/{self.checkpoint.full_name()}/report_{self.args.target}.xlsx', index=False)
-
-    def load_images_from_dir_or_file(self, src):
-        paths = []
-        if os.path.isdir(src):
-            paths = os.path.join(src, '*.jpg') + os.path.join(src, '*.png')
-            images = [Image.open(p) for p in paths]
-        elif os.path.isfile(src):
-            paths = [src]
-            images = [Image.open(src)]
-
-        if len(images) == 0:
-            raise RuntimeError(f'Invalid src: {src}')
-
-        return images, paths
+        p = f'out/{self.checkpoint.trainer_name}/report_{self.args.target}.xlsx'
+        df.to_excel(p, index=False)
+        print(f'wrote {p}')
 
     def arg_predict(self, parser):
         parser.add_argument('--src', '-s', required=True)
 
     def run_predict(self):
-        images, paths = self.load_images_from_dir_or_file(self.args.src)
-
-        results = self.predict_images(images)
-
+        images, paths = get_images_from_dir_or_file(self.args.src, with_path=True)
+        results = self.predictor.predict_images(images)
         for (path, result) in zip(paths, results):
             s = ' '.join([f'{NUM_TO_DIAG[i]}: {v:.3f}' for i, v in enumerate(result)])
             print(f'{path}: {s}')
@@ -144,9 +139,9 @@ class CMD(TorchCommander):
         parser.add_argument('--dest', '-d', default='cam')
 
     def run_cam(self):
-        images, paths = self.load_images_from_dir_or_file(self.args.src)
-        cams = self.cam_images(images)
-        dest = os.path.join('out', self.checkpoint.full_name(), self.args.dest)
+        images, paths = get_images_from_dir_or_file(self.args.src, with_path=True)
+        cams = self.predictor.cam_images(images)
+        dest = os.path.join('out', self.checkpoint.trainer_name, self.args.dest)
         os.makedirs(dest, exist_ok=True)
 
         for (path, image, cam) in zip(paths, images, cams):
@@ -160,9 +155,10 @@ class CMD(TorchCommander):
         parser.add_argument('--dest', '-d', default='cam')
 
     def run_cam_dataset(self):
-        dataset = BTDataset(
+        dataset = LMGDataset(
             target=self.args.target,
-            normalize=False, aug_mode='none'
+            normalize=False,
+            aug_mode='none'
         )
 
         cams = self.cam_images([i.image for i in dataset.items])
@@ -179,5 +175,8 @@ class CMD(TorchCommander):
             grid_image.save(os.path.join(d, f'{name}.jpg'))
 
 if __name__ == '__main__':
-    cmd = CMD()
+    cmd = CMD({
+        'batch_size': 1,
+    }
+    )
     cmd.run()
