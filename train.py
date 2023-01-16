@@ -38,7 +38,7 @@ class MyTrainer(Trainer):
         return CosineLRScheduler(
             self.optimizer,
             warmup_t=5, t_initial=80,
-            warmup_lr_init=lr/2, lr_min=lr/10,
+            warmup_lr_init=lr/2, lr_min=lr/100,
             warmup_prefix=True)
 
     def hook_load_state(self, checkpoint):
@@ -69,13 +69,13 @@ class CMD(TorchCommander):
         parser.add_argument('--full', action='store_true')
         parser.add_argument('--grid', action='store_true')
 
-
     def create_loaders(self, num_classes):
         return [self.as_loader(LMGDataset(
             target='all' if self.a.full and t == 'train' else 'train',
             aug_mode=t,
             base_dir=self.a.dir,
             crop_size=self.a.crop,
+            grid_crop=self.a.grid,
             size=self.a.size,
             seed=self.a.seed,
             scale=self.a.scale,
@@ -119,8 +119,8 @@ class CMD(TorchCommander):
 
 if __name__ == '__main__':
     cmd = CMD({
-        'epoch': 200,
-        'lr': 0.0001,
+        'epoch': 100,
+        'lr': 0.001,
         'batch_size': 16,
         'save_period': 50,
     })

@@ -98,10 +98,8 @@ class LMGDataset(Dataset):
 
         self.num_classes = 3 if merge_G else 5
 
-        augs = {}
-
         Cropper = GridRandomCrop if grid_crop else A.RandomCrop
-
+        augs = {}
         augs['train'] = [
             Cropper(width=crop_size, height=crop_size),
             A.Resize(width=size, height=size),
