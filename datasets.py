@@ -111,15 +111,13 @@ class LMGDataset(Dataset):
         self.size = size
         self.crop_size = crop_size
         self.aug_mode = aug_mode
-        self.grid_ = grid_crop
         self.normalize = normalize
 
         self.num_classes = 3 if merge_G else 5
 
-        Cropper = GridRandomCrop if grid_crop else A.RandomCrop
         augs = {}
         augs['train'] = [
-            Cropper(width=crop_size, height=crop_size),
+            A.RandomCrop(width=crop_size, height=crop_size),
             A.Resize(width=size, height=size),
             A.RandomRotate90(p=1),
             A.HorizontalFlip(p=0.5),
@@ -159,7 +157,6 @@ class LMGDataset(Dataset):
         self.load_data()
 
     def load_data(self):
-        # df_all = pd.read_csv('data/labels.csv')
         data = []
         for diag in NUM_TO_DIAG:
             for path in glob(os.path.join(self.base_dir, diag, '*.jpg')):
@@ -189,7 +186,7 @@ class LMGDataset(Dataset):
                 self.items.append(Item(
                     path=row.path,
                     diag=row.diag,
-                    image=Image.open(row.path),
+                    image=Image.open(row.path).copy(),
                     name=name,
                     test=t,
                 ))
@@ -288,9 +285,9 @@ class CMD(Commander):
             imgss = grid_split(item.image, self.a.crop)
             for h, imgs  in enumerate(imgss):
                 for v, img in enumerate(imgs):
-                    d = os.path.join(self.a.dest, item.diag)
+                    d = os.path.join(self.a.dest, item.diag, item.name)
                     os.makedirs(d, exist_ok=True)
-                    img.save(os.path.join(d, f'{h}_{v}_{item.name}.jpg'))
+                    img.save(os.path.join(d, f'{h}_{v}.jpg'))
 
 def test_grid():
     img = Image.open('/home/ken/Dropbox/Pictures/osu.png')
