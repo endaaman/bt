@@ -58,13 +58,31 @@ class Item(NamedTuple):
     path: str
     diag: str
     image: ImageType
+    name: str
     test: bool
 
-def select_side(W, w):
+def select_side(W, w, idx=None):
     count = int(np.ceil(W / w))
+    if count <= 1:
+        return 0
     overwrap = (w * count - W) / (count - 1)
-    idx = np.random.randint(0, count)
+    if idx is None:
+        idx = np.random.randint(0, count)
     return int(idx * w - overwrap * idx)
+
+def grid_split(img, size):
+    hor_count = int(np.ceil(img.width / size))
+    ver_count = int(np.ceil(img.height / size))
+    ii = []
+    for h_idx in range(hor_count):
+        t = []
+        for v_idx in range(ver_count):
+            x = select_side(img.width, size, h_idx)
+            y = select_side(img.height, size, v_idx)
+            t.append(img.crop((x, y, x+size, y+size)))
+        ii.append(t)
+    return ii
+
 
 class GridRandomCrop(A.RandomCrop):
     def apply(self, img, h_start=0, w_start=0, **params):
@@ -167,10 +185,12 @@ class LMGDataset(Dataset):
         self.items = []
         for (df, t) in dfs:
             for idx, row in df.iterrows():
+                name = os.path.splitext(os.path.basename(row.path))[0]
                 self.items.append(Item(
                     path=row.path,
                     diag=row.diag,
                     image=Image.open(row.path),
+                    name=name,
                     test=t,
                 ))
 
@@ -259,6 +279,18 @@ class CMD(Commander):
             self.i = tensor_to_pil(x)
             break
 
+    def arg_grid_split(self, parser):
+        parser.add_argument('--dest', '-d', default='tmp/grid_split')
+
+    def run_grid_split(self):
+        os.makedirs(self.a.dest, exist_ok=True)
+        for item in tqdm(self.ds.items):
+            imgss = grid_split(item.image, self.a.crop)
+            for h, imgs  in enumerate(imgss):
+                for v, img in enumerate(imgs):
+                    d = os.path.join(self.a.dest, item.diag)
+                    os.makedirs(d, exist_ok=True)
+                    img.save(os.path.join(d, f'{h}_{v}_{item.name}.jpg'))
 
 def test_grid():
     img = Image.open('/home/ken/Dropbox/Pictures/osu.png')

@@ -1,12 +1,15 @@
 import os
 from glob import glob
+import itertools
 
 import torch
 from PIL import Image, ImageOps, ImageFile
 import numpy as np
 from tqdm import tqdm
 
-from endaaman import Commander
+from endaaman import Commander, get_images_from_dir_or_file
+from datasets import grid_split
+
 
 class CMD(Commander):
     def arg_mean_std(self, parser):
@@ -29,6 +32,15 @@ class CMD(Commander):
         print('mean', mean)
         print('std', std)
 
+    def arg_grid_split(self, parser):
+        parser.add_argument('--src', '-s', default='data/images')
+
+    def run_grid_split(self):
+        ii = get_images_from_dir_or_file(self.a.src)[0]
+        imgss = grid_split(ii[0], 400)
+        for h, imgs  in enumerate(imgss):
+            for v, img in enumerate(imgs):
+                img.convert('RGB').save(f'tmp/grid/g{h}_{v}.jpg')
 
 if __name__ == '__main__':
     cmd = CMD()
