@@ -219,12 +219,12 @@ class CMD(Commander):
         os.makedirs(d, exist_ok=True)
         total = len(self.ds)
         for i, (x, y) in tqdm(enumerate(self.ds), total=total):
-            if i > total:
-                break
             img = tensor_to_pil(x)
             item = self.ds.items[i]
             name = os.path.splitext(os.path.basename(item.path))[0]
             img.save(f'{d}/{i}_{NUM_TO_DIAG[int(y)]}_{name}.jpg')
+            if i == total-1:
+                break
 
     def arg_balance(self, parser):
         pass
