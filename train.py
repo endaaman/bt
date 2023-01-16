@@ -35,10 +35,17 @@ class MyTrainer(Trainer):
         return loss, outputs
 
     def create_scheduler(self, lr):
+        # return CosineLRScheduler(
+        #     self.optimizer,
+        #     warmup_t=5, t_initial=80,
+        #     warmup_lr_init=lr/2, lr_min=lr/100,
+        #     warmup_prefix=True)
+
+        # zero-warmup
         return CosineLRScheduler(
             self.optimizer,
-            warmup_t=5, t_initial=80,
-            warmup_lr_init=lr/2, lr_min=lr/100,
+            warmup_t=0, t_initial=20,
+            warmup_lr_init=lr/2, lr_min=lr/10,
             warmup_prefix=True)
 
     def hook_load_state(self, checkpoint):
@@ -62,20 +69,20 @@ class MyTrainer(Trainer):
 
 class CMD(TorchCommander):
     def arg_common(self, parser):
-        parser.add_argument('--crop', '-c', type=int, default=768*2)
+        parser.add_argument('--grid', '-g', type=int, default=768)
+        parser.add_argument('--crop', '-c', type=int, default=768)
         parser.add_argument('--size', '-s', type=int, default=768)
         parser.add_argument('--dir', '-d', default='data/images')
         parser.add_argument('--scale', type=float, default=1.0)
         parser.add_argument('--full', action='store_true')
-        parser.add_argument('--grid', action='store_true')
 
     def create_loaders(self, num_classes):
         return [self.as_loader(LMGDataset(
             target='all' if self.a.full and t == 'train' else 'train',
             aug_mode=t,
             base_dir=self.a.dir,
+            grid_size=self.a.grid,
             crop_size=self.a.crop,
-            grid_crop=self.a.grid,
             size=self.a.size,
             seed=self.a.seed,
             scale=self.a.scale,
@@ -119,9 +126,9 @@ class CMD(TorchCommander):
 
 if __name__ == '__main__':
     cmd = CMD({
-        'epoch': 100,
+        'epoch': 20,
         'lr': 0.001,
         'batch_size': 16,
-        'save_period': 50,
+        'save_period': 10,
     })
     cmd.run()

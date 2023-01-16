@@ -2,6 +2,7 @@ import os
 import os.path
 import re
 import shutil
+import itertools
 from enum import Enum
 from glob import glob
 from typing import NamedTuple, Callable
@@ -98,7 +99,7 @@ class LMGDataset(Dataset):
                  # train-test spec
                  test_ratio=0.25, seed=None, scale=1,
                  # image spec
-                 crop_size=768, size=768, aug_mode='same', grid_crop=False, normalize=True
+                 grid_size=768, crop_size=768, size=768, aug_mode='same', normalize=True
                  ):
         self.target = target
         self.merge_G = merge_G
@@ -108,6 +109,7 @@ class LMGDataset(Dataset):
         self.seed = seed or get_global_seed()
         self.scale = scale
 
+        self.grid_size = grid_size
         self.size = size
         self.crop_size = crop_size
         self.aug_mode = aug_mode
@@ -154,7 +156,7 @@ class LMGDataset(Dataset):
         aug += [ToTensorV2()]
 
         self.albu = A.Compose(aug)
-        self.load_data()
+        self.df, self.items = self.load_data()
 
     def load_data(self):
         data = []
@@ -165,31 +167,42 @@ class LMGDataset(Dataset):
                 data.append({
                     'path': path,
                     'diag': diag,
+                    'test': False,
                 })
 
         df_all = pd.DataFrame(data)
         df_train, df_test = train_test_split(df_all, test_size=self.test_ratio, stratify=df_all.diag, random_state=self.seed)
+        df_test['test'] = True
 
         if self.target == 'train':
-            dfs = [(df_train, False)]
+            df = df_train
         elif self.target == 'test':
-            dfs = [(df_test, True)]
+            df = df_test
         elif self.target == 'all':
-            dfs = [(df_train, False), (df_test, True)]
+            df = pd.concat([df_train, df_test])
         else:
             raise ValueError(f'invalid target: {self.target}')
 
-        self.items = []
-        for (df, t) in dfs:
-            for idx, row in df.iterrows():
-                name = os.path.splitext(os.path.basename(row.path))[0]
-                self.items.append(Item(
-                    path=row.path,
-                    diag=row.diag,
-                    image=Image.open(row.path).copy(),
-                    name=name,
-                    test=t,
-                ))
+        items = []
+        for _idx, row in tqdm(df.iterrows(), total=len(df)):
+            name = os.path.splitext(os.path.basename(row.path))[0]
+            org_img = Image.open(row.path)
+            if self.grid_size < 0:
+                imgss = [[org_img]]
+            else:
+                imgss = grid_split(org_img, self.grid_size)
+            for h, imgs  in enumerate(imgss):
+                for v, img in enumerate(imgs):
+                    items.append(Item(
+                        path=row.path,
+                        diag=row.diag,
+                        image=img,
+                        name=f'{name}_{h}_{v}',
+                        test=row.test,
+                    ))
+
+        print('All images loaded')
+        return df, items
 
     def __len__(self):
         l = len(self.items)
