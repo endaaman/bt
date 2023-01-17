@@ -71,18 +71,48 @@ def select_side(W, w, idx=None):
         idx = np.random.randint(0, count)
     return int(idx * w - overwrap * idx)
 
-def grid_split(img, size):
+def grid_split_with_overwrap(img, size, flattern=False):
     hor_count = int(np.ceil(img.width / size))
     ver_count = int(np.ceil(img.height / size))
-    ii = []
+    iii = []
     for h_idx in range(hor_count):
-        t = []
+        ii = []
         for v_idx in range(ver_count):
             x = select_side(img.width, size, h_idx)
             y = select_side(img.height, size, v_idx)
-            t.append(img.crop((x, y, x+size, y+size)))
-        ii.append(t)
+            ii.append(img.crop((x, y, x+size, y+size)))
+        iii.append(t)
+
+    if flattern:
+        iii = list(itertools.chain.from_iterable(iii))
     return ii
+
+def n_split(x, n):
+    return [(x + i) // n for i in range(n)]
+
+def grid_split_by_size(img, size, flattern=False):
+    hor_sizes = n_split(img.width, img.width//size)
+    ver_sizes = n_split(img.height, img.height//size)
+    iii = []
+    x = 0
+    for hor_size in hor_sizes:
+        y = 0
+        ii = []
+        for ver_size in ver_sizes:
+            ii.append(img.crop((x, y, hor_size, ver_size)))
+            y += ver_size
+        x += hor_size
+        iii.append(ii)
+
+    if flattern:
+        iii = list(itertools.chain.from_iterable(iii))
+    return iii
+
+
+def grid_split(img, size, overwrap=True, flattern=False):
+    if overwrap:
+        return grid_split_with_overwrap(img, size, flattern)
+    return grid_split_by_size(img, size, flattern)
 
 
 class GridRandomCrop(A.RandomCrop):
@@ -97,7 +127,7 @@ class LMGDataset(Dataset):
                  # data spec
                  target='train', merge_G=False, base_dir='data/images',
                  # train-test spec
-                 test_ratio=0.25, seed=None, scale=1,
+                 test_ratio=0.25, seed=None,
                  # image spec
                  grid_size=768, crop_size=768, size=768, aug_mode='same', normalize=True
                  ):
@@ -107,7 +137,6 @@ class LMGDataset(Dataset):
 
         self.test_ratio = test_ratio
         self.seed = seed or get_global_seed()
-        self.scale = scale
 
         self.grid_size = grid_size
         self.size = size
