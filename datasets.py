@@ -81,7 +81,7 @@ def grid_split_with_overwrap(img, size, flattern=False):
             x = select_side(img.width, size, h_idx)
             y = select_side(img.height, size, v_idx)
             ii.append(img.crop((x, y, x+size, y+size)))
-        iii.append(t)
+        iii.append(ii)
 
     if flattern:
         iii = list(itertools.chain.from_iterable(iii))
@@ -340,6 +340,15 @@ def test_grid():
     for i in range(20):
         a = albu(image=np.array(img))['image']
         Image.fromarray(a).save(f'tmp/grid/{i}.png')
+
+
+def test_grid2():
+    from torchvision.utils import make_grid
+    from endaaman.torch import pil_to_tensor, tensor_to_pil
+    i = Image.open('/home/ken/Dropbox/Pictures/piece.jpg')
+    ii = grid_split(i, 500, overwrap=False, flattern=True)
+    tt = [pil_to_tensor(i) for i in ii]
+    tensor_to_pil(make_grid(tt, nrow=2, padding=0)).save('grid.png')
 
 
 if __name__ == '__main__':
