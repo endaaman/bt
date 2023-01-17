@@ -75,7 +75,7 @@ def grid_split_with_overwrap(img, size, flattern=False):
 
     if flattern:
         iii = list(itertools.chain.from_iterable(iii))
-    return ii
+    return iii
 
 def n_split(x, n):
     return [(x + i) // n for i in range(n)]
@@ -105,8 +105,6 @@ def grid_split(img, size, overwrap=True, flattern=False):
     return grid_split_by_size(img, size, flattern)
 
 
-
-
 def test_grid():
     img = Image.open('/home/ken/Dropbox/Pictures/osu.png')
     albu = A.Compose([
@@ -130,13 +128,13 @@ def test_grid2():
 if __name__ == '__main__':
     # i = Image.open('/home/ken/Dropbox/Pictures/piece.jpg')
     # ii = grid_split(i, 500, overwrap=False, flattern=True)
+    pass
+    # ii = [
+    #     Image.open('/home/ken/Dropbox/Pictures/piece.jpg'),
+    #     Image.open('/home/ken/Dropbox/Pictures/osu.png'),
+    #     Image.open('/home/ken/Dropbox/Pictures/enda_chan.png'),
+    #     Image.open('/home/ken/Dropbox/Pictures/dl.png'),
+    # ]
 
-    ii = [
-        Image.open('/home/ken/Dropbox/Pictures/piece.jpg'),
-        Image.open('/home/ken/Dropbox/Pictures/osu.png'),
-        Image.open('/home/ken/Dropbox/Pictures/enda_chan.png'),
-        Image.open('/home/ken/Dropbox/Pictures/dl.png'),
-    ]
-
-    print(ii)
-    concat_grid_images(ii, n_cols=2).save('g.png')
+    # print(ii)
+    # concat_grid_images(ii, n_cols=2).save('g.png')

@@ -7,22 +7,32 @@ import torch
 from torch import nn
 from torch import optim
 # import torch_optimizer as optim2
+from torchvision.utils import make_grid
 from tqdm import tqdm
 import pandas as pd
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 from sklearn import metrics
 from timm.scheduler.cosine_lr import CosineLRScheduler
 # from endaaman.torch import TrainCommander
-from endaaman.torch import Trainer, TorchCommander
+from endaaman.torch import Trainer, TorchCommander, pil_to_tensor, tensor_to_pil
 from endaaman.metrics import MultiAccuracy, AccuracyByChannel
 
 from models import ModelId, create_model, CrossEntropyLoss, NestedCrossEntropyLoss
 from datasets import LMGDataset, NUM_TO_DIAG
 
 
+
+def label_to_text(result):
+    ss = []
+    for i, v in enumerate(result):
+        label = NUM_TO_DIAG[i]
+        ss.append(f'{label}:{v:.3f}')
+    return '\n'.join(ss)
+
 class MyTrainer(Trainer):
     def prepare(self, **kwargs):
         # self.criterion = NestedCrossEntropyLoss(input_logits=True) if use_nested else CrossEntropyLoss(input_logits=True)
+        self.font = ImageFont.truetype('/usr/share/fonts/ubuntu/UbuntuMono-R.ttf', 36)
         self.criterion = nn.CrossEntropyLoss()
 
     def create_model(self):
@@ -34,17 +44,34 @@ class MyTrainer(Trainer):
         loss = self.criterion(outputs, labels.to(self.device))
         return loss, outputs
 
-    def create_scheduler(self, lr):
-        # return CosineLRScheduler(
-        #     self.optimizer,
-        #     warmup_t=5, t_initial=80,
-        #     warmup_lr_init=lr/2, lr_min=lr/100,
-        #     warmup_prefix=True)
+    def eval_image(self, inputs, labels, outputs):
+        images = []
+        for input_, label, output in zip(inputs, labels, outputs):
+            result = torch.softmax(output, dim=0).detach().cpu()
+            correct = label.item() == torch.argmax(result, dim=0)
+            if correct:
+                continue
+            image = tensor_to_pil(input_)
+            image = image.resize((256, 256))
+            draw = ImageDraw.Draw(image)
+            draw.text(
+                xy=(0, 0),
+                text=f'GT: {NUM_TO_DIAG[label.item()]}\n' + label_to_text(result.tolist()),
+                fill='navy',
+                align='left',
+                font=self.font)
+            images.append(image)
+        return [pil_to_tensor(i) for i in images]
 
-        # zero-warmup
+    def merge_images(self, images):
+        images = images[:64]
+        # return make_grid(torch.stack(images), nrow=int(np.ceil(np.sqrt(len(images)))))
+        return make_grid(torch.stack(images), nrow=8)
+
+    def create_scheduler(self, lr, max_epoch):
         return CosineLRScheduler(
             self.optimizer,
-            warmup_t=0, t_initial=20,
+            warmup_t=5, t_initial=max_epoch,
             warmup_lr_init=lr/2, lr_min=lr/10,
             warmup_prefix=True)
 
@@ -73,21 +100,20 @@ class CMD(TorchCommander):
         parser.add_argument('--crop', '-c', type=int, default=768)
         parser.add_argument('--size', '-s', type=int, default=768)
         parser.add_argument('--dir', '-d', default='data/images')
-        parser.add_argument('--scale', type=float, default=1.0)
         parser.add_argument('--full', action='store_true')
 
     def create_loaders(self, num_classes):
-        return [self.as_loader(LMGDataset(
-            target='all' if self.a.full and t == 'train' else 'train',
-            aug_mode=t,
-            base_dir=self.a.dir,
-            grid_size=self.a.grid,
-            crop_size=self.a.crop,
-            size=self.a.size,
-            seed=self.a.seed,
-            scale=self.a.scale,
-            merge_G=num_classes == 3,
-        )) for t in ['train', 'test']]
+        return self.as_loaders(*[
+            LMGDataset(
+                target=t,
+                aug_mode=t,
+                base_dir=self.a.dir,
+                grid_size=self.a.grid,
+                crop_size=self.a.crop,
+                size=self.a.size,
+                seed=self.a.seed,
+                merge_G=num_classes == 3,
+            ) for t in ['train', 'test']])
 
     def arg_start(self, parser):
         parser.add_argument('--model', '-m', default='tf_efficientnetv2_b0_3')
@@ -101,6 +127,7 @@ class CMD(TorchCommander):
             T=MyTrainer,
             model_name=self.a.model,
             loaders=loaders,
+            report_image=True,
         )
 
         trainer.start(self.a.epoch, lr=self.a.lr)
@@ -126,7 +153,7 @@ class CMD(TorchCommander):
 
 if __name__ == '__main__':
     cmd = CMD({
-        'epoch': 20,
+        'epoch': 50,
         'lr': 0.001,
         'batch_size': 16,
         'save_period': 10,

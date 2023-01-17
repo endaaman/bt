@@ -169,7 +169,7 @@ class LMGDataset(Dataset):
             if self.grid_size < 0:
                 imgss = [[org_img]]
             else:
-                imgss = grid_split(org_img, self.grid_size)
+                imgss = grid_split(org_img, self.grid_size, overwrap=True)
             for h, imgs  in enumerate(imgss):
                 for v, img in enumerate(imgs):
                     items.append(Item(
@@ -184,10 +184,7 @@ class LMGDataset(Dataset):
         return df, items
 
     def __len__(self):
-        l = len(self.items)
-        if self.target == 'train':
-            return int(l * self.scale)
-        return l
+        return len(self.items)
 
     def __getitem__(self, idx):
         item = self.items[idx % len(self.items)]
