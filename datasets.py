@@ -65,7 +65,6 @@ class Item(NamedTuple):
     test: bool
 
 
-
 class GridRandomCrop(A.RandomCrop):
     def apply(self, img, h_start=0, w_start=0, **params):
         y = select_side(img.shape[0], self.height)

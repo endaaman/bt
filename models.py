@@ -37,7 +37,7 @@ class TimmModel(nn.Module):
     def get_cam_layer(self):
         return self.base.conv_head
 
-    def forward(self, x, activate=True):
+    def forward(self, x, activate=False):
         x = self.base(x)
         if activate:
             if self.num_classes > 1:

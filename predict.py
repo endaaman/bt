@@ -14,16 +14,26 @@ from torchvision.utils import make_grid, save_image
 import pandas as pd
 from PIL import Image, ImageDraw, ImageFont
 from sklearn import metrics
-from gradcam.utils import visualize_cam
-from gradcam import GradCAM, GradCAMpp
+# from gradcam.utils import visualize_cam
+# from gradcam import GradCAM, GradCAMpp
+from pytorch_grad_cam import GradCAM, GradCAMPlusPlus, ScoreCAM, AblationCAM
+from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
 
-from endaaman import get_images_from_dir_or_file
-from endaaman.torch import TorchCommander, pil_to_tensor, Predictor
+from endaaman import get_images_from_dir_or_file, with_wrote
+from endaaman.torch import TorchCommander, Predictor, pil_to_tensor, tensor_to_pil
 from endaaman.metrics import MultiAccuracy
 
 from models import ModelId, create_model
-from datasets import LMGDataset, grid_split, MEAN, STD, NUM_TO_DIAG, DIAG_TO_NUM, MAP5TO3
+from datasets import LMGDataset, MEAN, STD, NUM_TO_DIAG, DIAG_TO_NUM, MAP5TO3
+from utils import grid_split, concat_grid_images_float, overlay_heatmap
 
+
+def label_to_text(result):
+    ss = []
+    for i, v in enumerate(result):
+        label = NUM_TO_DIAG[i]
+        ss.append(f'{label}:{v:.3f}')
+    return ' '.join(ss)
 
 class CAM(NamedTuple):
     heatmap: torch.Tensor
@@ -32,6 +42,7 @@ class CAM(NamedTuple):
 
 class MyPredictor(Predictor):
     def prepare(self, **kwargs):
+        self.font = ImageFont.truetype('/usr/share/fonts/ubuntu/Ubuntu-R.ttf', 24)
         self.transform_image = transforms.Compose([
             transforms.ToTensor(),
             transforms.Normalize(MEAN, STD),
@@ -45,12 +56,27 @@ class MyPredictor(Predictor):
         return model
 
     def _cam_image(self, image):
-        target_layer = self.model.get_cam_layer()
-        gradcam = GradCAMpp(self.model, target_layer)
+        gradcam = GradCAMPlusPlus(
+            model=self.model,
+            target_layers=[self.model.get_cam_layer()],
+            use_cuda=self.device=='cuda')
+
         t = self.transform_image(image).to(self.device)[None, ...]
-        mask, result = gradcam(t)
-        heatmap, masked = visualize_cam(mask, t)
-        return CAM(heatmap, masked, result)
+        with torch.no_grad():
+            pred = self.model(t, activate=True).cpu()[0]
+            pred_idx = torch.argmax(pred)
+
+        targets = [ClassifierOutputTarget(pred_idx)]
+        mask = gradcam(input_tensor=t, targets=targets)
+        mask = torch.from_numpy(mask)
+        heatmap, masked = overlay_heatmap(mask, pil_to_tensor(image), alpha=0.3, threshold=0.2)
+        heatmap, masked = (tensor_to_pil(heatmap), tensor_to_pil(masked))
+        text = label_to_text(pred)
+        for i in (heatmap, masked):
+            draw = ImageDraw.Draw(i)
+            draw.text((20, 20), text, (0, 0, 0), align='left', font=self.font)
+
+        return CAM(heatmap, masked, pred.tolist())
 
     def cam_image(self, image, grid_size=-1):
         if grid_size < 0:
@@ -59,9 +85,9 @@ class MyPredictor(Predictor):
         col_count = image.width // grid_size
         cams = [self._cam_image(i) for i in images]
         return CAM(
-            make_grid([c.heatmap for c in cams], nrow=col_count),
-            make_grid([c.masked for c in cams], nrow=col_count),
-            torch.tensor([c.result for c in cams]).sum(dim=0).tolist(),
+            concat_grid_images_float([c.heatmap for c in cams], n_cols=col_count),
+            concat_grid_images_float([c.masked for c in cams], n_cols=col_count),
+            torch.tensor([c.result for c in cams]).sum(dim=0).div(len(images)).tolist(),
         )
 
 
@@ -85,24 +111,6 @@ class CMD(TorchCommander):
             checkpoint=self.checkpoint,
         )
         self.num_classes = self.predictor.model.num_classes
-
-    def label_to_text(self, t):
-        ss = []
-        for i, v in enumerate(t):
-            label = NUM_TO_DIAG[i]
-            ss.append(f'{label}:{v:.3f}')
-        return ' '.join(ss)
-
-    def process_cam_result(self, image, cam, text_hook=None):
-        text = self.label_to_text(cam['result'])
-        if text_hook:
-            text = text_hook(text)
-        # stack vertical
-        grid = make_grid([pil_to_tensor(image), cam['heatmap'], cam['masked']], nrow=1)
-        grid_image = F.to_pil_image(grid)
-        draw = ImageDraw.Draw(grid_image)
-        draw.text((20, 20), text, (0, 0, 0), align='left', font=self.font)
-        return grid_image
 
     def arg_dataset(self, parser):
         parser.add_argument('--target', '-t', choices=['test', 'train', 'all'], default='all')
@@ -156,14 +164,16 @@ class CMD(TorchCommander):
 
     def run_cam(self):
         images, paths = get_images_from_dir_or_file(self.args.src, with_path=True)
-        cam = self.predictor.cam_image(images[0])
+        image, path = images[0], paths[0]
+        cam = self.predictor.cam_image(image, grid_size=self.a.grid_size)
+
         dest = os.path.join('out', self.checkpoint.trainer_name, self.args.dest)
         os.makedirs(dest, exist_ok=True)
-
         name = os.path.splitext(os.path.basename(path))[0]
-        grid_image = self.process_cam_result(image, cam)
-        grid_image.save(os.path.join(dest, f'{name}.jpg'))
-        print('done')
+
+        image.save(with_wrote(os.path.join(dest, f'{name}_org.jpg')))
+        cam.heatmap.save(with_wrote(os.path.join(dest, f'{name}_heatmap.jpg')))
+        cam.masked.save(with_wrote(os.path.join(dest, f'{name}_masked.jpg')))
 
     def arg_cam_dataset(self, parser):
         parser.add_argument('--target', '-t', choices=['test', 'train', 'all'], default='all')
