@@ -25,6 +25,8 @@ from albumentations.pytorch.transforms import ToTensorV2
 from albumentations.core.transforms_interface import ImageOnlyTransform
 from albumentations.augmentations.crops.functional import center_crop
 
+from utils import grid_split, select_side
+
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 Image.MAX_IMAGE_PIXELS = 1000000000
 
@@ -62,57 +64,6 @@ class Item(NamedTuple):
     name: str
     test: bool
 
-def select_side(W, w, idx=None):
-    count = int(np.ceil(W / w))
-    if count <= 1:
-        return 0
-    overwrap = (w * count - W) / (count - 1)
-    if idx is None:
-        idx = np.random.randint(0, count)
-    return int(idx * w - overwrap * idx)
-
-def grid_split_with_overwrap(img, size, flattern=False):
-    hor_count = int(np.ceil(img.width / size))
-    ver_count = int(np.ceil(img.height / size))
-    iii = []
-    for v_idx in range(ver_count):
-        ii = []
-        for h_idx in range(hor_count):
-            x = select_side(img.width, size, h_idx)
-            y = select_side(img.height, size, v_idx)
-            ii.append(img.crop((x, y, x+size, y+size)))
-        iii.append(ii)
-
-    if flattern:
-        iii = list(itertools.chain.from_iterable(iii))
-    return ii
-
-def n_split(x, n):
-    return [(x + i) // n for i in range(n)]
-
-def grid_split_by_size(img, size, flattern=False):
-    hor_sizes = n_split(img.width, img.width//size)
-    ver_sizes = n_split(img.height, img.height//size)
-    iii = []
-    y = 0
-    for ver_size in ver_sizes:
-        ii = []
-        x = 0
-        for hor_size in hor_sizes:
-            ii.append(img.crop((x, y, x+hor_size, y+ver_size)))
-            x += hor_size
-        y += ver_size
-        iii.append(ii)
-
-    if flattern:
-        iii = list(itertools.chain.from_iterable(iii))
-    return iii
-
-
-def grid_split(img, size, overwrap=True, flattern=False):
-    if overwrap:
-        return grid_split_with_overwrap(img, size, flattern)
-    return grid_split_by_size(img, size, flattern)
 
 
 class GridRandomCrop(A.RandomCrop):
@@ -330,26 +281,6 @@ class CMD(Commander):
                     d = os.path.join(self.a.dest, item.diag, item.name)
                     os.makedirs(d, exist_ok=True)
                     img.save(os.path.join(d, f'{h}_{v}.jpg'))
-
-def test_grid():
-    img = Image.open('/home/ken/Dropbox/Pictures/osu.png')
-    albu = A.Compose([
-        GridRandomCrop(width=800, height=800)
-    ])
-
-    for i in range(20):
-        a = albu(image=np.array(img))['image']
-        Image.fromarray(a).save(f'tmp/grid/{i}.png')
-
-
-def test_grid2():
-    from torchvision.utils import make_grid
-    from endaaman.torch import pil_to_tensor, tensor_to_pil
-    i = Image.open('/home/ken/Dropbox/Pictures/piece.jpg')
-    ii = grid_split(i, 500, overwrap=False, flattern=True)
-    tt = [pil_to_tensor(i) for i in ii]
-    tensor_to_pil(make_grid(tt, nrow=2, padding=0)).save('grid.png')
-
 
 if __name__ == '__main__':
     cmd = CMD(options={'no_pre_common': ['split']})
