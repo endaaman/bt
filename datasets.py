@@ -75,9 +75,9 @@ def grid_split_with_overwrap(img, size, flattern=False):
     hor_count = int(np.ceil(img.width / size))
     ver_count = int(np.ceil(img.height / size))
     iii = []
-    for h_idx in range(hor_count):
+    for v_idx in range(ver_count):
         ii = []
-        for v_idx in range(ver_count):
+        for h_idx in range(hor_count):
             x = select_side(img.width, size, h_idx)
             y = select_side(img.height, size, v_idx)
             ii.append(img.crop((x, y, x+size, y+size)))
@@ -94,14 +94,14 @@ def grid_split_by_size(img, size, flattern=False):
     hor_sizes = n_split(img.width, img.width//size)
     ver_sizes = n_split(img.height, img.height//size)
     iii = []
-    x = 0
-    for hor_size in hor_sizes:
-        y = 0
+    y = 0
+    for ver_size in ver_sizes:
         ii = []
-        for ver_size in ver_sizes:
-            ii.append(img.crop((x, y, hor_size, ver_size)))
-            y += ver_size
-        x += hor_size
+        x = 0
+        for hor_size in hor_sizes:
+            ii.append(img.crop((x, y, x+hor_size, y+ver_size)))
+            x += hor_size
+        y += ver_size
         iii.append(ii)
 
     if flattern:
