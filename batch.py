@@ -32,6 +32,24 @@ class CMD(Commander):
         print('mean', mean)
         print('std', std)
 
+    def arg_mean_std_simple(self, parser):
+        parser.add_argument('--src', '-s', default='data/images')
+
+    def run_mean_std_simple(self):
+        pp = sorted(glob(os.path.join(self.a.src, '*/*.jpg')))
+        mm = []
+        ss = []
+        for p in tqdm(pp):
+            i = np.array(Image.open(p))[500:1000, 500:1000, :].reshape(-1, 3)
+            size = i.shape[0]
+            mm.append(np.mean(i, axis=0) / 255)
+            ss.append(np.std(i, axis=0) / 255)
+
+        mean = np.mean(mm, axis=0).tolist()
+        std = np.mean(ss, axis=0).tolist()
+        print('mean', mean)
+        print('std', std)
+
     def arg_grid_split(self, parser):
         parser.add_argument('--src', '-s', default='data/images')
 
