@@ -81,10 +81,11 @@ def n_split(x, n):
     return [(x + i) // n for i in range(n)]
 
 def grid_split_by_size(img, size, flattern=False):
-    hor_sizes = n_split(img.width, img.width//size)
-    ver_sizes = n_split(img.height, img.height//size)
+    hor_sizes = n_split(img.width, max(img.width//size, 1))
+    ver_sizes = n_split(img.height, max(img.height//size, 1))
     iii = []
     y = 0
+
     for ver_size in ver_sizes:
         ii = []
         x = 0
@@ -126,9 +127,8 @@ def test_grid2():
 
 
 if __name__ == '__main__':
-    # i = Image.open('/home/ken/Dropbox/Pictures/piece.jpg')
-    # ii = grid_split(i, 500, overwrap=False, flattern=True)
-    pass
+    i = Image.open('/home/ken/Dropbox/Pictures/piece.jpg')
+    ii = grid_split(i, 2000, overwrap=False, flattern=True)
     # ii = [
     #     Image.open('/home/ken/Dropbox/Pictures/piece.jpg'),
     #     Image.open('/home/ken/Dropbox/Pictures/osu.png'),
