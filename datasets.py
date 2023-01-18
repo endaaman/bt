@@ -72,7 +72,7 @@ class GridRandomCrop(A.RandomCrop):
         return albuF.crop(img, x_min=x, y_min=y, x_max=x+self.width, y_max=y+self.height)
 
 
-class LMGDataset(Dataset):
+class BrainTumorDataset(Dataset):
     def __init__(self,
                  # data spec
                  target='train', merge_G=False, base_dir='data/images',
@@ -169,7 +169,7 @@ class LMGDataset(Dataset):
             if self.grid_size < 0:
                 imgss = [[org_img]]
             else:
-                imgss = grid_split(org_img, self.grid_size, overwrap=True)
+                imgss = grid_split(org_img, self.grid_size, overwrap=False)
             for h, imgs  in enumerate(imgss):
                 for v, img in enumerate(imgs):
                     items.append(Item(
@@ -204,7 +204,7 @@ class CMD(Commander):
         parser.add_argument('--size', '-s', type=int, default=768)
 
     def pre_common(self):
-        self.ds = LMGDataset(
+        self.ds = BrainTumorDataset(
             target=self.args.target,
             base_dir=self.a.base_dir,
             merge_G=self.args.merge,

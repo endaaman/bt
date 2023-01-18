@@ -72,39 +72,47 @@ class CrossEntropyLoss(nn.Module):
 
 
 class NestedCrossEntropyLoss(nn.Module):
-    def __init__(self, groups=None, reduction='sum', sum_logits=True, by_index=True, eps=1e-32):
+    def __init__(self, rules=None, sum_logits=True, by_index=True, eps=1e-32):
         super().__init__()
-        self.groups = groups
+        # Ex. rules: [{'weight': 1.0, 'index': [[0, 1], [3, 4]]}]
+        #     This means to merge 0 and 1, 3 and 4
+        # The logits should be like below
+        # [1, 2, 3, 4, 5] -> [(1 + 2), 3, (4 + 5)] -> [3, 3, 9]
+        self.rules = rules
         self.by_index = by_index
         self.sum_logits = sum_logits
         self.eps = eps
         self.C = 1
 
-        self.reduce = {
-            'mean': torch.mean,
-            'sum': torch.sum,
-        }[reduction]
-
-    def sumup_by_index(self, t, idxs):
-        new_sums = []
+    def sumup_by_index(self, logits, idxs):
+        # Ex: logits (1, 2, 3, 4, 5, ) index [2, 3, 4]
+        merged_logits = []
         drop_idx = []
+
+        # Sum up logits specified by param index
+
         for idx in idxs:
-            target = t[..., idx]
-            new_sums.append(torch.sum(target, dim=-1))
+            merging_logits = logits[..., idx]
+            merged = torch.sum(merging_logits, dim=-1)[..., None]
+            merged_logits.append(merged)
             drop_idx += idx
+        # Ex: merged_logits ((3+4+5), )
 
-        new_idx = torch.ones(t.size(), dtype=torch.bool)
+        new_idx = torch.ones(logits.size(), dtype=torch.bool)
         new_idx[..., drop_idx] = False
-        rest_t = t[new_idx]
+        rest_logits = logits[new_idx]
+        if len(logits.shape) > 1:
+            # Need to reshape because rest_logits is flattened
+            rest_logits = rest_logits.view(*logits.shape[:-1], -1)
+        # Ex: rest_logits (1, 2, )
 
-        # (1, 2, 3, 4, 5) [0, 1] -(sum)> (3, 3, 4, 5,)
-        new_t = torch.cat([rest_t, torch.tensor(new_sums)])
-
-        return new_t
+        logits = torch.cat([rest_logits, *merged_logits], dim=-1)
+        # Ex: (1, 2, (3+4+5)) -> (1, 2, 12)
+        return logits
 
     def calc_cross_entropy(self, x, y):
         x = torch.softmax(x, dim=-1)
-        return - torch.sum(y * torch.clamp(x, self.eps).log())
+        return - torch.sum(y * torch.clamp(x, self.eps).log()) / len(x)
 
     def forward(self, x, y):
         """
@@ -114,50 +122,61 @@ class NestedCrossEntropyLoss(nn.Module):
         if self.by_index:
             y = F.one_hot(y, x.size()[-1])
         base = self.calc_cross_entropy(x, y)
-        if not self.groups:
+        if not self.rules:
             return base
 
-        ll = [base]
-        for group in self.groups:
-            new_x = self.sumup_by_index(x, group['index'])
-            new_y = self.sumup_by_index(y, group['index'])
-            group_loss = self.calc_cross_entropy(new_x, new_y)
-            ll.append(group_loss * group['weight'])
-        return self.reduce(torch.tensor(ll))
+        ll = []
+        total_weight = 0.0
+        for rule in self.rules:
+            new_x = self.sumup_by_index(x, rule['index'])
+            new_y = self.sumup_by_index(y, rule['index'])
+            loss_by_rule = self.calc_cross_entropy(new_x, new_y)
+            l = loss_by_rule * rule['weight']
+            total_weight += rule['weight']
+            ll.append(l)
+        loss = torch.sum(torch.stack(ll))
+        loss /= total_weight
+        return loss
 
 
 def compare_nested():
     n = NestedCrossEntropyLoss(
-        reduction='sum',
-        groups=[
+        reduction='mean',
+        rules=[
             {
-                'weight': 1.0,
-                'index': [[1, 2]],
+                'weight': 1000.0, 'index': [],
+            },
+            {
+                'weight': 1.0, 'index': [[2, 3, 4]],
             }
         ])
 
-    x0 = torch.tensor([2.0, 1, 1])
-    y0 = torch.tensor(2)
-    x1 = torch.tensor([1, 2.0, 1])
-    y1 = torch.tensor(2)
+    # loss should be different
+    x0 = torch.tensor([[1., 0, 0, 3, 0], [1., 0, 0, 3, 0]])
+    y0 = torch.tensor([2, 2])
 
-    print('n x0 y0')
+    # loss should be same
+    x1 = torch.tensor([[1., 0, 0, 0, 3], [1., 0, 0, 0, 3]])
+    y1 = torch.tensor([1, 1])
+
+    print('nested')
+    print('x0 y0')
     print( n(x0, y0) )
-    print('n x1 y1')
+    print('x1 y1')
     print( n(x1, y1) )
 
     c = CrossEntropyLoss()
-    print('c x0 y0')
+    print()
+    print('normal')
+    print('x0 y0')
     print( c(x0, y0) )
-    print('c x1 y1')
+    print('x1 y1')
     print( c(x1, y1) )
 
 
 if __name__ == '__main__':
-    # compare_nested()
-    # mid = ModelId('mo', 1)
-    # print(str(mid))
-    # sys.exit()
+    compare_nested()
+    sys.exit()
 
     model = create_model('tf_efficientnetv2_b0_3')
     count = sum(p.numel() for p in model.parameters()) / 1000000

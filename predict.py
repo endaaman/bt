@@ -24,7 +24,7 @@ from endaaman.torch import TorchCommander, Predictor, pil_to_tensor, tensor_to_p
 from endaaman.metrics import MultiAccuracy
 
 from models import ModelId, create_model
-from datasets import LMGDataset, MEAN, STD, NUM_TO_DIAG, DIAG_TO_NUM, MAP5TO3
+from datasets import BrainTumorDataset, MEAN, STD, NUM_TO_DIAG, DIAG_TO_NUM, MAP5TO3
 from utils import grid_split, concat_grid_images_float, overlay_heatmap
 
 
@@ -118,7 +118,7 @@ class CMD(TorchCommander):
         parser.add_argument('--name', '-n', default='report')
 
     def run_dataset(self):
-        dataset = LMGDataset(
+        dataset = BrainTumorDataset(
             target=self.args.target,
             normalize=False,
             aug_mode='none',
@@ -180,7 +180,7 @@ class CMD(TorchCommander):
         parser.add_argument('--dest', '-d', default='cam')
 
     def run_cam_dataset(self):
-        dataset = LMGDataset(
+        dataset = BrainTumorDataset(
             target=self.args.target,
             normalize=False,
             aug_mode='none'

@@ -15,10 +15,11 @@ from sklearn import metrics
 from timm.scheduler.cosine_lr import CosineLRScheduler
 # from endaaman.torch import TrainCommander
 from endaaman.torch import Trainer, TorchCommander, pil_to_tensor, tensor_to_pil
-from endaaman.metrics import MultiAccuracy, AccuracyByChannel
+from endaaman.metrics import MultiAccuracy, AccuracyByChannel, MetricsFn
+from endaaman.functional import multi_accuracy
 
 from models import ModelId, create_model, CrossEntropyLoss, NestedCrossEntropyLoss
-from datasets import LMGDataset, NUM_TO_DIAG
+from datasets import BrainTumorDataset, NUM_TO_DIAG
 
 
 
@@ -29,21 +30,29 @@ def label_to_text(result):
         ss.append(f'{label}:{v:.3f}')
     return '\n'.join(ss)
 
+
+class LMGAccuracy(MetricsFn):
+    def __call__(self, preds, gts):
+        summed = torch.sum(preds[:, [2, 3, 4]], dim=-1)
+        preds[:, 2] = summed
+        preds = preds[:, :3]
+        gts = gts.clamp(max=2)
+        return multi_accuracy(preds, gts, by_index=True)
+
+
 class MyTrainer(Trainer):
     def prepare(self, **kwargs):
         self.font = ImageFont.truetype('/usr/share/fonts/ubuntu/UbuntuMono-R.ttf', 36)
-        merge_weight = kwargs.pop('merge_weight', -1.0)
-        if merge_weight > 0:
-            self.criterion = NestedCrossEntropyLoss(
-                reduction='mean',
-                groups=[{
-                    'weight': merge_weight,
-                    'index': [[2, 3, 4]], # merge G,A,O label
-                }])
-        else:
-            self.criterion = CrossEntropyLoss(input_logits=True)
-
-
+        merge_weights = kwargs.pop('merge_weights', [1.0, 0.0])
+        self.criterion = NestedCrossEntropyLoss(
+            rules=[{
+                'weight': merge_weights[0],
+                'index': [],
+            }, {
+                'weight': merge_weights[1],
+                'index': [[2, 3, 4]], # merge G,A,O to G
+            }])
+        self.num_classes = self.model.num_classes
 
     def create_model(self):
         model_id = ModelId.from_str(self.model_name)
@@ -92,12 +101,12 @@ class MyTrainer(Trainer):
         self.scheduler.step(self.current_epoch)
 
     def get_metrics(self):
-        model_id = ModelId.from_str(self.model_name)
         return {
             'batch': {
                 'acc': MultiAccuracy(),
+                'acc3': LMGAccuracy() if self.num_classes == 5 else MultiAccuracy(),
                 **{
-                    f'acc{NUM_TO_DIAG[l]}': AccuracyByChannel(target_channel=l) for l in range(model_id.num_classes)
+                    f'acc{NUM_TO_DIAG[l]}': AccuracyByChannel(target_channel=l) for l in range(self.num_classes)
                 }
             },
             'epoch': { },
@@ -110,11 +119,11 @@ class CMD(TorchCommander):
         parser.add_argument('--crop', '-c', type=int, default=768)
         parser.add_argument('--size', '-s', type=int, default=768)
         parser.add_argument('--dir', '-d', default='data/images')
-        parser.add_argument('--merge-weight', '-w', type=float, default=-1.0)
+        parser.add_argument('--merge-weight', '-w', type=str, default='10')
 
     def create_loaders(self, num_classes):
         return self.as_loaders(*[
-            LMGDataset(
+            BrainTumorDataset(
                 target=t,
                 aug_mode=t,
                 base_dir=self.a.dir,
@@ -129,6 +138,8 @@ class CMD(TorchCommander):
         parser.add_argument('--model', '-m', default='tf_efficientnetv2_b0_3')
 
     def run_start(self):
+        assert re.match(r'^\d\d$', self.a.merge_weight)
+        weights = [float(c) for c in self.a.merge_weight]
         model_id = ModelId.from_str(self.a.model)
         assert model_id.num_classes in [3, 5]
         loaders = self.create_loaders(model_id.num_classes)
@@ -137,13 +148,13 @@ class CMD(TorchCommander):
             T=MyTrainer,
             model_name=self.a.model,
             loaders=loaders,
-            merge_weight=self.a.merge_weight,
+            merge_weights=weights,
         )
 
         trainer.start(self.a.epoch, lr=self.a.lr)
 
     def arg_resume(self, parser):
-        parser.add_argument('--weight', '-w', required=True)
+        parser.add_argument('--checkpoint', '-p', required=True)
 
     def run_resume(self):
         checkpoint = torch.load(self.a.checkpoint)
