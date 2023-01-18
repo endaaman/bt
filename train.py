@@ -31,9 +31,19 @@ def label_to_text(result):
 
 class MyTrainer(Trainer):
     def prepare(self, **kwargs):
-        # self.criterion = NestedCrossEntropyLoss(input_logits=True) if use_nested else CrossEntropyLoss(input_logits=True)
         self.font = ImageFont.truetype('/usr/share/fonts/ubuntu/UbuntuMono-R.ttf', 36)
-        self.criterion = nn.CrossEntropyLoss()
+        merge_weight = kwargs.pop('merge_weight', -1.0)
+        if merge_weight > 0:
+            self.criterion = NestedCrossEntropyLoss(
+                reduction='mean',
+                groups=[{
+                    'weight': merge_weight,
+                    'index': [[2, 3, 4]], # merge G,A,O label
+                }])
+        else:
+            self.criterion = CrossEntropyLoss(input_logits=True)
+
+
 
     def create_model(self):
         model_id = ModelId.from_str(self.model_name)
@@ -100,7 +110,7 @@ class CMD(TorchCommander):
         parser.add_argument('--crop', '-c', type=int, default=768)
         parser.add_argument('--size', '-s', type=int, default=768)
         parser.add_argument('--dir', '-d', default='data/images')
-        parser.add_argument('--full', action='store_true')
+        parser.add_argument('--merge-weight', '-w', type=float, default=-1.0)
 
     def create_loaders(self, num_classes):
         return self.as_loaders(*[
@@ -127,7 +137,7 @@ class CMD(TorchCommander):
             T=MyTrainer,
             model_name=self.a.model,
             loaders=loaders,
-            report_image=True,
+            merge_weight=self.a.merge_weight,
         )
 
         trainer.start(self.a.epoch, lr=self.a.lr)
@@ -153,7 +163,7 @@ class CMD(TorchCommander):
 
 if __name__ == '__main__':
     cmd = CMD({
-        'epoch': 50,
+        'epoch': 30,
         'lr': 0.001,
         'batch_size': 16,
         'save_period': 10,
