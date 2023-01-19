@@ -42,17 +42,26 @@ class LMGAccuracy(MetricsFn):
 
 class MyTrainer(Trainer):
     def prepare(self, **kwargs):
+        self.merge_weights = kwargs.pop('merge_weights', [1.0, 0.0])
+        self.lr_min = kwargs.pop('lr_min', 10)
+        self.lr_plateau = kwargs.pop('lr_plateau', -1)
+        self.lr_decay = kwargs.pop('lr_decay', -1)
+        assert len(kwargs.item()) == 0
+
         self.font = ImageFont.truetype('/usr/share/fonts/ubuntu/UbuntuMono-R.ttf', 36)
-        merge_weights = kwargs.pop('merge_weights', [1.0, 0.0])
-        self.criterion = NestedCrossEntropyLoss(
-            rules=[{
-                'weight': merge_weights[0],
-                'index': [],
-            }, {
-                'weight': merge_weights[1],
-                'index': [[2, 3, 4]], # merge G,A,O to G
-            }])
         self.num_classes = self.model.num_classes
+
+        if self.num_classes == 5:
+            self.criterion = NestedCrossEntropyLoss(
+                rules=[{
+                    'weight': self.merge_weights[0],
+                    'index': [],
+                }, {
+                    'weight': self.merge_weights[1],
+                    'index': [[2, 3, 4]], # merge G,A,O to G
+                }])
+        else:
+            self.criterion = CrossEntropyLoss(input_logits=True)
 
     def create_model(self):
         model_id = ModelId.from_str(self.model_name)
@@ -88,10 +97,14 @@ class MyTrainer(Trainer):
         return make_grid(torch.stack(images), nrow=8)
 
     def create_scheduler(self, lr, max_epoch):
+        if self.lr_plateau > 0 :
+            return optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, patience=self.lr_plateau)
+        if self.lr_decay > 0 :
+            return optim.lr_scheduler.LambdaLR(self.optimizer, lambda e: e ** self.lr_decay)
         return CosineLRScheduler(
             self.optimizer,
-            warmup_t=5, t_initial=max_epoch,
-            warmup_lr_init=lr/2, lr_min=lr/10,
+            warmup_t=0, t_initial=max_epoch,
+            warmup_lr_init=lr/2, lr_min=lr/self.lr_min,
             warmup_prefix=True)
 
     def hook_load_state(self, checkpoint):
@@ -101,14 +114,21 @@ class MyTrainer(Trainer):
         self.scheduler.step(self.current_epoch)
 
     def get_metrics(self):
+        if self.num_classes == 5:
+            m = {
+                'acc5': MultiAccuracy(),
+                'acc3': LMGAccuracy(),
+            }
+        else:
+            m = {
+                'acc3': MultiAccuracy(),
+            }
+
+        common_m = {
+            f'acc_{l}{NUM_TO_DIAG[l]}': AccuracyByChannel(target_channel=l) for l in range(self.num_classes)
+        }
         return {
-            'batch': {
-                'acc': MultiAccuracy(),
-                'acc3': LMGAccuracy() if self.num_classes == 5 else MultiAccuracy(),
-                **{
-                    f'acc{NUM_TO_DIAG[l]}': AccuracyByChannel(target_channel=l) for l in range(self.num_classes)
-                }
-            },
+            'batch': {**m, **common_m},
             'epoch': { },
         }
 
@@ -118,15 +138,22 @@ class CMD(TorchCommander):
         parser.add_argument('--grid', '-g', type=int, default=768)
         parser.add_argument('--crop', '-c', type=int, default=768)
         parser.add_argument('--size', '-s', type=int, default=768)
-        parser.add_argument('--dir', '-d', default='data/images')
-        parser.add_argument('--merge-weight', '-w', type=str, default='10')
+        parser.add_argument('--src-dir', '-s', default='data/images')
+        parser.add_argument('--merge-weights', '-w', type=str, default='10')
+        parser.add_argument('--lr-min', type=int, default=10)
+        parser.add_argument('--lr-plateau', type=int, default=-1)
+        parser.add_argument('--lr-decay', type=float, default=-1)
+
+    def pre_common(self):
+        assert re.match(r'^\d\d$', self.a.merge_weights)
+        self.merge_weights = [float(c) for c in self.a.merge_weights]
 
     def create_loaders(self, num_classes):
         return self.as_loaders(*[
             BrainTumorDataset(
                 target=t,
                 aug_mode=t,
-                base_dir=self.a.dir,
+                src_dir=self.a.base_dir,
                 grid_size=self.a.grid,
                 crop_size=self.a.crop,
                 size=self.a.size,
@@ -138,8 +165,6 @@ class CMD(TorchCommander):
         parser.add_argument('--model', '-m', default='tf_efficientnetv2_b0_3')
 
     def run_start(self):
-        assert re.match(r'^\d\d$', self.a.merge_weight)
-        weights = [float(c) for c in self.a.merge_weight]
         model_id = ModelId.from_str(self.a.model)
         assert model_id.num_classes in [3, 5]
         loaders = self.create_loaders(model_id.num_classes)
@@ -148,7 +173,10 @@ class CMD(TorchCommander):
             T=MyTrainer,
             model_name=self.a.model,
             loaders=loaders,
-            merge_weights=weights,
+            merge_weights=self.merge_weights,
+            lr_min=self.a.lr_min,
+            lr_plateau=self.a.lr_plateau,
+            lr_decay=self.a.lr_decay,
         )
 
         trainer.start(self.a.epoch, lr=self.a.lr)

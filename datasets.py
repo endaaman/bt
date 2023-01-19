@@ -62,6 +62,7 @@ class Item(NamedTuple):
     diag: str
     image: ImageType
     name: str
+    grid_index: str
     test: bool
 
 
@@ -75,7 +76,7 @@ class GridRandomCrop(A.RandomCrop):
 class BrainTumorDataset(Dataset):
     def __init__(self,
                  # data spec
-                 target='train', merge_G=False, base_dir='data/images',
+                 target='train', merge_G=False, src_dir='data/images',
                  # train-test spec
                  test_ratio=0.25, seed=None,
                  # image spec
@@ -83,7 +84,7 @@ class BrainTumorDataset(Dataset):
                  ):
         self.target = target
         self.merge_G = merge_G
-        self.base_dir = base_dir
+        self.src_dir = src_dir
 
         self.test_ratio = test_ratio
         self.seed = seed or get_global_seed()
@@ -140,7 +141,7 @@ class BrainTumorDataset(Dataset):
     def load_data(self):
         data = []
         for diag in NUM_TO_DIAG:
-            for path in glob(os.path.join(self.base_dir, diag, '*.jpg')):
+            for path in glob(os.path.join(self.src_dir, diag, '*.jpg')):
                 # merge A and O to G
                 diag = MAP5TO3[diag] if self.merge_G else diag
                 data.append({
@@ -176,7 +177,8 @@ class BrainTumorDataset(Dataset):
                         path=row.path,
                         diag=row.diag,
                         image=img,
-                        name=f'{name}_{h}_{v}',
+                        name=name,
+                        grid_index=f'{h}_{v}',
                         test=row.test,
                     ))
 
@@ -197,7 +199,7 @@ class BrainTumorDataset(Dataset):
 class CMD(Commander):
     def arg_common(self, parser):
         parser.add_argument('--merge', '-m', action='store_true')
-        parser.add_argument('--base-dir', '-b', default='data/images')
+        parser.add_argument('--src-dir', '-b', default='data/images')
         parser.add_argument('--target', '-t', default='all', choices=['all', 'train', 'test'])
         parser.add_argument('--aug', '-a', default='same', choices=['same', 'train', 'test'])
         parser.add_argument('--crop', '-c', type=int, default=768)
@@ -206,7 +208,7 @@ class CMD(Commander):
     def pre_common(self):
         self.ds = BrainTumorDataset(
             target=self.args.target,
-            base_dir=self.a.base_dir,
+            src_dir=self.a.src_dir,
             merge_G=self.args.merge,
             aug_mode=self.args.aug,
             crop_size=self.args.crop,
