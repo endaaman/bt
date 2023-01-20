@@ -46,7 +46,7 @@ class MyTrainer(Trainer):
         self.lr_min = kwargs.pop('lr_min', 10)
         self.lr_plateau = kwargs.pop('lr_plateau', -1)
         self.lr_decay = kwargs.pop('lr_decay', -1)
-        assert len(kwargs.item()) == 0
+        assert len(kwargs.items()) == 0
 
         self.font = ImageFont.truetype('/usr/share/fonts/ubuntu/UbuntuMono-R.ttf', 36)
         self.num_classes = self.model.num_classes
@@ -135,9 +135,9 @@ class MyTrainer(Trainer):
 
 class CMD(TorchCommander):
     def arg_common(self, parser):
-        parser.add_argument('--grid', '-g', type=int, default=768)
-        parser.add_argument('--crop', '-c', type=int, default=768)
-        parser.add_argument('--size', '-s', type=int, default=768)
+        parser.add_argument('--grid-size', '-g', type=int, default=768)
+        parser.add_argument('--crop-size', '-c', type=int, default=768)
+        parser.add_argument('--input-size', '-i', type=int, default=768)
         parser.add_argument('--src-dir', '-s', default='data/images')
         parser.add_argument('--merge-weights', '-w', type=str, default='10')
         parser.add_argument('--lr-min', type=int, default=10)
@@ -153,10 +153,10 @@ class CMD(TorchCommander):
             BrainTumorDataset(
                 target=t,
                 aug_mode=t,
-                src_dir=self.a.base_dir,
-                grid_size=self.a.grid,
-                crop_size=self.a.crop,
-                size=self.a.size,
+                src_dir=self.a.src_dir,
+                grid_size=self.a.grid_size,
+                crop_size=self.a.crop_size,
+                input_size=self.a.input_size,
                 seed=self.a.seed,
                 merge_G=num_classes == 3,
             ) for t in ['train', 'test']])
@@ -203,8 +203,8 @@ class CMD(TorchCommander):
 if __name__ == '__main__':
     cmd = CMD({
         'epoch': 30,
-        'lr': 0.001,
-        'batch_size': 16,
-        'save_period': 10,
+        'lr': 0.0001,
+        'batch_size': 8,
+        'save_period': 15,
     })
     cmd.run()

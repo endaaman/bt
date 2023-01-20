@@ -80,7 +80,7 @@ class BrainTumorDataset(Dataset):
                  # train-test spec
                  test_ratio=0.25, seed=None,
                  # image spec
-                 grid_size=768, crop_size=768, size=768, aug_mode='same', normalize=True
+                 grid_size=768, crop_size=768, input_size=768, aug_mode='same', normalize=True
                  ):
         self.target = target
         self.merge_G = merge_G
@@ -90,7 +90,7 @@ class BrainTumorDataset(Dataset):
         self.seed = seed or get_global_seed()
 
         self.grid_size = grid_size
-        self.size = size
+        self.input_size = input_size
         self.crop_size = crop_size
         self.aug_mode = aug_mode
         self.normalize = normalize
@@ -100,7 +100,7 @@ class BrainTumorDataset(Dataset):
         augs = {}
         augs['train'] = [
             A.RandomCrop(width=crop_size, height=crop_size),
-            A.Resize(width=size, height=size),
+            A.Resize(width=input_size, height=input_size),
             A.RandomRotate90(p=1),
             A.HorizontalFlip(p=0.5),
             A.GaussNoise(p=0.2),
@@ -119,7 +119,7 @@ class BrainTumorDataset(Dataset):
         ]
         augs['test'] = [
             A.CenterCrop(width=crop_size, height=crop_size),
-            A.Resize(width=size, height=size),
+            A.Resize(width=input_size, height=input_size),
         ]
         augs['all'] = augs['test']
 

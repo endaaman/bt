@@ -17,7 +17,7 @@ from PIL import Image, ImageDraw, ImageFont
 from sklearn import metrics
 # from gradcam.utils import visualize_cam
 from gradcam import GradCAMpp
-from pytorch_grad_cam import GradCAM, GradCAMPlusPlus, ScoreCAM, AblationCAM
+from pytorch_grad_cam import GradCAM, GradCAMPlusPlus, ScoreCAM, AblationCAM, EigenCAM, EigenGradCAM
 from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
 
 from endaaman import get_images_from_dir_or_file, with_wrote
@@ -30,6 +30,12 @@ from utils import grid_split, concat_grid_images_float, overlay_heatmap
 
 
 USE_NEW_CAM = True
+
+CAMs = {
+    'gradcampp': GradCAMPlusPlus,
+    'eigencam': EigenCAM,
+    'eigengradcam': EigenGradCAM,
+}
 
 def build_label_text(pred, gt=None):
     text = ''
@@ -70,6 +76,7 @@ class CAM(NamedTuple):
     masked: ImageType
     pred: list
 
+
 class MyPredictor(Predictor):
     def prepare(self, **kwargs):
         self.font = ImageFont.truetype('/usr/share/fonts/ubuntu/Ubuntu-R.ttf', 48)
@@ -88,28 +95,29 @@ class MyPredictor(Predictor):
     def eval(self, inputs):
         return self.model(inputs.to(self.device), activate=True)
 
-    def cam_image_single(self, image, gt=None):
+    def cam_image_single(self, image, gt=None, cam_type='gradcampp'):
         t = self.transform_image(image).to(self.device)[None, ...]
         with torch.no_grad():
             pred = self.model(t, activate=True).cpu()[0].tolist()
             pred_idx = np.argmax(pred)
 
         if USE_NEW_CAM:
-            gradcam = GradCAMPlusPlus(
+            CamClass = CAMs[cam_type.lower()]
+            gradcam = CamClass(
                 model=self.model,
                 target_layers=[self.model.get_cam_layer()],
                 use_cuda=self.device=='cuda')
             targets = [ClassifierOutputTarget(pred_idx)]
-            mask = gradcam(input_tensor=t, targets=targets).from_numpy(mask)
+            mask = torch.from_numpy(gradcam(input_tensor=t, targets=targets))
         else:
             gradcam = GradCAMpp(self.model, self.model.get_cam_layer())
             mask, _ = gradcam(t)
 
-        heatmap, masked = overlay_heatmap(mask, pil_to_tensor(image), alpha=0.6, threshold=0.5)
+        heatmap, masked = overlay_heatmap(mask, pil_to_tensor(image), alpha=0.3, threshold=0.5)
         heatmap, masked = [draw_pred_gt((tensor_to_pil(i)), self.font, pred, gt) for i in (heatmap, masked)]
         return CAM(image, heatmap, masked, pred)
 
-    def cam_image(self, image, gt=None, grid_size=-1):
+    def cam_image(self, image, gt=None, cam_type='gradcampp', grid_size=-1):
         if grid_size < 0:
             return self.cam_image_single(image, gt)
         images = grid_split(image, size=grid_size, overwrap=False, flattern=True)
@@ -146,12 +154,14 @@ class CMD(TorchCommander):
 
     def arg_dataset(self, parser):
         parser.add_argument('--target', '-t', choices=['test', 'train', 'all'], default='all')
+        parser.add_argument('--src-dir', '-s', default='data/images')
         parser.add_argument('--grid-size', '-g', type=int, default=-1)
         parser.add_argument('--name', '-n', default='report')
 
     def run_dataset(self):
         dataset = BrainTumorDataset(
             target=self.args.target,
+            src_dir=self.a.src_dir,
             normalize=False,
             aug_mode='none',
             grid_size=-1,
@@ -167,7 +177,7 @@ class CMD(TorchCommander):
                 'path': item.path,
                 'test': int(item.test),
                 'gt': item.diag,
-                'pred': pred,
+                'pred': pred_diag,
                 'correct': int(item.diag == pred_diag),
                 **{
                     k: pred[l] for k, l in islice(DIAG_TO_NUM.items(), self.num_classes)
@@ -193,12 +203,14 @@ class CMD(TorchCommander):
         parser.add_argument('--src', '-s', required=True)
         parser.add_argument('--dest', '-d', default='cam')
         parser.add_argument('--grid-size', '-g', type=int, default=-1)
+        cam_keys = list(CAMs.keys())
+        parser.add_argument('--cam', '-c', type = lambda s:s.lower(), default=cam_keys[0], choices=cam_keys)
 
     def run_cam(self):
         images, paths = get_images_from_dir_or_file(self.args.src, with_path=True)
         t = tqdm(zip(images, paths), total=len(images))
         for image, path in t:
-            cam = self.predictor.cam_image(image, grid_size=self.a.grid_size)
+            cam = self.predictor.cam_image(image, cam_type=self.a.cam, grid_size=self.a.grid_size)
 
             dest = os.path.join('out', self.checkpoint.trainer_name, self.args.dest)
             os.makedirs(dest, exist_ok=True)
@@ -213,6 +225,8 @@ class CMD(TorchCommander):
         parser.add_argument('--src-dir', '-s', default='data/images')
         parser.add_argument('--dest', '-d', default='cam')
         parser.add_argument('--grid-size', '-g', type=int, default=-1)
+        cam_keys = list(CAMs.keys())
+        parser.add_argument('--cam', '-c', type = lambda s:s.lower(), default=cam_keys[0], choices=cam_keys)
 
     def run_cam_dataset(self):
         dataset = BrainTumorDataset(
@@ -233,7 +247,7 @@ class CMD(TorchCommander):
                 item.diag
             )
             os.makedirs(dest, exist_ok=True)
-            cam = self.predictor.cam_image(item.image, DIAG_TO_NUM[item.diag], grid_size=self.a.grid_size)
+            cam = self.predictor.cam_image(item.image, gt=DIAG_TO_NUM[item.diag], cam_type=self.a.cam, grid_size=self.a.grid_size)
             cam.heatmap.save(os.path.join(dest, f'{item.name}_heatmap.jpg'))
             cam.masked.save(os.path.join(dest, f'{item.name}_masked.jpg'))
 

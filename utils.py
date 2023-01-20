@@ -31,6 +31,7 @@ def overlay_heatmap(mask: torch.Tensor, img: torch.Tensor, alpha=1.0, threshold=
 
 
 def concat_grid_images_float(images, n_cols=1):
+    assert n_cols > 0
     poss = []
     y = 0
     x = 0
