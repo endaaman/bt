@@ -28,11 +28,11 @@ class ModelId(NamedTuple):
         return ModelId(m[1], int(m[2]))
 
 class TimmModel(nn.Module):
-    def __init__(self, name='tf_efficientnetv2_b0', num_classes=1, activation=True):
+    def __init__(self, name='tf_efficientnetv2_b0', num_classes=1, pretrained=True, activation=True):
         super().__init__()
         self.num_classes = num_classes
         self.activation = activation
-        self.base = timm.create_model(name, pretrained=True, num_classes=num_classes)
+        self.base = timm.create_model(name, pretrained=pretrained, num_classes=num_classes)
 
     def get_cam_layer(self):
         return self.base.conv_head
@@ -47,14 +47,14 @@ class TimmModel(nn.Module):
         return x
 
 
-def create_model(p):
+def create_model(p, pretrained=True):
     if isinstance(p, str):
         p = ModelId.from_str(p)
     elif isinstance(p, ModelId):
         pass
     else:
         raise RuntimeError(f'Invalid param: {p} {type(p)}')
-    return TimmModel(name=p.name, num_classes=p.num_classes)
+    return TimmModel(name=p.name, num_classes=p.num_classes, pretrained=pretrained)
 
 
 class CrossEntropyLoss(nn.Module):

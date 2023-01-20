@@ -15,7 +15,8 @@ import pandas as pd
 from PIL.Image import Image as ImageType
 from PIL import Image, ImageDraw, ImageFont
 from sklearn import metrics
-# from gradcam.utils import visualize_cam
+from matplotlib import pyplot as plt
+import seaborn as sns
 from gradcam import GradCAMpp
 from pytorch_grad_cam import GradCAM, GradCAMPlusPlus, ScoreCAM, AblationCAM, EigenCAM, EigenGradCAM
 from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
@@ -25,7 +26,7 @@ from endaaman.torch import TorchCommander, Predictor, pil_to_tensor, tensor_to_p
 from endaaman.metrics import MultiAccuracy
 
 from models import ModelId, create_model
-from datasets import BrainTumorDataset, MEAN, STD, NUM_TO_DIAG, DIAG_TO_NUM, MAP5TO3
+from datasets import BrainTumorDataset, MEAN, STD, NUM_TO_DIAG, DIAG_TO_NUM
 from utils import grid_split, concat_grid_images_float, overlay_heatmap
 
 
@@ -162,13 +163,15 @@ class CMD(TorchCommander):
         dataset = BrainTumorDataset(
             target=self.args.target,
             src_dir=self.a.src_dir,
+            class_map=='LMGGG' if self.num_classes == 3 else 'LMGAO',
             normalize=False,
             aug_mode='none',
             grid_size=-1,
-            merge_G=self.num_classes == 3,
         )
 
         oo = []
+        gt_nums = []
+        pred_nums = []
         for item in tqdm(dataset.items):
             pred = self.predictor.predict_image(item.image, grid_size=self.a.grid_size)
             pred_diag = NUM_TO_DIAG[torch.argmax(pred)]
@@ -183,10 +186,22 @@ class CMD(TorchCommander):
                     k: pred[l] for k, l in islice(DIAG_TO_NUM.items(), self.num_classes)
                 }
             })
+            pred_nums.append(np.argmax(pred))
+            gt_nums.append(DIAG_TO_NUM[item.diag])
         df = pd.DataFrame(oo)
-        name = f'out/{self.checkpoint.trainer_name}/{self.a.name}_{self.args.target}'
-        df.to_excel(with_wrote(f'{name}.xlsx'), index=False)
-        df.to_csv(with_wrote(f'{name}.csv'), index=False)
+
+        t = self.args.target
+        base_dir = f'out/{self.checkpoint.trainer_name}'
+        os.makedirs(base_dir, exist_ok=True)
+        df.to_excel(with_wrote(f'{base_dir}/{self.a.name}_{t}.xlsx'), index=False)
+
+        cm = metrics.confusion_matrix(gt_nums, pred_nums)
+        labels = NUM_TO_DIAG[:self.num_classes]
+        ax = sns.heatmap(cm, annot=True, cmap='Blues', xticklabels=labels, yticklabels=labels)
+        ax.set_ylabel('Ground truth', fontsize=14)
+        ax.set_xlabel('Prediction', fontsize=14)
+        plt.title(f'Confusion matrix: {t}')
+        plt.savefig(f'{base_dir}/{self.a.name}_cm_{t}.png')
 
     def arg_predict(self, parser):
         parser.add_argument('--src', '-s', required=True)

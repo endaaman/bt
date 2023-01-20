@@ -30,24 +30,18 @@ from utils import grid_split, select_side
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 Image.MAX_IMAGE_PIXELS = 1000000000
 
+IMAGE_CACHE = {}
 
-DIAG_TO_NUM = OrderedDict((
-    ('L', 0),
-    ('M', 1),
-    ('G', 2),
-    ('A', 3),
-    ('O', 4),
-))
+def load_image_using_cache(p):
+    i = IMAGE_CACHE.get(p, None)
+    if i:
+        return i
+    i = IMAGE_CACHE[p] = Image.open(p)
+    return i
 
+LMGAO = 'LMGAO'
+DIAG_TO_NUM = OrderedDict([(c, i) for i, c in enumerate(LMGAO)])
 NUM_TO_DIAG = list(DIAG_TO_NUM.keys())
-
-MAP5TO3 = {
-    'L': 'L',
-    'M': 'M',
-    'G': 'G',
-    'A': 'G',
-    'O': 'G',
-}
 
 # MEAN = [0.8032, 0.5991, 0.8318]
 # STD = [0.1203, 0.1435, 0.0829]
@@ -76,14 +70,15 @@ class GridRandomCrop(A.RandomCrop):
 class BrainTumorDataset(Dataset):
     def __init__(self,
                  # data spec
-                 target='train', merge_G=False, src_dir='data/images',
+                 target='train', src_dir='data/images', class_map=LMGAO,
                  # train-test spec
                  test_ratio=0.25, seed=None,
                  # image spec
                  grid_size=768, crop_size=768, input_size=768, aug_mode='same', normalize=True
                  ):
+        assert re.match('^[LMGAO_]{5}$', class_map)
         self.target = target
-        self.merge_G = merge_G
+        self.class_map = [*class_map]
         self.src_dir = src_dir
 
         self.test_ratio = test_ratio
@@ -95,7 +90,6 @@ class BrainTumorDataset(Dataset):
         self.aug_mode = aug_mode
         self.normalize = normalize
 
-        self.num_classes = 3 if merge_G else 5
 
         augs = {}
         augs['train'] = [
@@ -140,15 +134,20 @@ class BrainTumorDataset(Dataset):
 
     def load_data(self):
         data = []
-        for diag in NUM_TO_DIAG:
-            for path in glob(os.path.join(self.src_dir, diag, '*.jpg')):
-                # merge A and O to G
-                diag = MAP5TO3[diag] if self.merge_G else diag
+        dropped_count = 0
+        for original_diag in NUM_TO_DIAG:
+            for path in glob(os.path.join(self.src_dir, original_diag, '*.jpg')):
+                original_diag_num = DIAG_TO_NUM[original_diag]
+                new_diag = self.class_map[original_diag_num]
+                if new_diag == '_':
+                    dropped_count += 1
+                    continue
                 data.append({
                     'path': path,
-                    'diag': diag,
+                    'diag': new_diag,
                     'test': False,
                 })
+        print(f'{dropped_count}items were droped.')
 
         df_all = pd.DataFrame(data)
         df_train, df_test = train_test_split(df_all, test_size=self.test_ratio, stratify=df_all.diag, random_state=self.seed)
@@ -166,7 +165,7 @@ class BrainTumorDataset(Dataset):
         items = []
         for _idx, row in tqdm(df.iterrows(), total=len(df)):
             name = os.path.splitext(os.path.basename(row.path))[0]
-            org_img = Image.open(row.path)
+            org_img = load_image_using_cache(row.path).copy()
             if self.grid_size < 0:
                 imgss = [[org_img]]
             else:
@@ -182,7 +181,7 @@ class BrainTumorDataset(Dataset):
                         test=row.test,
                     ))
 
-        print('All images loaded')
+        print(f'{self.target} images loaded')
         return df, items
 
     def __len__(self):
@@ -198,21 +197,23 @@ class BrainTumorDataset(Dataset):
 
 class CMD(Commander):
     def arg_common(self, parser):
-        parser.add_argument('--merge', '-m', action='store_true')
+        parser.add_argument('--class-map', '-m', default=LMGAO)
         parser.add_argument('--src-dir', '-b', default='data/images')
         parser.add_argument('--target', '-t', default='all', choices=['all', 'train', 'test'])
         parser.add_argument('--aug', '-a', default='same', choices=['same', 'train', 'test'])
-        parser.add_argument('--crop', '-c', type=int, default=768)
-        parser.add_argument('--size', '-s', type=int, default=768)
+        parser.add_argument('--grid-size', '-g', type=int, default=-1)
+        parser.add_argument('--crop-size', '-c', type=int, default=768)
+        parser.add_argument('--input-size', '-i', type=int, default=768)
 
     def pre_common(self):
         self.ds = BrainTumorDataset(
             target=self.args.target,
             src_dir=self.a.src_dir,
-            merge_G=self.args.merge,
+            class_map=self.a.class_map,
             aug_mode=self.args.aug,
-            crop_size=self.args.crop,
-            size=self.args.size,
+            grid_size=self.args.grid_size,
+            crop_size=self.args.crop_size,
+            input_size=self.args.input_size,
             normalize=self.args.function != 'samples',
         )
 
@@ -261,9 +262,9 @@ class CMD(Commander):
 
     def run_t(self):
         for (x, y) in self.ds:
+            print(y, x.shape)
             self.x = x
             self.y = y
-            print(y, x.shape)
             self.i = tensor_to_pil(x)
             break
 

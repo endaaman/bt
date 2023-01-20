@@ -46,6 +46,7 @@ class MyTrainer(Trainer):
         self.lr_min = kwargs.pop('lr_min', 10)
         self.lr_plateau = kwargs.pop('lr_plateau', -1)
         self.lr_decay = kwargs.pop('lr_decay', -1)
+        self.no_pretrained = kwargs.pop('no_pretrained', False)
         assert len(kwargs.items()) == 0
 
         self.font = ImageFont.truetype('/usr/share/fonts/ubuntu/UbuntuMono-R.ttf', 36)
@@ -64,8 +65,7 @@ class MyTrainer(Trainer):
             self.criterion = CrossEntropyLoss(input_logits=True)
 
     def create_model(self):
-        model_id = ModelId.from_str(self.model_name)
-        return create_model(model_id).to(self.device)
+        return create_model(self.model_name).to(self.device)
 
     def eval(self, inputs, labels):
         outputs = self.model(inputs.to(self.device), activate=False)
@@ -135,10 +135,12 @@ class MyTrainer(Trainer):
 
 class CMD(TorchCommander):
     def arg_common(self, parser):
-        parser.add_argument('--grid-size', '-g', type=int, default=768)
-        parser.add_argument('--crop-size', '-c', type=int, default=768)
-        parser.add_argument('--input-size', '-i', type=int, default=768)
+        parser.add_argument('--grid-size', '-g', type=int, default=1024)
+        parser.add_argument('--crop-size', '-c', type=int, default=512)
+        parser.add_argument('--input-size', '-i', type=int, default=512)
         parser.add_argument('--src-dir', '-s', default='data/images')
+        parser.add_argument('--class-map', '-M', default='LMGAO')
+        parser.add_argument('--no-pretrained', '-N', action='store_true')
         parser.add_argument('--merge-weights', '-w', type=str, default='10')
         parser.add_argument('--lr-min', type=int, default=10)
         parser.add_argument('--lr-plateau', type=int, default=-1)
@@ -148,26 +150,27 @@ class CMD(TorchCommander):
         assert re.match(r'^\d\d$', self.a.merge_weights)
         self.merge_weights = [float(c) for c in self.a.merge_weights]
 
-    def create_loaders(self, num_classes):
+    def create_loaders(self):
+        model_id = ModelId.from_str(self.a.model)
+        assert model_id.num_classes in [3, 5]
+
         return self.as_loaders(*[
             BrainTumorDataset(
                 target=t,
+                class_map='LMGGG' if model_id.num_classes == 3 else self.a.class_map,
                 aug_mode=t,
                 src_dir=self.a.src_dir,
                 grid_size=self.a.grid_size,
                 crop_size=self.a.crop_size,
                 input_size=self.a.input_size,
                 seed=self.a.seed,
-                merge_G=num_classes == 3,
             ) for t in ['train', 'test']])
 
     def arg_start(self, parser):
-        parser.add_argument('--model', '-m', default='tf_efficientnetv2_b0_3')
+        parser.add_argument('--model', '-m', default='tf_efficientnetv2_b0_5')
 
     def run_start(self):
-        model_id = ModelId.from_str(self.a.model)
-        assert model_id.num_classes in [3, 5]
-        loaders = self.create_loaders(model_id.num_classes)
+        loaders = self.create_loaders()
 
         trainer = self.create_trainer(
             T=MyTrainer,
@@ -177,6 +180,7 @@ class CMD(TorchCommander):
             lr_min=self.a.lr_min,
             lr_plateau=self.a.lr_plateau,
             lr_decay=self.a.lr_decay,
+            no_pretrained=self.a.no_pretrained,
         )
 
         trainer.start(self.a.epoch, lr=self.a.lr)
@@ -189,7 +193,7 @@ class CMD(TorchCommander):
 
         model_id = ModelId.from_str(checkpoint.model_name)
         assert model_id.num_classes in [3, 5]
-        loaders = self.create_loaders(model_id.num_classes)
+        loaders = self.create_loaders()
 
         trainer = self.create_trainer(
             T=MyTrainer,
