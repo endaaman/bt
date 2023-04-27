@@ -7,8 +7,9 @@ from enum import Enum
 from glob import glob
 from typing import NamedTuple, Callable
 from collections import OrderedDict
+
 from endaaman import Commander
-from endaaman.torch import pil_to_tensor, tensor_to_pil, get_global_seed
+from endaaman.ml import pil_to_tensor, tensor_to_pil, get_global_seed
 
 import torch
 import numpy as np
@@ -39,8 +40,7 @@ def load_image_using_cache(p):
     i = IMAGE_CACHE[p] = Image.open(p)
     return i
 
-LMGAO = 'LMGAO'
-DIAG_TO_NUM = OrderedDict([(c, i) for i, c in enumerate(LMGAO)])
+DIAG_TO_NUM = OrderedDict([(c, i) for i, c in enumerate('LMGAO')])
 NUM_TO_DIAG = list(DIAG_TO_NUM.keys())
 
 # MEAN = [0.8032, 0.5991, 0.8318]
@@ -70,15 +70,16 @@ class GridRandomCrop(A.RandomCrop):
 class BrainTumorDataset(Dataset):
     def __init__(self,
                  # data spec
-                 target='train', src_dir='data/images', class_map=LMGAO,
+                 target='train', src_dir='datasets/LMGAO/images', code='LMGAO',
                  # train-test spec
                  test_ratio=0.25, seed=None,
                  # image spec
                  grid_size=768, crop_size=768, input_size=768, aug_mode='same', normalize=True
                  ):
-        assert re.match('^[LMGAO_]{5}$', class_map)
+        assert re.match('^[LMGAO_]{5}$', code)
         self.target = target
-        self.class_map = [*class_map]
+        self.code = [*code]
+        self.unique_code = [c for c in dict.fromkeys(self.code) if c in 'LMGAO']
         self.src_dir = src_dir
 
         self.test_ratio = test_ratio
@@ -89,7 +90,6 @@ class BrainTumorDataset(Dataset):
         self.crop_size = crop_size
         self.aug_mode = aug_mode
         self.normalize = normalize
-
 
         augs = {}
         augs['train'] = [
@@ -138,7 +138,7 @@ class BrainTumorDataset(Dataset):
         for original_diag in NUM_TO_DIAG:
             for path in glob(os.path.join(self.src_dir, original_diag, '*.jpg')):
                 original_diag_num = DIAG_TO_NUM[original_diag]
-                new_diag = self.class_map[original_diag_num]
+                new_diag = self.code[original_diag_num]
                 if new_diag == '_':
                     dropped_count += 1
                     continue
@@ -147,10 +147,11 @@ class BrainTumorDataset(Dataset):
                     'diag': new_diag,
                     'test': False,
                 })
-        print(f'{dropped_count}items were droped.')
+        print(f'{dropped_count} items were dropped.')
 
         df_all = pd.DataFrame(data)
-        df_train, df_test = train_test_split(df_all, test_size=self.test_ratio, stratify=df_all.diag, random_state=self.seed)
+        assert len(df_all) > 0, 'NO IMAGES FOUND'
+        df_train, df_test = train_test_split(df_all, test_size=self.test_ratio, stratify=df_all['diag'], random_state=self.seed)
         df_test['test'] = True
 
         if self.target == 'train':
@@ -190,15 +191,15 @@ class BrainTumorDataset(Dataset):
     def __getitem__(self, idx):
         item = self.items[idx % len(self.items)]
         x = self.albu(image=np.array(item.image))['image']
-        y = torch.tensor(DIAG_TO_NUM[item.diag])
+        y = torch.tensor(self.unique_code.index(item.diag))
         # y = F.one_hot(torch.tensor(DIAG_TO_NUM[item.diag]))
         return x, y
 
 
 class CMD(Commander):
     def arg_common(self, parser):
-        parser.add_argument('--class-map', '-m', default=LMGAO)
-        parser.add_argument('--src-dir', '-b', default='data/images')
+        parser.add_argument('--class-map', '-m', default='LMGAO')
+        parser.add_argument('--src-dir', '-b', default='datasets/LMGAO/images')
         parser.add_argument('--target', '-t', default='all', choices=['all', 'train', 'test'])
         parser.add_argument('--aug', '-a', default='same', choices=['same', 'train', 'test'])
         parser.add_argument('--grid-size', '-g', type=int, default=-1)

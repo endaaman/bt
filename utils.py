@@ -6,7 +6,7 @@ import numpy as np
 from PIL import Image
 from PIL.Image import Image as ImageType
 
-from endaaman.torch import pil_to_tensor
+from endaaman.ml import pil_to_tensor
 
 
 def overlay_heatmap(mask: torch.Tensor, img: torch.Tensor, alpha=1.0, threshold=0.2, cmap=cv2.COLORMAP_JET):
