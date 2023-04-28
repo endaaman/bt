@@ -1,6 +1,8 @@
 import os
 import re
 from glob import glob
+import base64
+import hashlib
 
 import numpy as np
 import torch
@@ -71,7 +73,7 @@ class Trainer(BaseTrainer):
     def eval(self, inputs, gts):
         preds = self.model(inputs.to(self.device), activate=False)
         loss = self.criterion(preds, gts.to(self.device))
-        return loss, preds.detach()
+        return loss, preds.detach().cpu()
 
     def get_metrics(self):
         return {
@@ -84,11 +86,13 @@ class Trainer(BaseTrainer):
 
 class CLI(BaseMLCLI):
     class CommonArgs(BaseDLArgs):
-        lr: float = 0.001
+        lr: float = 0.0001
         model_name: str = Field('tf_efficientnetv2_b0', cli=('--model', '-m'))
-        grid_size: int = Field(1024, cli=('--grid', '-g'))
-        crop_size: int = Field(512, cli=('--crop', '-c'))
-        input_size: int = Field(512, cli=('--input', '-i'))
+        suffix: str = ''
+        # grid_size: int = Field(512, cli=('--grid', '-g'))
+        # crop_size: int = Field(512, cli=('--crop', '-c'))
+        # input_size: int = Field(512, cli=('--input', '-i'))
+        size: int = Field(512, cli=('--size', '-s'))
         code: str = 'LMGAO'
         loss_weights: str = '10'
 
@@ -103,9 +107,9 @@ class CLI(BaseMLCLI):
             model_name=a.model_name,
             code=a.code,
             loss_weights=a.loss_weights,
-            grid_size=a.grid_size,
-            crop_size=a.crop_size,
-            input_size=a.input_size,
+            grid_size=a.size,
+            crop_size=a.size,
+            input_size=a.size,
         )
 
         dss = [
@@ -113,16 +117,23 @@ class CLI(BaseMLCLI):
                 target=t,
                 code=a.code,
                 aug_mode='same',
-                grid_size=self.a.grid_size,
-                crop_size=self.a.crop_size,
-                input_size=self.a.input_size,
+                grid_size=config.grid_size,
+                crop_size=config.crop_size,
+                input_size=config.input_size,
                 seed=self.a.seed,
             ) for t in ('train', 'test')
         ]
 
+        if self.a.suffix:
+            suffix = self.a.suffix
+        else:
+            sha1 = hashlib.sha1()
+            sha1.update(config.json().encode())
+            suffix = sha1.hexdigest()[:6]
+
         trainer = Trainer(
             config=config,
-            out_dir=f'out/models/{config.code}/{config.model_name}',
+            out_dir=f'out/models/{config.model_name}_{suffix}',
             train_dataset=dss[0],
             val_dataset=dss[1],
             use_gpu=not a.cpu
