@@ -7,15 +7,20 @@ from PIL import Image, ImageOps, ImageFile
 import numpy as np
 from tqdm import tqdm
 
-from endaaman import Commander, get_images_from_dir_or_file
+from endaaman.cli import BaseCLI
+
 from datasets import grid_split
+from train import TrainerConfig
 
 
-class CMD(Commander):
-    def arg_mean_std(self, parser):
-        parser.add_argument('--src', '-s', default='data/images')
+class CLI(BaseCLI):
+    class CommonArgs(BaseCLI.DefaultArgs):
+        pass
 
-    def run_mean_std(self):
+    class MeanStdArgs(CommonArgs):
+        src: str = 'data/images'
+
+    def run_mean_std(self, a):
         pp = sorted(glob(os.path.join(self.a.src, '*/*.jpg')))
         mm = []
         ss = []
@@ -32,10 +37,10 @@ class CMD(Commander):
         print('mean', mean)
         print('std', std)
 
-    def arg_mean_std_simple(self, parser):
-        parser.add_argument('--src', '-s', default='data/images')
+    class MeanStdSimpleArgs(CommonArgs):
+        src: str = 'data/images'
 
-    def run_mean_std_simple(self):
+    def run_mean_std_simple(self, a):
         pp = sorted(glob(os.path.join(self.a.src, '*/*.jpg')))
         mm = []
         ss = []
@@ -50,16 +55,25 @@ class CMD(Commander):
         print('mean', mean)
         print('std', std)
 
-    def arg_grid_split(self, parser):
-        parser.add_argument('--src', '-s', default='data/images')
 
-    def run_grid_split(self):
+    class GridSplitArgs(CommonArgs):
+        src: str = 'data/images'
+
+    def run_grid_split(self, a):
         ii = get_images_from_dir_or_file(self.a.src)[0]
         imgss = grid_split(ii[0], 400)
         for h, imgs  in enumerate(imgss):
             for v, img in enumerate(imgs):
                 img.convert('RGB').save(f'tmp/grid/g{h}_{v}.jpg')
 
+    class PrintCheckpointArgs(CommonArgs):
+        src: str
+
+    def run_print_checkpoint(self, a):
+        self.c = torch.load(a.src)
+        # print(self.c)
+
+
 if __name__ == '__main__':
-    cmd = CMD()
-    cmd.run()
+    cli = CLI()
+    cli.run()

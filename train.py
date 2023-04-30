@@ -44,6 +44,7 @@ class LMGAccuracy(BaseMetrics):
         gts = gts.clamp(max=2)
         return multi_accuracy(preds, gts, by_index=True)
 
+
 class TrainerConfig(BaseTrainerConfig):
     code: str
     loss_weights: str
@@ -56,7 +57,6 @@ class TrainerConfig(BaseTrainerConfig):
 class Trainer(BaseTrainer):
     def prepare(self):
         num_classes = len(set([*self.config.code]) - {'_'})
-        print(num_classes)
         if num_classes == 5:
             self.criterion = NestedCrossEntropyLoss(
                 rules=[{
@@ -87,17 +87,15 @@ class Trainer(BaseTrainer):
 class CLI(BaseMLCLI):
     class CommonArgs(BaseDLArgs):
         lr: float = 0.0001
+        epoch: int = 50
         model_name: str = Field('tf_efficientnetv2_b0', cli=('--model', '-m'))
         suffix: str = ''
-        # grid_size: int = Field(512, cli=('--grid', '-g'))
-        # crop_size: int = Field(512, cli=('--crop', '-c'))
-        # input_size: int = Field(512, cli=('--input', '-i'))
-        size: int = Field(512, cli=('--size', '-s'))
+        crop_size: int = Field(512, cli=('--crop-size', '-c'))
+        input_size: int = Field(512, cli=('--input-size', '-i'))
+        size: int = Field(-1, cli=('--size', '-s'))
         code: str = 'LMGAO'
         loss_weights: str = '10'
-
-    def arg_start(self, parser):
-        parser.add_argument('--model', '-m', default='tf_efficientnetv2_b0_5')
+        overwrite: bool = Field(False, cli=('--overwrite', '-o'))
 
     def run_start(self, a):
         config = TrainerConfig(
@@ -107,9 +105,9 @@ class CLI(BaseMLCLI):
             model_name=a.model_name,
             code=a.code,
             loss_weights=a.loss_weights,
-            grid_size=a.size,
-            crop_size=a.size,
-            input_size=a.size,
+            grid_size=a.size if a.size > 0 else a.crop_size,
+            crop_size=a.size if a.size > 0 else a.crop_size,
+            input_size=a.size if a.size > 0 else a.input_size,
         )
 
         dss = [
@@ -120,23 +118,22 @@ class CLI(BaseMLCLI):
                 grid_size=config.grid_size,
                 crop_size=config.crop_size,
                 input_size=config.input_size,
-                seed=self.a.seed,
+                seed=a.seed,
             ) for t in ('train', 'test')
         ]
 
-        if self.a.suffix:
-            suffix = self.a.suffix
-        else:
-            sha1 = hashlib.sha1()
-            sha1.update(config.json().encode())
-            suffix = sha1.hexdigest()[:6]
+
+        out_dir = f'out/models/{config.code}/{config.model_name}'
+        if a.suffix:
+            out_dir += f'_{a.suffix}'
 
         trainer = Trainer(
             config=config,
-            out_dir=f'out/models/{config.model_name}_{suffix}',
+            out_dir=out_dir,
             train_dataset=dss[0],
             val_dataset=dss[1],
-            use_gpu=not a.cpu
+            use_gpu=not a.cpu,
+            overwrite=a.overwrite,
         )
 
         trainer.start(a.epoch)
