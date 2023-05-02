@@ -17,8 +17,7 @@ from PIL import Image, ImageDraw, ImageFont
 from pydantic import Field
 from timm.scheduler.cosine_lr import CosineLRScheduler
 
-from endaaman.ml import pil_to_tensor, tensor_to_pil
-from endaaman.ml2 import BaseDLArgs, BaseMLCLI
+from endaaman.ml import pil_to_tensor, tensor_to_pil, BaseDLArgs, BaseMLCLI
 from endaaman.trainer2 import BaseTrainer, BaseTrainerConfig
 from endaaman.metrics import MultiAccuracy, AccuracyByChannel, BaseMetrics
 from endaaman.functional import multi_accuracy

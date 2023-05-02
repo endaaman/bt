@@ -7,31 +7,13 @@ import timm
 from torch import nn
 from torch.nn import functional as F
 from torchvision import transforms, models
+from endaaman.ml import BaseCLI
 
-
-class ModelId(NamedTuple):
-    name: str
-    num_classes: int
-
-    def __str__(self):
-        return f'{self.name}_{self.num_classes}'
-
-    @classmethod
-    def from_str(cls, s):
-        # s = s.split('_')
-        # if len(s) != 3:
-        #     raise RuntimeError(f'Invalid model id: {s}')
-        # return ModelId(m[0], int(m[1]), int(m[2]))
-        m = re.match(r'^(.*)_(\d+)$', s)
-        if not m:
-            raise RuntimeError(f'Invalid model id: {s}')
-        return ModelId(m[1], int(m[2]))
 
 class TimmModel(nn.Module):
-    def __init__(self, name='tf_efficientnetv2_b0', num_classes=1, pretrained=True, activation=True):
+    def __init__(self, name, num_classes, pretrained=True):
         super().__init__()
         self.num_classes = num_classes
-        self.activation = activation
         self.base = timm.create_model(name, pretrained=pretrained, num_classes=num_classes)
 
     def get_cam_layer(self):
@@ -47,14 +29,53 @@ class TimmModel(nn.Module):
         return x
 
 
-def create_model(p, pretrained=True):
-    if isinstance(p, str):
-        p = ModelId.from_str(p)
-    elif isinstance(p, ModelId):
-        pass
-    else:
-        raise RuntimeError(f'Invalid param: {p} {type(p)}')
-    return TimmModel(name=p.name, num_classes=p.num_classes, pretrained=pretrained)
+class AttentionModel(nn.Module):
+    def __init__(self, name, num_classes, params_count=10, pretrained=True):
+        super().__init__()
+        self.num_classes = num_classes
+        self.base = timm.create_model(name, pretrained=pretrained, num_classes=num_classes)
+        self.num_features = self.base.num_features
+        self.params_count = params_count
+
+        self.u = nn.Parameter(torch.randn(params_count, self.num_features))
+        self.v = nn.Parameter(torch.randn(params_count, self.num_features))
+        self.w = nn.Parameter(torch.randn(params_count, 1))
+        self.fc = nn.Linear(self.num_features, self.num_classes)
+
+    def get_cam_layer(self):
+        return self.base.conv_head
+
+    def compute_attention_scores(self, x):
+        xu = torch.tanh(torch.matmul(self.u, x))
+        xv = torch.sigmoid(torch.matmul(self.v, x))
+        x = xu * xv
+        alpha = torch.matmul(x, self.w)
+        return alpha
+
+    def compute_attentions(self, features):
+        aa = []
+        for feature in features:
+            aa.append(self.compute_attention_scores(feature))
+        aa = torch.stack(aa).flatten()
+        aa = torch.softmax(aa, dim=0)
+        return aa
+
+    def forward(self, x, activate=False, with_attentions=False):
+        x = self.base.forward_features(x)
+        x = self.base.forward_head(x, pre_logits=True)
+        aa = self.compute_attentions(x)
+        x = x * aa[:, None]
+        x = x.sum(dim=0)
+        x = self.fc(x)
+        if activate:
+            if self.num_classes > 1:
+                x = torch.softmax(x, dim=1)
+            else:
+                x = torch.sigmoid(x)
+        if with_attentions:
+            return x, aa
+        return x
+
 
 
 class CrossEntropyLoss(nn.Module):
@@ -139,50 +160,54 @@ class NestedCrossEntropyLoss(nn.Module):
         return loss
 
 
-def compare_nested():
-    n = NestedCrossEntropyLoss(
-        reduction='mean',
-        rules=[
-            {
-                'weight': 1000.0, 'index': [],
-            },
-            {
-                'weight': 1.0, 'index': [[2, 3, 4]],
-            }
-        ])
+class CLI(BaseCLI):
+    class CommonArgs(BaseCLI.CommonArgs):
+        pass
 
-    # loss should be different
-    x0 = torch.tensor([[1., 0, 0, 3, 0], [1., 0, 0, 3, 0]])
-    y0 = torch.tensor([2, 2])
+    def run_loss(self, a:CommonArgs):
+        n = NestedCrossEntropyLoss(
+            rules=[
+                {
+                    'weight': 1000.0, 'index': [],
+                },
+                {
+                    'weight': 1.0, 'index': [[2, 3, 4]],
+                }
+            ])
 
-    # loss should be same
-    x1 = torch.tensor([[1., 0, 0, 0, 3], [1., 0, 0, 0, 3]])
-    y1 = torch.tensor([1, 1])
+        # loss should be different
+        x0 = torch.tensor([[1., 0, 0, 3, 0], [1., 0, 0, 3, 0]])
+        y0 = torch.tensor([2, 2])
 
-    print('nested')
-    print('x0 y0')
-    print( n(x0, y0) )
-    print('x1 y1')
-    print( n(x1, y1) )
+        # loss should be same
+        x1 = torch.tensor([[1., 0, 0, 0, 3], [1., 0, 0, 0, 3]])
+        y1 = torch.tensor([1, 1])
 
-    c = CrossEntropyLoss()
-    print()
-    print('normal')
-    print('x0 y0')
-    print( c(x0, y0) )
-    print('x1 y1')
-    print( c(x1, y1) )
+        print('nested')
+        print('x0 y0')
+        print( n(x0, y0) )
+        print('x1 y1')
+        print( n(x1, y1) )
+
+        c = CrossEntropyLoss()
+        print()
+        print('normal')
+        print('x0 y0')
+        print( c(x0, y0) )
+        print('x1 y1')
+        print( c(x1, y1) )
+
+    class ModelArgs(CommonArgs):
+        model : str = 'tf_efficientnetv2_b0'
+
+    def run_model(self, a):
+        model = AttentionModel(name=a.model, num_classes=3)
+        x = torch.rand([4, 3, 512, 512])
+        y, aa = model(x, with_attentions=True)
+        print('y', y, y.shape)
+        print('aa', aa, aa.shape)
 
 
 if __name__ == '__main__':
-    compare_nested()
-    sys.exit()
-
-    model = create_model('tf_efficientnetv2_b0_3')
-    count = sum(p.numel() for p in model.parameters()) / 1000000
-    print(f'count: {count}M')
-    x_ = torch.rand([2, 3, 512, 512])
-    y_ = model(x_)
-    # loss = CrossEntropyLoss()
-    # print('y', y, y.shape, 'loss', loss(y, torch.LongTensor([1, 1])))
-    print('y', y_, y_.shape)
+    cli = CLI()
+    cli.run()
