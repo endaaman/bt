@@ -7,9 +7,9 @@ from enum import Enum
 from glob import glob
 from typing import NamedTuple, Callable
 from collections import OrderedDict
+from pydantic import Field
 
-from endaaman import Commander
-from endaaman.ml import pil_to_tensor, tensor_to_pil, get_global_seed
+from endaaman.ml import BaseCLI, pil_to_tensor, tensor_to_pil, get_global_seed
 
 import torch
 import numpy as np
@@ -196,34 +196,51 @@ class BrainTumorDataset(Dataset):
         return x, y
 
 
-class CMD(Commander):
-    def arg_common(self, parser):
-        parser.add_argument('--class-map', '-m', default='LMGAO')
-        parser.add_argument('--src-dir', '-b', default='datasets/LMGAO/images')
-        parser.add_argument('--target', '-t', default='all', choices=['all', 'train', 'test'])
-        parser.add_argument('--aug', '-a', default='same', choices=['same', 'train', 'test'])
-        parser.add_argument('--grid-size', '-g', type=int, default=-1)
-        parser.add_argument('--crop-size', '-c', type=int, default=768)
-        parser.add_argument('--input-size', '-i', type=int, default=768)
 
-    def pre_common(self):
+class BatchedBrainTumorDataset(Dataset):
+    def __init__(self,
+                 # data spec
+                 target='train', src_dir='datasets/LMGAO/images', code='LMGAO',
+                 # train-test spec
+                 test_ratio=0.25, seed=None,
+                 # image spec
+                 grid_size=768, crop_size=768, input_size=768, aug_mode='same', normalize=True,
+                 ):
+        assert re.match('^[LMGAO_]{5}$', code)
+        self.target = target
+        self.code = [*code]
+        self.unique_code = [c for c in dict.fromkeys(self.code) if c in 'LMGAO']
+        self.src_dir = src_dir
+
+
+class CLI(BaseCLI):
+    class CommonArgs(BaseCLI.CommonArgs):
+        src_dir: str = 'datasets/LMGAO/images'
+        code: str = 'LMGAO'
+        target: str = Field('all', cli=('--target', '-t'), choices=['all', 'train', 'test'])
+        aug: str = Field('same', cli=('--aug', '-a'), choices=['same', 'train', 'test'])
+        grid_size: int = Field(-1, cli=('--grid-size', '-g'))
+        crop_size: int = Field(768, cli=('--crop-size', '-c'))
+        input_size: int = Field(768, cli=('--input-size', '-i'))
+
+    def pre_common(self, a):
         self.ds = BrainTumorDataset(
-            target=self.args.target,
-            src_dir=self.a.src_dir,
-            class_map=self.a.class_map,
-            aug_mode=self.args.aug,
-            grid_size=self.args.grid_size,
-            crop_size=self.args.crop_size,
-            input_size=self.args.input_size,
-            normalize=self.args.function != 'samples',
+            target=a.target,
+            src_dir=a.src_dir,
+            code=a.code,
+            aug_mode=a.aug,
+            grid_size=a.grid_size,
+            crop_size=a.crop_size,
+            input_size=a.input_size,
+            normalize=self.function != 'samples',
         )
 
-    def arg_samples(self, parser):
-        parser.add_argument('--dest', '-d', default='tmp/samples')
+    class SamplesArgs(CommonArgs):
+        dest: str = 'tmp/samples'
 
-    def run_samples(self):
-        t = self.args.target
-        d = os.path.join(self.a.dest, t)
+    def run_samples(self, a:SamplesArgs):
+        t = a.target
+        d = os.path.join(a.dest, t)
         os.makedirs(d, exist_ok=True)
         total = len(self.ds)
         for i, (x, y) in tqdm(enumerate(self.ds), total=total):
@@ -234,10 +251,7 @@ class CMD(Commander):
             if i == total-1:
                 break
 
-    def arg_balance(self, parser):
-        pass
-
-    def run_balance(self):
+    def run_balance(self, a):
         data = []
         ii = []
         for diag in NUM_TO_DIAG:
@@ -261,7 +275,7 @@ class CMD(Commander):
         chan = '3' if self.a.merge else '5'
         df.to_csv(f'out/balance_{chan}.csv')
 
-    def run_t(self):
+    def run_t(self, a):
         for (x, y) in self.ds:
             print(y, x.shape)
             self.x = x
@@ -269,10 +283,10 @@ class CMD(Commander):
             self.i = tensor_to_pil(x)
             break
 
-    def arg_grid_split(self, parser):
-        parser.add_argument('--dest', '-d', default='tmp/grid_split')
+    class SamplesArgs(CommonArgs):
+        dest: str = 'tmp/grid_split'
 
-    def run_grid_split(self):
+    def run_grid_split(self, a):
         os.makedirs(self.a.dest, exist_ok=True)
         for item in tqdm(self.ds.items):
             imgss = grid_split(item.image, self.a.crop)
@@ -283,5 +297,5 @@ class CMD(Commander):
                     img.save(os.path.join(d, f'{h}_{v}.jpg'))
 
 if __name__ == '__main__':
-    cmd = CMD(options={'no_pre_common': ['split']})
-    cmd.run()
+    cli = CLI()
+    cli.run()

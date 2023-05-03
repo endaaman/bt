@@ -17,12 +17,11 @@ from PIL import Image, ImageDraw, ImageFont
 from pydantic import Field
 from timm.scheduler.cosine_lr import CosineLRScheduler
 
-from endaaman.ml import pil_to_tensor, tensor_to_pil, BaseDLArgs, BaseMLCLI
-from endaaman.trainer2 import BaseTrainer, BaseTrainerConfig
+from endaaman.ml import BaseDLArgs, BaseMLCLI, BaseTrainer, BaseTrainerConfig
 from endaaman.metrics import MultiAccuracy, AccuracyByChannel, BaseMetrics
 from endaaman.functional import multi_accuracy
 
-from models import TimmModel, CrossEntropyLoss, NestedCrossEntropyLoss
+from models import TimmModel, AttentionModel, CrossEntropyLoss, NestedCrossEntropyLoss
 from datasets import BrainTumorDataset, NUM_TO_DIAG
 
 
@@ -47,6 +46,7 @@ class LMGAccuracy(BaseMetrics):
 class TrainerConfig(BaseTrainerConfig):
     code: str
     loss_weights: str
+    mode: str
     model_name:str
     grid_size: int
     crop_size: int
@@ -67,6 +67,8 @@ class Trainer(BaseTrainer):
                 }])
         else:
             self.criterion = CrossEntropyLoss(input_logits=True)
+        if self.config.mode == 'normal':
+            return AttentionModel(name=self.config.model_name, num_classes=num_classes, params_count=10)
         return TimmModel(name=self.config.model_name, num_classes=num_classes)
 
     def eval(self, inputs, gts):
@@ -86,6 +88,8 @@ class Trainer(BaseTrainer):
 class CLI(BaseMLCLI):
     class CommonArgs(BaseDLArgs):
         lr: float = 0.0001
+        batch_size: int = 8
+        num_workers: int = 4
         epoch: int = 50
         model_name: str = Field('tf_efficientnetv2_b0', cli=('--model', '-m'))
         suffix: str = ''
