@@ -66,15 +66,42 @@ class GridRandomCrop(A.RandomCrop):
         x = select_side(img.shape[1], self.width)
         return albuF.crop(img, x_min=x, y_min=y, x_max=x+self.width, y_max=y+self.height)
 
+def aug_train(crop_size, input_size):
+    return [
+        A.RandomCrop(width=crop_size, height=crop_size),
+        A.Resize(width=input_size, height=input_size),
+        A.RandomRotate90(p=1),
+        A.HorizontalFlip(p=0.5),
+        A.GaussNoise(p=0.2),
+        A.OneOf([
+            A.MotionBlur(p=0.2),
+            A.MedianBlur(blur_limit=3, p=0.1),
+            A.Blur(blur_limit=3, p=0.1),
+        ], p=0.2),
+        A.ShiftScaleRotate(shift_limit=0.0625, scale_limit=0.2, rotate_limit=5, p=0.5),
+        A.OneOf([
+            A.CLAHE(clip_limit=2),
+            A.Emboss(),
+            A.RandomBrightnessContrast(),
+        ], p=0.3),
+        A.HueSaturationValue(p=0.3),
+    ]
 
-class BrainTumorDataset(Dataset):
+def aug_test(crop_size, input_size):
+    return [
+        A.CenterCrop(width=crop_size, height=crop_size),
+        A.Resize(width=input_size, height=input_size),
+    ]
+
+
+class BaseBrainTumorDataset(Dataset):
     def __init__(self,
                  # data spec
                  target='train', src_dir='datasets/LMGAO/images', code='LMGAO',
                  # train-test spec
                  test_ratio=0.25, seed=None,
                  # image spec
-                 grid_size=768, crop_size=768, input_size=768, aug_mode='same', normalize=True
+                 grid_size=768, crop_size=768, input_size=768, aug_mode='same', normalize=True,
                  ):
         assert re.match('^[LMGAO_]{5}$', code)
         self.target = target
@@ -85,36 +112,12 @@ class BrainTumorDataset(Dataset):
         self.test_ratio = test_ratio
         self.seed = seed or get_global_seed()
 
-        self.grid_size = grid_size
-        self.input_size = input_size
-        self.crop_size = crop_size
         self.aug_mode = aug_mode
         self.normalize = normalize
 
         augs = {}
-        augs['train'] = [
-            A.RandomCrop(width=crop_size, height=crop_size),
-            A.Resize(width=input_size, height=input_size),
-            A.RandomRotate90(p=1),
-            A.HorizontalFlip(p=0.5),
-            A.GaussNoise(p=0.2),
-            A.OneOf([
-                A.MotionBlur(p=0.2),
-                A.MedianBlur(blur_limit=3, p=0.1),
-                A.Blur(blur_limit=3, p=0.1),
-            ], p=0.2),
-            A.ShiftScaleRotate(shift_limit=0.0625, scale_limit=0.2, rotate_limit=5, p=0.5),
-            A.OneOf([
-                A.CLAHE(clip_limit=2),
-                A.Emboss(),
-                A.RandomBrightnessContrast(),
-            ], p=0.3),
-            A.HueSaturationValue(p=0.3),
-        ]
-        augs['test'] = [
-            A.CenterCrop(width=crop_size, height=crop_size),
-            A.Resize(width=input_size, height=input_size),
-        ]
+        augs['train'] = aug_train(crop_size, input_size)
+        augs['test'] = aug_test(crop_size, input_size)
         augs['all'] = augs['test']
 
         # select aug
@@ -130,9 +133,10 @@ class BrainTumorDataset(Dataset):
         aug += [ToTensorV2()]
 
         self.albu = A.Compose(aug)
-        self.df, self.items = self.load_data()
+        self.df = self.load_df()
 
-    def load_data(self):
+
+    def load_df(self):
         data = []
         dropped_count = 0
         for original_diag in NUM_TO_DIAG:
@@ -162,9 +166,15 @@ class BrainTumorDataset(Dataset):
             df = pd.concat([df_train, df_test])
         else:
             raise ValueError(f'invalid target: {self.target}')
+        return df
 
-        items = []
-        for _idx, row in tqdm(df.iterrows(), total=len(df)):
+
+
+class BrainTumorDataset(Dataset):
+    def __init__(self,
+                 ):
+        self.items = []
+        for _idx, row in tqdm(self.df.iterrows(), total=len(self.df)):
             name = os.path.splitext(os.path.basename(row.path))[0]
             org_img = load_image_using_cache(row.path).copy()
             if self.grid_size < 0:
@@ -173,7 +183,7 @@ class BrainTumorDataset(Dataset):
                 imgss = grid_split(org_img, self.grid_size, overwrap=False)
             for h, imgs  in enumerate(imgss):
                 for v, img in enumerate(imgs):
-                    items.append(Item(
+                    self.items.append(Item(
                         path=row.path,
                         diag=row.diag,
                         image=img,
@@ -181,9 +191,7 @@ class BrainTumorDataset(Dataset):
                         grid_index=f'{h}_{v}',
                         test=row.test,
                     ))
-
         print(f'{self.target} images loaded')
-        return df, items
 
     def __len__(self):
         return len(self.items)
