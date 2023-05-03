@@ -93,11 +93,14 @@ class Trainer(BaseTrainer):
 
 class CLI(BaseMLCLI):
     class CommonArgs(BaseDLArgs):
+        pass
+
+    class StartArgs(CommonArgs):
         lr: float = 0.0001
         batch_size: int = 8
         use_mil: bool = Field(False, cli=('--mil', ))
         num_workers: int = 4
-        epoch: int = 50
+        epoch: int = 10
         model_name: str = Field('tf_efficientnetv2_b0', cli=('--model', '-m'))
         suffix: str = ''
         crop_size: int = Field(512, cli=('--crop-size', '-c'))
@@ -105,9 +108,10 @@ class CLI(BaseMLCLI):
         size: int = Field(-1, cli=('--size', '-s'))
         code: str = 'LMGAO'
         loss_weights: str = '10'
+        experiment_name:str = Field('Default', cli=('--exp', ))
         overwrite: bool = Field(False, cli=('--overwrite', '-o'))
 
-    def run_start(self, a):
+    def run_start(self, a:StartArgs):
         config = TrainerConfig(
             batch_size=1 if a.use_mil else a.batch_size,
             num_workers=a.num_workers,
@@ -145,7 +149,7 @@ class CLI(BaseMLCLI):
             ]
 
         subdir = f'{config.code}-MIL' if a.use_mil else config.code
-        out_dir = f'out/models/{subdir}/{config.model_name}'
+        out_dir = f'out/{a.experiment_name}/{subdir}/{config.model_name}'
         if a.suffix:
             out_dir += f'_{a.suffix}'
 
@@ -156,6 +160,7 @@ class CLI(BaseMLCLI):
             val_dataset=dss[1],
             use_gpu=not a.cpu,
             overwrite=a.overwrite,
+            experiment_name=a.experiment_name,
         )
 
         trainer.start(a.epoch)
