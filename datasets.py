@@ -1,4 +1,5 @@
 import os
+import random
 import os.path
 import re
 import shutil
@@ -101,16 +102,19 @@ class BaseBrainTumorDataset(Dataset):
                  # train-test spec
                  test_ratio=0.25, seed=None,
                  # image spec
-                 grid_size=768, crop_size=768, input_size=768, aug_mode='same', normalize=True,
+                 crop_size=768, input_size=768, aug_mode='same', normalize=True,
                  ):
         assert re.match('^[LMGAO_]{5}$', code)
         self.target = target
         self.code = [*code]
         self.unique_code = [c for c in dict.fromkeys(self.code) if c in 'LMGAO']
         self.src_dir = src_dir
-
         self.test_ratio = test_ratio
         self.seed = seed or get_global_seed()
+        self.crop_size = crop_size
+        self.input_size = input_size
+        self.aug_mode = aug_mode
+        self.normalize = normalize
 
         self.aug_mode = aug_mode
         self.normalize = normalize
@@ -139,8 +143,10 @@ class BaseBrainTumorDataset(Dataset):
     def load_df(self):
         data = []
         dropped_count = 0
+        total = 0
         for original_diag in NUM_TO_DIAG:
             for path in glob(os.path.join(self.src_dir, original_diag, '*.jpg')):
+                total += 1
                 original_diag_num = DIAG_TO_NUM[original_diag]
                 new_diag = self.code[original_diag_num]
                 if new_diag == '_':
@@ -151,7 +157,7 @@ class BaseBrainTumorDataset(Dataset):
                     'diag': new_diag,
                     'test': False,
                 })
-        print(f'{dropped_count} items were dropped.')
+        print(f'total:{total} loaded:{len(data)} dropped:{dropped_count}')
 
         df_all = pd.DataFrame(data)
         assert len(df_all) > 0, 'NO IMAGES FOUND'
@@ -168,22 +174,18 @@ class BaseBrainTumorDataset(Dataset):
             raise ValueError(f'invalid target: {self.target}')
         return df
 
-
-
-class BrainTumorDataset(Dataset):
-    def __init__(self,
-                 ):
-        self.items = []
+    def split_by_grid(self, grid_size):
+        items = []
         for _idx, row in tqdm(self.df.iterrows(), total=len(self.df)):
             name = os.path.splitext(os.path.basename(row.path))[0]
             org_img = load_image_using_cache(row.path).copy()
-            if self.grid_size < 0:
+            if grid_size < 0:
                 imgss = [[org_img]]
             else:
-                imgss = grid_split(org_img, self.grid_size, overwrap=False)
+                imgss = grid_split(org_img, grid_size, overwrap=False)
             for h, imgs  in enumerate(imgss):
                 for v, img in enumerate(imgs):
-                    self.items.append(Item(
+                    items.append(Item(
                         path=row.path,
                         diag=row.diag,
                         image=img,
@@ -192,12 +194,9 @@ class BrainTumorDataset(Dataset):
                         test=row.test,
                     ))
         print(f'{self.target} images loaded')
+        return items
 
-    def __len__(self):
-        return len(self.items)
-
-    def __getitem__(self, idx):
-        item = self.items[idx % len(self.items)]
+    def as_xy(self, item):
         x = self.albu(image=np.array(item.image))['image']
         y = torch.tensor(self.unique_code.index(item.diag))
         # y = F.one_hot(torch.tensor(DIAG_TO_NUM[item.diag]))
@@ -205,20 +204,61 @@ class BrainTumorDataset(Dataset):
 
 
 
-class BatchedBrainTumorDataset(Dataset):
-    def __init__(self,
-                 # data spec
-                 target='train', src_dir='datasets/LMGAO/images', code='LMGAO',
-                 # train-test spec
-                 test_ratio=0.25, seed=None,
-                 # image spec
-                 grid_size=768, crop_size=768, input_size=768, aug_mode='same', normalize=True,
-                 ):
-        assert re.match('^[LMGAO_]{5}$', code)
-        self.target = target
-        self.code = [*code]
-        self.unique_code = [c for c in dict.fromkeys(self.code) if c in 'LMGAO']
-        self.src_dir = src_dir
+class BrainTumorDataset(BaseBrainTumorDataset):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.items = self.split_by_grid(self.crop_size)
+
+    def __len__(self):
+        return len(self.items)
+
+    def __getitem__(self, idx):
+        item = self.items[idx % len(self.items)]
+        return self.as_xy(item)
+
+
+
+class BatchedBrainTumorDataset(BaseBrainTumorDataset):
+    def __init__(self, batch_size=9, **kwargs):
+        super().__init__(**kwargs)
+        self.items = self.split_by_grid(self.crop_size)
+
+        items_by_label = {}
+        for item in self.items:
+            if item.diag in items_by_label:
+                items_by_label[item.diag].append(item)
+            else:
+                items_by_label[item.diag] = [item]
+
+        self.batched_items = []
+
+        for __k, items in items_by_label.items():
+            ii = np.arange(len(items))
+            random.shuffle(ii)
+            batched_iii = np.array_split(ii, -(len(ii)//-batch_size))
+            for batched_ii in batched_iii:
+                self.batched_items.append([items[i] for i in batched_ii])
+
+        random.shuffle(self.batched_items)
+
+    def __len__(self):
+        return len(self.batched_items)
+
+    def __getitem__(self, idx):
+        items = self.batched_items[idx % len(self.items)]
+        xx = []
+        yy = []
+        for item in items:
+            x = self.albu(image=np.array(item.image))['image']
+            y = torch.tensor(self.unique_code.index(item.diag))
+            xx.append(x)
+            yy.append(y)
+            # y = F.one_hot(torch.tensor(DIAG_TO_NUM[item.diag]))
+        xx = torch.stack(xx)
+        yy = torch.stack(yy)
+
+        assert torch.all(yy == yy[0]), f'Batched labels are not all same: {yy}'
+        return xx, yy[0]
 
 
 class CLI(BaseCLI):
@@ -227,21 +267,32 @@ class CLI(BaseCLI):
         code: str = 'LMGAO'
         target: str = Field('all', cli=('--target', '-t'), choices=['all', 'train', 'test'])
         aug: str = Field('same', cli=('--aug', '-a'), choices=['same', 'train', 'test'])
-        grid_size: int = Field(-1, cli=('--grid-size', '-g'))
         crop_size: int = Field(768, cli=('--crop-size', '-c'))
         input_size: int = Field(768, cli=('--input-size', '-i'))
+        batch_size: int = -1
 
     def pre_common(self, a):
-        self.ds = BrainTumorDataset(
-            target=a.target,
-            src_dir=a.src_dir,
-            code=a.code,
-            aug_mode=a.aug,
-            grid_size=a.grid_size,
-            crop_size=a.crop_size,
-            input_size=a.input_size,
-            normalize=self.function != 'samples',
-        )
+        if a.batch_size > 0:
+            self.ds = BatchedBrainTumorDataset(
+                target=a.target,
+                src_dir=a.src_dir,
+                code=a.code,
+                aug_mode=a.aug,
+                crop_size=a.crop_size,
+                input_size=a.input_size,
+                normalize=self.function != 'samples',
+                batch_size=a.batch_size,
+            )
+        else:
+            self.ds = BrainTumorDataset(
+                target=a.target,
+                src_dir=a.src_dir,
+                code=a.code,
+                aug_mode=a.aug,
+                crop_size=a.crop_size,
+                input_size=a.input_size,
+                normalize=self.function != 'samples',
+            )
 
     class SamplesArgs(CommonArgs):
         dest: str = 'tmp/samples'
@@ -291,7 +342,7 @@ class CLI(BaseCLI):
             self.i = tensor_to_pil(x)
             break
 
-    class SamplesArgs(CommonArgs):
+    class GridSplitArgs(CommonArgs):
         dest: str = 'tmp/grid_split'
 
     def run_grid_split(self, a):
@@ -305,5 +356,7 @@ class CLI(BaseCLI):
                     img.save(os.path.join(d, f'{h}_{v}.jpg'))
 
 if __name__ == '__main__':
-    cli = CLI()
-    cli.run()
+    # cli = CLI()
+    # cli.run()
+
+    ds = BatchedBrainTumorDataset(batch_size=9, code='LMG__')

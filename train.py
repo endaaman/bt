@@ -22,7 +22,7 @@ from endaaman.metrics import MultiAccuracy, AccuracyByChannel, BaseMetrics
 from endaaman.functional import multi_accuracy
 
 from models import TimmModel, AttentionModel, CrossEntropyLoss, NestedCrossEntropyLoss
-from datasets import BrainTumorDataset, NUM_TO_DIAG
+from datasets import BrainTumorDataset, BatchedBrainTumorDataset, NUM_TO_DIAG
 
 
 
@@ -46,9 +46,8 @@ class LMGAccuracy(BaseMetrics):
 class TrainerConfig(BaseTrainerConfig):
     code: str
     loss_weights: str
-    mode: str
+    use_mil: bool
     model_name:str
-    grid_size: int
     crop_size: int
     input_size: int
 
@@ -67,14 +66,21 @@ class Trainer(BaseTrainer):
                 }])
         else:
             self.criterion = CrossEntropyLoss(input_logits=True)
-        if self.config.mode == 'normal':
+        if self.config.use_mil:
             return AttentionModel(name=self.config.model_name, num_classes=num_classes, params_count=10)
         return TimmModel(name=self.config.model_name, num_classes=num_classes)
 
     def eval(self, inputs, gts):
+        if self.config.use_mil:
+            inputs = inputs[0]
+            gts = gts[0]
         preds = self.model(inputs.to(self.device), activate=False)
         loss = self.criterion(preds, gts.to(self.device))
+        if self.config.use_mil:
+            preds = preds[None, ...]
         return loss, preds.detach().cpu()
+
+
 
     def get_metrics(self):
         return {
@@ -89,6 +95,7 @@ class CLI(BaseMLCLI):
     class CommonArgs(BaseDLArgs):
         lr: float = 0.0001
         batch_size: int = 8
+        use_mil: bool = Field(False, cli=('--mil', ))
         num_workers: int = 4
         epoch: int = 50
         model_name: str = Field('tf_efficientnetv2_b0', cli=('--model', '-m'))
@@ -102,31 +109,43 @@ class CLI(BaseMLCLI):
 
     def run_start(self, a):
         config = TrainerConfig(
-            batch_size=a.batch_size,
+            batch_size=1 if a.use_mil else a.batch_size,
             num_workers=a.num_workers,
             lr=a.lr,
-            model_name=a.model_name,
             code=a.code,
+            use_mil=a.use_mil,
+            model_name=a.model_name,
             loss_weights=a.loss_weights,
-            grid_size=a.size if a.size > 0 else a.crop_size,
             crop_size=a.size if a.size > 0 else a.crop_size,
             input_size=a.size if a.size > 0 else a.input_size,
         )
 
-        dss = [
-            BrainTumorDataset(
-                target=t,
-                code=a.code,
-                aug_mode='same',
-                grid_size=config.grid_size,
-                crop_size=config.crop_size,
-                input_size=config.input_size,
-                seed=a.seed,
-            ) for t in ('train', 'test')
-        ]
+        if a.use_mil:
+            dss = [
+                BatchedBrainTumorDataset(
+                    target=t,
+                    code=a.code,
+                    aug_mode='same',
+                    crop_size=config.crop_size,
+                    input_size=config.input_size,
+                    seed=a.seed,
+                    batch_size=a.batch_size,
+                ) for t in ('train', 'test')
+            ]
+        else:
+            dss = [
+                BrainTumorDataset(
+                    target=t,
+                    code=a.code,
+                    aug_mode='same',
+                    crop_size=config.crop_size,
+                    input_size=config.input_size,
+                    seed=a.seed,
+                ) for t in ('train', 'test')
+            ]
 
-
-        out_dir = f'out/models/{config.code}/{config.model_name}'
+        subdir = f'{config.code}-MIL' if a.use_mil else config.code
+        out_dir = f'out/models/{subdir}/{config.model_name}'
         if a.suffix:
             out_dir += f'_{a.suffix}'
 
