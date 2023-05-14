@@ -10,7 +10,7 @@ from typing import NamedTuple, Callable
 from collections import OrderedDict
 from pydantic import Field
 
-from endaaman.ml import BaseCLI, pil_to_tensor, tensor_to_pil, get_global_seed
+
 
 import torch
 import numpy as np
@@ -27,19 +27,13 @@ from albumentations.pytorch.transforms import ToTensorV2
 from albumentations.core.transforms_interface import ImageOnlyTransform
 from albumentations.augmentations.crops.functional import center_crop
 
-from utils import grid_split, select_side
+from endaaman import grid_split, select_side
+from endaaman.ml import BaseCLI, pil_to_tensor, tensor_to_pil, get_global_seed
 
 ImageFile.LOAD_TRUNCATED_IMAGES = True
-Image.MAX_IMAGE_PIXELS = 1000000000
+Image.MAX_IMAGE_PIXELS = 1_000_000_000
 
 IMAGE_CACHE = {}
-
-def load_image_using_cache(p):
-    i = IMAGE_CACHE.get(p, None)
-    if i:
-        return i
-    i = IMAGE_CACHE[p] = Image.open(p)
-    return i
 
 DIAG_TO_NUM = OrderedDict([(c, i) for i, c in enumerate('LMGAO')])
 NUM_TO_DIAG = list(DIAG_TO_NUM.keys())
@@ -178,11 +172,13 @@ class BaseBrainTumorDataset(Dataset):
         items = []
         for _idx, row in tqdm(self.df.iterrows(), total=len(self.df)):
             name = os.path.splitext(os.path.basename(row.path))[0]
-            org_img = load_image_using_cache(row.path).copy()
+            org_img = Image.open(row.path)
             if grid_size < 0:
                 imgss = [[org_img]]
             else:
                 imgss = grid_split(org_img, grid_size, overwrap=False)
+            org_img.close()
+            del org_img
             for h, imgs  in enumerate(imgss):
                 for v, img in enumerate(imgs):
                     items.append(Item(
@@ -359,4 +355,13 @@ if __name__ == '__main__':
     # cli = CLI()
     # cli.run()
 
-    ds = BatchedBrainTumorDataset(batch_size=9, code='LMG__')
+    # ds = BatchedBrainTumorDataset(batch_size=9, code='LMG__')
+
+    ds = BrainTumorDataset(
+        target='all',
+        src_dir='datasets/LMGAO/images',
+        code='LMGAO',
+        aug_mode='same',
+        crop_size=512,
+        input_size=512,
+    )
