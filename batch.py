@@ -2,10 +2,12 @@ import os
 from glob import glob
 import itertools
 
+import pandas as pd
 import torch
 from PIL import Image, ImageOps, ImageFile
 import numpy as np
 from tqdm import tqdm
+import imagesize
 
 from endaaman.cli import BaseCLI
 
@@ -14,7 +16,7 @@ from train import TrainerConfig
 
 
 class CLI(BaseCLI):
-    class CommonArgs(BaseCLI.DefaultArgs):
+    class CommonArgs(BaseCLI.CommonArgs):
         pass
 
     class MeanStdArgs(CommonArgs):
@@ -72,6 +74,54 @@ class CLI(BaseCLI):
     def run_print_checkpoint(self, a):
         self.c = torch.load(a.src)
         # print(self.c)
+
+
+    class DetailArgs(CommonArgs):
+        pass
+
+    def run_detail(self, a):
+        diags = ['L', 'M', 'G', 'A', 'O']
+        data_images = []
+        cases = {}
+        for diag in diags:
+            paths = sorted(glob(f'datasets/LMGAO/images/{diag}/*.jpg'))
+            for path in paths:
+                name = os.path.splitext(os.path.basename(path))[0]
+                name, order = name.rsplit('_', 1)
+                width, height = imagesize.get(path)
+                e = {
+                    'name': name,
+                    'path': path,
+                    'order': order,
+                    'diag': diag,
+                    'width': width,
+                    'height': height,
+                }
+                data_images.append(e)
+                if name in cases:
+                    cases[name].append(e)
+                else:
+                    cases[name] = [e]
+
+        data_cases = []
+        for case_name, ee in cases.items():
+            total_area = 0
+            for e in ee:
+                total_area += e['width'] * e['height']
+            data_cases.append({
+                'case': case_name,
+                'diag': ee[0]['diag'],
+                'count': len(ee),
+                'total_area': total_area,
+            })
+            print(total_area)
+
+        df_cases = pd.DataFrame(data_cases)
+        df_images = pd.DataFrame(data_images)
+        with pd.ExcelWriter('out/detail.xlsx', engine='xlsxwriter') as writer:
+            df_cases.to_excel(writer, sheet_name='cases')
+            df_images.to_excel(writer, sheet_name='images')
+
 
 
 if __name__ == '__main__':
