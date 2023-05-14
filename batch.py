@@ -9,6 +9,7 @@ import numpy as np
 from tqdm import tqdm
 import imagesize
 
+from endaaman import load_images_from_dir_or_file
 from endaaman.cli import BaseCLI
 
 from datasets import grid_split
@@ -62,7 +63,7 @@ class CLI(BaseCLI):
         src: str = 'data/images'
 
     def run_grid_split(self, a):
-        ii = get_images_from_dir_or_file(self.a.src)[0]
+        ii = load_images_from_dir_or_file(self.a.src)[0]
         imgss = grid_split(ii[0], 400)
         for h, imgs  in enumerate(imgss):
             for v, img in enumerate(imgs):
