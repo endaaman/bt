@@ -8,9 +8,10 @@ import numpy as np
 import torch
 from torch import nn
 from torch import optim
+import seaborn as sns
 # import torch_optimizer as optim2
 from torchvision.utils import make_grid
-from sklearn import metrics
+from sklearn import metrics as skmetrics
 from tqdm import tqdm
 import pandas as pd
 from PIL import Image, ImageDraw, ImageFont
@@ -80,7 +81,20 @@ class Trainer(BaseTrainer):
             preds = preds[None, ...]
         return loss, preds.detach().cpu()
 
+    def _visualize_confusion(self, ax, label, preds, gts):
+        preds = torch.argmax(preds, dim=-1)
+        cm = skmetrics.confusion_matrix(gts.numpy(), preds.numpy())
+        ticks = [*self.train_dataset.unique_code]
+        sns.heatmap(cm, annot=True, ax=ax, fmt='g', xticklabels=ticks, yticklabels=ticks)
+        ax.set_title(label)
+        ax.set_xlabel('Predict', fontsize=13)
+        ax.set_ylabel('GT', fontsize=13)
 
+    def visualize_train_confusion(self, ax, train_preds, train_gts, val_preds, val_gts):
+        self._visualize_confusion(ax, 'train', train_preds, train_gts)
+
+    def visualize_val_confusion(self, ax, train_preds, train_gts, val_preds, val_gts):
+        self._visualize_confusion(ax, 'val', val_preds, val_gts)
 
     def get_metrics(self):
         return {
