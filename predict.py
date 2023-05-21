@@ -114,7 +114,7 @@ class MyPredictor(Predictor):
             gradcam = GradCAMpp(self.model, self.model.get_cam_layer())
             mask, _ = gradcam(t)
 
-        heatmap, masked = overlay_heatmap(mask, pil_to_tensor(image), alpha=0.3, threshold=0.5)
+        heatmap, masked = overlay_heatmap(mask, pil_to_tensor(image), alpha=0.5, threshold=0.2)
         heatmap, masked = [draw_pred_gt((tensor_to_pil(i)), self.font, pred, gt) for i in (heatmap, masked)]
         return CAM(image, heatmap, masked, pred)
 
