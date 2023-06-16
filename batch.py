@@ -78,14 +78,14 @@ class CLI(BaseCLI):
 
 
     class DetailArgs(CommonArgs):
-        pass
+        source: str = 'images'
 
     def run_detail(self, a):
         diags = ['L', 'M', 'G', 'A', 'O']
         data_images = []
         cases = {}
         for diag in diags:
-            paths = sorted(glob(f'datasets/LMGAO/images/{diag}/*.jpg'))
+            paths = sorted(glob(f'datasets/LMGAO/{a.source}/{diag}/*.jpg'))
             for path in paths:
                 name = os.path.splitext(os.path.basename(path))[0]
                 name, order = name.rsplit('_', 1)
@@ -119,10 +119,26 @@ class CLI(BaseCLI):
 
         df_cases = pd.DataFrame(data_cases)
         df_images = pd.DataFrame(data_images)
-        with pd.ExcelWriter('out/detail.xlsx', engine='xlsxwriter') as writer:
+        with pd.ExcelWriter(f'out/detail_{a.source}.xlsx', engine='xlsxwriter') as writer:
             df_cases.to_excel(writer, sheet_name='cases')
             df_images.to_excel(writer, sheet_name='images')
 
+
+    class AverageSizeArgs(CommonArgs):
+        source: str = 'images'
+
+    def run_average_size(self, a):
+        diags = ['L', 'M', 'G', 'A', 'O']
+        data_images = []
+        cases = {}
+        for diag in diags:
+            paths = sorted(glob(f'datasets/LMGAO/{a.source}/{diag}/*.jpg'))
+            Ss = []
+            for path in paths:
+                width, height = imagesize.get(path)
+                Ss.append(width*height)
+            mean = np.mean(Ss) if len(Ss) > 0 else 0
+            print(f'{diag}, {mean:.0f}')
 
 
 if __name__ == '__main__':

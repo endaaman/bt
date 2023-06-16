@@ -92,7 +92,7 @@ def aug_test(crop_size, input_size):
 class BaseBrainTumorDataset(Dataset):
     def __init__(self,
                  # data spec
-                 target='train', src_dir='datasets/LMGAO/images', code='LMGAO',
+                 target='train', source_dir='datasets/LMGAO/images', code='LMGAO',
                  # train-test spec
                  test_ratio=0.25, seed=None,
                  # image spec
@@ -102,7 +102,7 @@ class BaseBrainTumorDataset(Dataset):
         self.target = target
         self.code = [*code]
         self.unique_code = [c for c in dict.fromkeys(self.code) if c in 'LMGAO']
-        self.src_dir = src_dir
+        self.source_dir = source_dir
         self.test_ratio = test_ratio
         self.seed = seed or get_global_seed()
         self.crop_size = crop_size
@@ -139,7 +139,7 @@ class BaseBrainTumorDataset(Dataset):
         dropped_count = 0
         total = 0
         for original_diag in NUM_TO_DIAG:
-            for path in glob(os.path.join(self.src_dir, original_diag, '*.jpg')):
+            for path in glob(os.path.join(self.source_dir, original_diag, '*.jpg')):
                 total += 1
                 original_diag_num = DIAG_TO_NUM[original_diag]
                 new_diag = self.code[original_diag_num]
@@ -259,7 +259,7 @@ class BatchedBrainTumorDataset(BaseBrainTumorDataset):
 
 class CLI(BaseCLI):
     class CommonArgs(BaseCLI.CommonArgs):
-        src_dir: str = 'datasets/LMGAO/images'
+        source_dir: str = 'datasets/LMGAO/images'
         code: str = 'LMGAO'
         target: str = Field('all', cli=('--target', '-t'), choices=['all', 'train', 'test'])
         aug: str = Field('same', cli=('--aug', '-a'), choices=['same', 'train', 'test'])
@@ -271,7 +271,7 @@ class CLI(BaseCLI):
         if a.batch_size > 0:
             self.ds = BatchedBrainTumorDataset(
                 target=a.target,
-                src_dir=a.src_dir,
+                source_dir=a.source_dir,
                 code=a.code,
                 aug_mode=a.aug,
                 crop_size=a.crop_size,
@@ -282,7 +282,7 @@ class CLI(BaseCLI):
         else:
             self.ds = BrainTumorDataset(
                 target=a.target,
-                src_dir=a.src_dir,
+                source_dir=a.source_dir,
                 code=a.code,
                 aug_mode=a.aug,
                 crop_size=a.crop_size,
@@ -359,7 +359,7 @@ if __name__ == '__main__':
 
     ds = BrainTumorDataset(
         target='all',
-        src_dir='datasets/LMGAO/images',
+        source_dir='datasets/LMGAO/images',
         code='LMGAO',
         aug_mode='same',
         crop_size=512,
