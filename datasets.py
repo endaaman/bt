@@ -42,8 +42,8 @@ NUM_TO_DIAG = list(DIAG_TO_NUM.keys())
 # STD = [0.1203, 0.1435, 0.0829]
 # MEAN = np.array([216, 172, 212]) / 255
 # STD = np.array([34, 61, 30]) / 255
-MEAN = [0.807, 0.611, 0.832]
-STD = [0.123, 0.147, 0.087]
+MEAN = 0.7
+STD = 0.1
 
 
 class Item(NamedTuple):

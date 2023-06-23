@@ -16,8 +16,7 @@ class TimmModel(nn.Module):
         self.num_classes = num_classes
         self.base = timm.create_model(name, pretrained=pretrained, num_classes=num_classes)
 
-    def get_cam_layer(self):
-        return self.base.conv_head
+
 
     def forward(self, x, activate=False):
         x = self.base(x)
