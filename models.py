@@ -7,7 +7,7 @@ import timm
 from torch import nn
 from torch.nn import functional as F
 from torchvision import transforms, models
-from endaaman.ml import BaseCLI
+from endaaman.ml import BaseMLCLI
 
 
 class TimmModel(nn.Module):
@@ -159,8 +159,8 @@ class NestedCrossEntropyLoss(nn.Module):
         return loss
 
 
-class CLI(BaseCLI):
-    class CommonArgs(BaseCLI.CommonArgs):
+class CLI(BaseMLCLI):
+    class CommonArgs(BaseMLCLI.CommonArgs):
         pass
 
     def run_loss(self, a:CommonArgs):

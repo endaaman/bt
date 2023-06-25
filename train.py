@@ -22,8 +22,8 @@ from timm.scheduler.cosine_lr import CosineLRScheduler
 
 from endaaman import load_images_from_dir_or_file
 from endaaman.ml import BaseDLArgs, BaseMLCLI, BaseTrainer, BaseTrainerConfig, pil_to_tensor
-from endaaman.metrics import MultiAccuracy, AccuracyByChannel, BaseMetrics
-from endaaman.functional import multi_accuracy
+from endaaman.ml.metrics import MultiAccuracy, AccuracyByChannel, BaseMetrics
+from endaaman.ml.functional import multi_accuracy
 
 from models import TimmModel, AttentionModel, CrossEntropyLoss, NestedCrossEntropyLoss
 from datasets import BrainTumorDataset, BatchedBrainTumorDataset, NUM_TO_DIAG, MEAN, STD
@@ -116,7 +116,7 @@ class CLI(BaseMLCLI):
 
     class StartArgs(CommonArgs):
         lr: float = 0.0002
-        batch_size: int = 16
+        batch_size: int = Field(16, cli=('--batch-size', '-B', ))
         use_mil: bool = Field(False, cli=('--mil', ))
         num_workers: int = 4
         epoch: int = 10

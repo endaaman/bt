@@ -28,7 +28,7 @@ from albumentations.core.transforms_interface import ImageOnlyTransform
 from albumentations.augmentations.crops.functional import center_crop
 
 from endaaman import grid_split, select_side
-from endaaman.ml import BaseCLI, pil_to_tensor, tensor_to_pil, get_global_seed
+from endaaman.ml import BaseMLCLI, pil_to_tensor, tensor_to_pil, get_global_seed
 
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 Image.MAX_IMAGE_PIXELS = 1_000_000_000
@@ -257,8 +257,8 @@ class BatchedBrainTumorDataset(BaseBrainTumorDataset):
         return xx, yy[0]
 
 
-class CLI(BaseCLI):
-    class CommonArgs(BaseCLI.CommonArgs):
+class CLI(BaseMLCLI):
+    class CommonArgs(BaseMLCLI.CommonArgs):
         source_dir: str = 'datasets/LMGAO/images'
         code: str = 'LMGAO'
         target: str = Field('all', cli=('--target', '-t'), choices=['all', 'train', 'test'])
