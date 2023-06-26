@@ -13,6 +13,7 @@ from endaaman.ml import BaseMLCLI
 class TimmModel(nn.Module):
     def __init__(self, name, num_classes, pretrained=True):
         super().__init__()
+        self.name = name
         self.num_classes = num_classes
         self.base = timm.create_model(name, pretrained=pretrained, num_classes=num_classes)
 

@@ -19,6 +19,7 @@ import pandas as pd
 from PIL import Image, ImageDraw, ImageFont
 from pydantic import Field
 from timm.scheduler.cosine_lr import CosineLRScheduler
+import pytorch_grad_cam as CAM
 
 from endaaman import load_images_from_dir_or_file
 from endaaman.ml import BaseDLArgs, BaseMLCLI, BaseTrainer, BaseTrainerConfig, pil_to_tensor
@@ -192,7 +193,7 @@ class CLI(BaseMLCLI):
 
     class PredArgs(CommonArgs):
         src: str
-        model_dir: str = Field(..., cli=('--model-dir', '-M'))
+        model_dir: str = Field(..., cli=('--model-dir', '-m'))
 
     def run_pred(selfl, a):
         with open(J(a.model_dir, 'config.json')) as f:
@@ -208,11 +209,26 @@ class CLI(BaseMLCLI):
             transforms.Normalize(mean=MEAN, std=STD),
         ])
 
+        gradcam = CAM.GradCAM(
+            model=model,
+            target_layers=[model.base.layer4[-1].act3],
+            use_cuda=False)
+
         for i, p in zip(ii, pp):
             # t = pil_to_tensor(i)[None, ...]
-            t = transform(i)[None, ...]
-            pred = model(t, activate=True)
-            print(p, NUM_TO_DIAG[torch.argmax(pred.flatten())])
+            batch = transform(i)[None, ...]
+            pred = model(batch, activate=True)
+            pred_id = torch.argmax(pred.flatten())
+            print(p, NUM_TO_DIAG[pred_id])
+
+            mask = gradcam(input_tensor=batch, targets=[ClassifierOutputTarget(pred_id)])[0]
+            visualization = show_cam_on_image(np.array(i)/255, mask, use_rgb=True)
+            plt.imshow(visualization)
+            f = os.path.splitext(os.path.basename(p))[0]
+            plt.savefig(with_wrote(J(a.model_dir, f'{f}.jpg')))
+            plt.show()
+
+
 
 
 
