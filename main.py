@@ -114,7 +114,7 @@ class CLI(BaseMLCLI):
     class CommonArgs(BaseDLArgs):
         pass
 
-    class StartArgs(CommonArgs):
+    class TrainArgs(CommonArgs):
         lr: float = 0.0002
         batch_size: int = Field(16, cli=('--batch-size', '-B', ))
         use_mil: bool = Field(False, cli=('--mil', ))
@@ -131,7 +131,7 @@ class CLI(BaseMLCLI):
         experiment_name:str = Field('Default', cli=('--exp', ))
         overwrite: bool = Field(False, cli=('--overwrite', '-o'))
 
-    def run_start(self, a:StartArgs):
+    def run_train(self, a:TrainArgs):
         config = TrainerConfig(
             batch_size=1 if a.use_mil else a.batch_size,
             num_workers=a.num_workers,
@@ -198,7 +198,7 @@ class CLI(BaseMLCLI):
         with open(J(a.model_dir, 'config.json')) as f:
             config = TrainerConfig(**json.load(f))
         model = TimmModel(name=config.model_name, num_classes=5)
-        checkpoint = torch.load(J(a.model_dir, 'checkpoint_last.pt'))
+        checkpoint = torch.load(J(a.model_dir, 'checkpoint_best.pt'))
         model.load_state_dict(checkpoint.model_state)
 
         ii, pp = load_images_from_dir_or_file(a.src, with_path=True)
