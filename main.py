@@ -10,6 +10,7 @@ import torch
 from torch import nn
 from torch import optim
 from torchvision import transforms
+from matplotlib import pyplot as plt
 import seaborn as sns
 # import torch_optimizer as optim2
 from torchvision.utils import make_grid
@@ -20,8 +21,10 @@ from PIL import Image, ImageDraw, ImageFont
 from pydantic import Field
 from timm.scheduler.cosine_lr import CosineLRScheduler
 import pytorch_grad_cam as CAM
+from pytorch_grad_cam.utils.image import show_cam_on_image
+from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
 
-from endaaman import load_images_from_dir_or_file
+from endaaman import load_images_from_dir_or_file, with_wrote, grid_split
 from endaaman.ml import BaseDLArgs, BaseMLCLI, BaseTrainer, BaseTrainerConfig, pil_to_tensor
 from endaaman.ml.metrics import MultiAccuracy, AccuracyByChannel, BaseMetrics
 from endaaman.ml.functional import multi_accuracy
@@ -191,11 +194,12 @@ class CLI(BaseMLCLI):
 
         trainer.start(a.epoch)
 
-    class PredArgs(CommonArgs):
+    class SingleArgs(CommonArgs):
         src: str
+        gt: str
         model_dir: str = Field(..., cli=('--model-dir', '-m'))
 
-    def run_pred(selfl, a):
+    def run_single(selfl, a):
         with open(J(a.model_dir, 'config.json')) as f:
             config = TrainerConfig(**json.load(f))
         model = TimmModel(name=config.model_name, num_classes=5)
@@ -217,17 +221,89 @@ class CLI(BaseMLCLI):
         for i, p in zip(ii, pp):
             # t = pil_to_tensor(i)[None, ...]
             batch = transform(i)[None, ...]
-            pred = model(batch, activate=True)
-            pred_id = torch.argmax(pred.flatten())
-            print(p, NUM_TO_DIAG[pred_id])
+            pred = model(batch, activate=True).flatten()
+            pred_id = torch.argmax(pred)
+            diag = NUM_TO_DIAG[pred_id]
+            pred_str = ' '.join([f'{NUM_TO_DIAG[i]}:{p:.2f}' for i, p in enumerate(pred)])
 
             mask = gradcam(input_tensor=batch, targets=[ClassifierOutputTarget(pred_id)])[0]
             visualization = show_cam_on_image(np.array(i)/255, mask, use_rgb=True)
-            plt.imshow(visualization)
-            f = os.path.splitext(os.path.basename(p))[0]
-            plt.savefig(with_wrote(J(a.model_dir, f'{f}.jpg')))
-            plt.show()
 
+            fig = plt.figure(figsize=(16, 7))
+            fig.add_subplot(1, 2, 1)
+            plt.imshow(i)
+            fig.add_subplot(1, 2, 2)
+            plt.imshow(visualization)
+
+            plt.suptitle(f'GT:{a.gt} pred:{diag} / ' + pred_str)
+
+            name = os.path.splitext(os.path.basename(p))[0]
+            print(name, diag, pred_str)
+
+            d = os.path.join(a.model_dir, 'predict')
+            os.makedirs(d, exist_ok=True)
+            plt.savefig(with_wrote(J(d, f'{name}.jpg')))
+            # plt.show()
+            plt.close()
+
+
+
+    class GridArgs(CommonArgs):
+        src: str
+        gt: str
+        model_dir: str = Field(..., cli=('--model-dir', '-m'))
+
+    def run_grid(selfl, a):
+        with open(J(a.model_dir, 'config.json')) as f:
+            config = TrainerConfig(**json.load(f))
+        model = TimmModel(name=config.model_name, num_classes=5)
+        checkpoint = torch.load(J(a.model_dir, 'checkpoint_best.pt'))
+        model.load_state_dict(checkpoint.model_state)
+
+        ii, pp = load_images_from_dir_or_file(a.src, with_path=True)
+
+        transform = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize(mean=MEAN, std=STD),
+        ])
+
+        gradcam = CAM.GradCAM(
+            model=model,
+            target_layers=[model.base.layer4[-1].act3],
+            use_cuda=False)
+
+        for image, p in zip(ii, pp):
+            # t = pil_to_tensor(i)[None, ...]
+            tiles = grid_split(image, 512, overwrap=False, flattern=True)
+
+            tiles = tiles[:12]
+            fig = plt.figure(figsize=(16, 7*len(tiles)))
+            for i, tile in enumerate(tiles):
+                batch = transform(tile)[None, ...]
+                pred = model(batch, activate=True).flatten()
+                pred_id = torch.argmax(pred)
+                diag = NUM_TO_DIAG[pred_id]
+                pred_str = ' '.join([f'{NUM_TO_DIAG[i]}:{p:.2f}' for i, p in enumerate(pred)])
+
+                mask = gradcam(input_tensor=batch, targets=[ClassifierOutputTarget(pred_id)])[0]
+                vis = show_cam_on_image(np.array(tile)/255, mask, use_rgb=True)
+                print(vis.shape)
+
+                fig.add_subplot(len(tiles), 2, i*2+1)
+                plt.title(f'GT:{a.gt} pred:{diag}')
+                plt.imshow(tile)
+                fig.add_subplot(len(tiles), 2, i*2+2)
+                plt.imshow(vis)
+                plt.title(pred_str)
+
+            name = os.path.splitext(os.path.basename(p))[0]
+            print(name, diag, pred_str)
+
+            d = os.path.join(a.model_dir, 'predict')
+            os.makedirs(d, exist_ok=True)
+            plt.savefig(with_wrote(J(d, f'{name}.jpg')))
+            # plt.show()
+            plt.close()
 
 
 

@@ -1,3 +1,4 @@
+import json
 import os
 import re
 from glob import glob
@@ -17,19 +18,22 @@ from PIL import Image, ImageDraw, ImageFont
 from sklearn import metrics
 from matplotlib import pyplot as plt
 import seaborn as sns
-from gradcam import GradCAMpp
+from pydantic import Field
 from pytorch_grad_cam import GradCAM, GradCAMPlusPlus, ScoreCAM, AblationCAM, EigenCAM, EigenGradCAM
 from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
 
-from endaaman import get_images_from_dir_or_file, with_wrote
-from endaaman.torch import TorchCommander, Predictor, pil_to_tensor, tensor_to_pil
-from endaaman.metrics import MultiAccuracy
+from endaaman import load_images_from_dir_or_file, with_wrote
+from endaaman.ml import BaseMLCLI, pil_to_tensor, tensor_to_pil
+from endaaman.ml.metrics import MultiAccuracy
 
-from models import ModelId, create_model
 from datasets import BrainTumorDataset, MEAN, STD, NUM_TO_DIAG, DIAG_TO_NUM
 from utils import grid_split, concat_grid_images_float, overlay_heatmap
+from models import TimmModel
+
+from main import TrainerConfig
 
 
+J = os.path.join
 USE_NEW_CAM = True
 
 CAMs = {
@@ -38,22 +42,22 @@ CAMs = {
     'eigengradcam': EigenGradCAM,
 }
 
-def build_label_text(pred, gt=None):
+def build_label_text(pred, gt_id=None):
     text = ''
     pred_num = np.argmax(pred)
-    text += f'Pred: {NUM_TO_DIAG[pred_num]}\n'
+    text += f'Pred:{NUM_TO_DIAG[pred_num]}\n'
 
-    if gt is not None:
-        text += f'GT: {NUM_TO_DIAG[gt]}\n'
+    if gt_id is not None:
+        text += f'GT:{NUM_TO_DIAG[gt_id]}\n'
 
     for i, v in enumerate(pred):
         text += f'{NUM_TO_DIAG[i]}:{v:.2f} '
-    return text, ((gt is None) or pred_num == gt)
+    return text, ((gt_id is None) or pred_num == gt_id)
 
-def draw_pred_gt(image, font, pred, gt=None):
+def draw_pred_gt(image, font, pred, gt_id=None):
     org_mode = image.mode
     image = image.convert('RGBA')
-    text, correct = build_label_text(pred, gt)
+    text, correct = build_label_text(pred, gt_id)
     draw = ImageDraw.Draw(image)
     text_args = dict(
         xy=(0, 0),
@@ -71,87 +75,96 @@ def draw_pred_gt(image, font, pred, gt=None):
     draw.text(**text_args, fill='white')
     return image.convert(org_mode)
 
-class CAM(NamedTuple):
+class CAMResult(NamedTuple):
     original: ImageType
     heatmap: ImageType
     masked: ImageType
     pred: list
 
 
-class MyPredictor(Predictor):
-    def prepare(self, **kwargs):
-        self.font = ImageFont.truetype('/usr/share/fonts/ubuntu/Ubuntu-R.ttf', 48)
+class CLI(BaseMLCLI):
+    class CommonArgs(BaseMLCLI.CommonArgs):
+        model_dir: str = Field(..., cli=('--model-dir', '-m'))
+        cpu: bool = Field(False, cli=('--cpu', ))
+
+    def pre_common(self, a):
+        self.font = ImageFont.truetype('/usr/share/fonts/ubuntu/Ubuntu-R.ttf', 24)
+        self.device = 'cuda' if torch.cuda.is_available() and not a.cpu else 'cpu'
+
+        self.config = TrainerConfig.from_file(J(a.model_dir, 'config.json'))
+        self.model = TimmModel(name=self.config.model_name, num_classes=5)
+        checkpoint = torch.load(J(a.model_dir, 'checkpoint_best.pt'))
+        self.model.load_state_dict(checkpoint.model_state)
+        self.model.to(self.device)
+
         self.transform_image = transforms.Compose([
             transforms.ToTensor(),
             transforms.Normalize(MEAN, STD),
         ])
 
-    def create_model(self):
-        model_id = ModelId.from_str(self.checkpoint.model_name)
-        model = create_model(model_id).to(self.device)
-        model.load_state_dict(self.checkpoint.model_state)
-        model.eval()
-        return model
-
-    def eval(self, inputs):
-        return self.model(inputs.to(self.device), activate=True)
-
-    def cam_image_single(self, image, gt=None, cam_type='gradcampp'):
+    def cam_image_single(self, image, gt_id=None, cam_type='gradcampp'):
         t = self.transform_image(image).to(self.device)[None, ...]
         with torch.no_grad():
             pred = self.model(t, activate=True).cpu()[0].tolist()
             pred_idx = np.argmax(pred)
 
-        if USE_NEW_CAM:
-            CamClass = CAMs[cam_type.lower()]
-            gradcam = CamClass(
-                model=self.model,
-                target_layers=[self.model.get_cam_layer()],
-                use_cuda=self.device=='cuda')
-            targets = [ClassifierOutputTarget(pred_idx)]
-            mask = torch.from_numpy(gradcam(input_tensor=t, targets=targets))
-        else:
-            gradcam = GradCAMpp(self.model, self.model.get_cam_layer())
-            mask, _ = gradcam(t)
+        CamClass = CAMs[cam_type.lower()]
+        gradcam = CamClass(
+            model=self.model,
+            # target_layers=[self.model.get_cam_layers()],
+            # TODO: fix
+            target_layers=[self.model.base.layer4[-1].act3],
+            use_cuda=self.device=='cuda')
+        targets = [ClassifierOutputTarget(pred_idx)]
+        mask = torch.from_numpy(gradcam(input_tensor=t, targets=targets))
 
         heatmap, masked = overlay_heatmap(mask, pil_to_tensor(image), alpha=0.5, threshold=0.2)
-        heatmap, masked = [draw_pred_gt((tensor_to_pil(i)), self.font, pred, gt) for i in (heatmap, masked)]
-        return CAM(image, heatmap, masked, pred)
+        heatmap, masked = [draw_pred_gt((tensor_to_pil(i)), self.font, pred, gt_id) for i in (heatmap, masked)]
+        return CAMResult(image, heatmap, masked, pred)
 
-    def cam_image(self, image, gt=None, cam_type='gradcampp', grid_size=-1):
+    def cam_image(self, image, gt_id=None, cam_type='gradcampp', grid_size=-1):
+        image = image.crop((0, 0, min(image.width, 512*6), min(image.height, 512*6)))
         if grid_size < 0:
-            return self.cam_image_single(image, gt)
+            return self.cam_image_single(image, gt_id)
         images = grid_split(image, size=grid_size, overwrap=False, flattern=True)
         col_count = image.width // grid_size
-        cams = [self.cam_image_single(i, gt) for i in images]
-        return CAM(
+        cams = [self.cam_image_single(i, gt_id) for i in images]
+        pred = torch.tensor([c.pred for c in cams]).sum(dim=0).div(len(images)).tolist()
+        return CAMResult(
             image,
             concat_grid_images_float([c.heatmap for c in cams], n_cols=col_count),
             concat_grid_images_float([c.masked for c in cams], n_cols=col_count),
-            torch.tensor([c.pred for c in cams]).sum(dim=0).div(len(images)).tolist(),
+            pred,
         )
 
 
-    def predict_image(self, image, grid_size=-1):
-        if grid_size < 0:
-            return self.predict_images([image], batch_size=1)[0]
-        ii = grid_split(image, size=grid_size, flattern=True)
-        preds = self.predict_images(ii, batch_size=self.batch_size)
-        return torch.stack(preds).sum(dim=0) / len(preds)
+    class CamArgs(CommonArgs):
+        src: str
+        dest: str = 'cam'
+        grid_size:int = Field(-1, cli=('--grid-size', '-g'))
+        gt: str = Field(...)
+
+    def run_cam(self, a:CamArgs):
+        images, paths = load_images_from_dir_or_file(a.src, with_path=True)
+        t = tqdm(zip(images, paths), total=len(images))
+        for image, path in t:
+            cam = self.cam_image(image, grid_size=a.grid_size, gt_id=DIAG_TO_NUM[a.gt])
+            dest = J(a.model_dir, a.dest)
+            os.makedirs(dest, exist_ok=True)
+            name = os.path.splitext(os.path.basename(path))[0]
+            # cam.heatmap.save(os.path.join(dest, f'{name}.jpg'))
+            cam.masked.save(os.path.join(dest, f'{name}.jpg'))
+            t.set_description(f'processed {name}')
+            t.refresh()
+
+    # def predict_image(self, image, grid_size=-1): if grid_size < 0:
+    #         return self.predict_images([image], batch_size=1)[0]
+    #     ii = grid_split(image, size=grid_size, flattern=True)
+    #     preds = self.predict_images(ii, batch_size=self.batch_size)
+    #     return torch.stack(preds).sum(dim=0) / len(preds)
 
 
-class CMD(TorchCommander):
-    def arg_common(self, parser):
-        parser.add_argument('--checkpoint', '-p', required=True)
-
-    def pre_common(self):
-        self.font = ImageFont.truetype('/usr/share/fonts/ubuntu/Ubuntu-R.ttf', 24)
-        self.checkpoint = torch.load(self.args.checkpoint, map_location=lambda storage, loc: storage)
-        self.predictor = self.create_predictor(
-            P=MyPredictor,
-            checkpoint=self.checkpoint,
-        )
-        self.num_classes = self.predictor.model.num_classes
+class CMD:
 
     def arg_dataset(self, parser):
         parser.add_argument('--target', '-t', choices=['test', 'train', 'all'], default='all')
@@ -160,14 +173,14 @@ class CMD(TorchCommander):
         parser.add_argument('--name', '-n', default='report')
 
     def run_dataset(self):
-        dataset = BrainTumorDataset(
-            target=self.args.target,
-            src_dir=self.a.src_dir,
-            class_map=='LMGGG' if self.num_classes == 3 else 'LMGAO',
-            normalize=False,
-            aug_mode='none',
-            grid_size=-1,
-        )
+        # dataset = BrainTumorDataset(
+        #     target=self.args.target,
+        #     src_dir=self.a.src_dir,
+        #     class_map=='LMGGG' if self.num_classes == 3 else 'LMGAO',
+        #     normalize=False,
+        #     aug_mode='none',
+        #     grid_size=-1,
+        # )
 
         oo = []
         gt_nums = []
@@ -214,27 +227,6 @@ class CMD(TorchCommander):
             s = ' '.join([f'{NUM_TO_DIAG[i]}: {v:.3f}' for i, v in enumerate(pred)])
             print(f'{path}: {s}')
 
-    def arg_cam(self, parser):
-        parser.add_argument('--src', '-s', required=True)
-        parser.add_argument('--dest', '-d', default='cam')
-        parser.add_argument('--grid-size', '-g', type=int, default=-1)
-        cam_keys = list(CAMs.keys())
-        parser.add_argument('--cam', '-c', type = lambda s:s.lower(), default=cam_keys[0], choices=cam_keys)
-
-    def run_cam(self):
-        images, paths = get_images_from_dir_or_file(self.args.src, with_path=True)
-        t = tqdm(zip(images, paths), total=len(images))
-        for image, path in t:
-            cam = self.predictor.cam_image(image, cam_type=self.a.cam, grid_size=self.a.grid_size)
-
-            dest = os.path.join('out', self.checkpoint.trainer_name, self.args.dest)
-            os.makedirs(dest, exist_ok=True)
-            name = os.path.splitext(os.path.basename(path))[0]
-            cam.heatmap.save(os.path.join(dest, f'{name}_heatmap.jpg'))
-            cam.masked.save(os.path.join(dest, f'{name}_masked.jpg'))
-            t.set_description(f'processed {name}')
-            t.refresh()
-
     def arg_cam_dataset(self, parser):
         parser.add_argument('--target', '-t', choices=['test', 'train', 'all'], default='all')
         parser.add_argument('--src-dir', '-s', default='data/images')
@@ -267,5 +259,5 @@ class CMD(TorchCommander):
             cam.masked.save(os.path.join(dest, f'{item.name}_masked.jpg'))
 
 if __name__ == '__main__':
-    cmd = CMD()
-    cmd.run()
+    cli = CLI()
+    cli.run()
