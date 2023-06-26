@@ -45,6 +45,8 @@ NUM_TO_DIAG = list(DIAG_TO_NUM.keys())
 MEAN = 0.7
 STD = 0.1
 
+DEFAULT_SIZE = 512
+
 
 class Item(NamedTuple):
     path: str
@@ -96,7 +98,7 @@ class BaseBrainTumorDataset(Dataset):
                  # train-test spec
                  test_ratio=0.25, seed=None,
                  # image spec
-                 crop_size=768, input_size=768, aug_mode='same', normalize=True,
+                 crop_size=DEFAULT_SIZE, input_size=DEFAULT_SIZE, aug_mode='same', normalize=True,
                  ):
         assert re.match('^[LMGAO_]{5}$', code)
         self.target = target
@@ -263,8 +265,8 @@ class CLI(BaseMLCLI):
         code: str = 'LMGAO'
         target: str = Field('all', cli=('--target', '-t'), choices=['all', 'train', 'test'])
         aug: str = Field('same', cli=('--aug', '-a'), choices=['same', 'train', 'test'])
-        crop_size: int = Field(768, cli=('--crop-size', '-c'))
-        input_size: int = Field(768, cli=('--input-size', '-i'))
+        crop_size: int = Field(DEFAULT_SIZE, cli=('--crop-size', '-c'))
+        input_size: int = Field(DEFAULT_SIZE, cli=('--input-size', '-i'))
         batch_size: int = -1
 
     def pre_common(self, a):

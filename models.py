@@ -16,7 +16,12 @@ class TimmModel(nn.Module):
         self.num_classes = num_classes
         self.base = timm.create_model(name, pretrained=pretrained, num_classes=num_classes)
 
-
+    def get_cam_layers(self):
+        if re.match(r'.*efficientnet.*', self.name):
+            return [self.base.conv_head]
+        if re.match(r'^resnetrs.*', self.name):
+            return [self.base.layer4[-1].act3]
+        return []
 
     def forward(self, x, activate=False):
         x = self.base(x)
@@ -29,26 +34,22 @@ class TimmModel(nn.Module):
 
 
 class AttentionModel(nn.Module):
-    def __init__(self, name, num_classes, params_count=10, pretrained=True):
+    def __init__(self, name, num_classes, params_count=128, pretrained=True):
         super().__init__()
         self.num_classes = num_classes
         self.base = timm.create_model(name, pretrained=pretrained, num_classes=num_classes)
         self.num_features = self.base.num_features
         self.params_count = params_count
 
-        self.u = nn.Parameter(torch.randn(params_count, self.num_features))
-        self.v = nn.Parameter(torch.randn(params_count, self.num_features))
-        self.w = nn.Parameter(torch.randn(params_count, 1))
+        self.u = nn.Linear(self.num_features, params_count, bias=False)
+        self.v = nn.Linear(self.num_features, params_count, bias=False)
+        self.w = nn.Linear(params_count, 1, bias=False)
         self.fc = nn.Linear(self.num_features, self.num_classes)
 
-    def get_cam_layer(self):
-        return self.base.conv_head
-
     def compute_attention_scores(self, x):
-        xu = torch.tanh(torch.matmul(self.u, x))
-        xv = torch.sigmoid(torch.matmul(self.v, x))
-        x = xu * xv
-        alpha = torch.matmul(x, self.w)
+        xu = torch.tanh(self.u(x))
+        xv = torch.sigmoid(self.v(x))
+        alpha = self.w(xu * xv)
         return alpha
 
     def compute_attentions(self, features):
@@ -72,7 +73,7 @@ class AttentionModel(nn.Module):
             else:
                 x = torch.sigmoid(x)
         if with_attentions:
-            return x, aa
+            return x, aa.detach()
         return x
 
 
