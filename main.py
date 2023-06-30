@@ -163,8 +163,6 @@ class CLI(BaseMLCLI):
             input_size=a.size if a.size > 0 else a.input_size,
             source=a.source,
             skip=a.skip,
-            mil=False,
-            mil_count=-1,
         )
 
         source_dir = J('datasets/LMGAO', a.source)
@@ -182,7 +180,7 @@ class CLI(BaseMLCLI):
             ) for t in ('train', 'test')
         ]
 
-        out_dir = f'out/{a.experiment_name}/{a.config.code}/{config.model_name}_{a.source}'
+        out_dir = f'out/{a.experiment_name}/{config.code}/{config.model_name}_{a.source}'
         if a.suffix:
             out_dir += f'_{a.suffix}'
 

@@ -37,6 +37,7 @@ class TimmModel(nn.Module):
 class AttentionModel(nn.Module):
     def __init__(self, name, num_classes, activation='softmax', params_count=128, pretrained=True):
         super().__init__()
+        self.name = name
         self.num_classes = num_classes
         self.activation = activation
         self.base = timm.create_model(name, pretrained=pretrained, num_classes=num_classes)
@@ -47,6 +48,14 @@ class AttentionModel(nn.Module):
         self.u = nn.Linear(self.num_features, self.params_count, bias=False)
         self.v = nn.Linear(self.num_features, self.params_count, bias=False)
         self.w = nn.Linear(self.params_count, 1, bias=False)
+
+    def get_cam_layers(self):
+        return [self.base.layer4[-1].act3]
+        # if re.match(r'.*efficientnet.*', self.name):
+        #     return [self.base.conv_head]
+        # if re.match(r'^resnetrs.*', self.name):
+        #     return [self.base.layer4[-1].act3]
+        # return []
 
     def compute_attention_scores(self, x):
         xu = torch.tanh(self.u(x))

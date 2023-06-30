@@ -28,7 +28,7 @@ from endaaman.ml.metrics import MultiAccuracy
 
 from datasets import BrainTumorDataset, MEAN, STD, NUM_TO_DIAG, DIAG_TO_NUM
 from utils import grid_split, concat_grid_images_float, overlay_heatmap
-from models import TimmModel
+from models import TimmModel, AttentionModel
 
 from main import TrainerConfig
 
@@ -45,10 +45,12 @@ CAMs = {
 def build_label_text(pred, gt_id=None):
     text = ''
     pred_num = np.argmax(pred)
-    text += f'Pred:{NUM_TO_DIAG[pred_num]}\n'
+    text += f'Pred:{NUM_TO_DIAG[pred_num]}'
 
     if gt_id is not None:
-        text += f'GT:{NUM_TO_DIAG[gt_id]}\n'
+        text += f' GT:{NUM_TO_DIAG[gt_id]}\n'
+    else:
+        text += '\n'
 
     for i, v in enumerate(pred):
         text += f'{NUM_TO_DIAG[i]}:{v:.2f} '
@@ -75,7 +77,7 @@ def draw_pred_gt(image, font, pred, gt_id=None):
     draw.text(**text_args, fill='white')
     return image.convert(org_mode)
 
-class CAMResult(NamedTuple):
+class Result(NamedTuple):
     original: ImageType
     heatmap: ImageType
     masked: ImageType
@@ -90,9 +92,18 @@ class CLI(BaseMLCLI):
     def pre_common(self, a):
         self.font = ImageFont.truetype('/usr/share/fonts/ubuntu/Ubuntu-R.ttf', 24)
         self.device = 'cuda' if torch.cuda.is_available() and not a.cpu else 'cpu'
-
         self.config = TrainerConfig.from_file(J(a.model_dir, 'config.json'))
-        self.model = TimmModel(name=self.config.model_name, num_classes=5)
+        num_classes = len(set([*self.config.code]) - {'_'})
+        print(self.config)
+        if self.config.mil:
+            self.model = AttentionModel(
+                name=self.config.model_name,
+                num_classes=num_classes,
+                activation=self.config.mil_activation,
+                params_count=self.config.mil_param_count,
+            )
+        else:
+            self.model = TimmModel(name=self.config.model_name, num_classes=num_classes)
         checkpoint = torch.load(J(a.model_dir, 'checkpoint_best.pt'))
         self.model.load_state_dict(checkpoint.model_state)
         self.model.to(self.device)
@@ -105,22 +116,28 @@ class CLI(BaseMLCLI):
     def cam_image_single(self, image, gt_id=None, cam_type='gradcampp'):
         t = self.transform_image(image).to(self.device)[None, ...]
         with torch.no_grad():
-            pred = self.model(t, activate=True).cpu()[0].tolist()
+            if self.config.mil:
+                pred, aa = self.model(t, activate=True, with_attentions=True)
+                pred = pred.cpu().tolist()
+            else:
+                pred = self.model(t, activate=True)
+                pred = pred.cpu()[0].tolist()
             pred_idx = np.argmax(pred)
 
         CamClass = CAMs[cam_type.lower()]
         gradcam = CamClass(
             model=self.model,
-            # target_layers=[self.model.get_cam_layers()],
+            target_layers=self.model.get_cam_layers(),
             # TODO: fix
-            target_layers=[self.model.base.layer4[-1].act3],
+            # target_layers=[self.model.base.layer4[-1].act3],
             use_cuda=self.device=='cuda')
         targets = [ClassifierOutputTarget(pred_idx)]
         mask = torch.from_numpy(gradcam(input_tensor=t, targets=targets))
 
         heatmap, masked = overlay_heatmap(mask, pil_to_tensor(image), alpha=0.5, threshold=0.2)
-        heatmap, masked = [draw_pred_gt((tensor_to_pil(i)), self.font, pred, gt_id) for i in (heatmap, masked)]
-        return CAMResult(image, heatmap, masked, pred)
+        # attention = torch.sigmoid(attention_logit)
+        heatmap, masked = [draw_pred_gt((tensor_to_pil(i)), self.font, pred, gt_id, attention) for i in (heatmap, masked)]
+        return Result(image, heatmap, masked, pred)
 
     def cam_image(self, image, gt_id=None, cam_type='gradcampp', grid_size=-1):
         image = image.crop((0, 0, min(image.width, 512*6), min(image.height, 512*6)))
@@ -128,9 +145,9 @@ class CLI(BaseMLCLI):
             return self.cam_image_single(image, gt_id)
         images = grid_split(image, size=grid_size, overwrap=False, flattern=True)
         col_count = image.width // grid_size
-        cams = [self.cam_image_single(i, gt_id) for i in images]
-        pred = torch.tensor([c.pred for c in cams]).sum(dim=0).div(len(images)).tolist()
-        return CAMResult(
+        results = [self.cam_image_single(i, gt_id) for i in images]
+        pred = torch.tensor([c.pred for c in results]).sum(dim=0).div(len(images)).tolist()
+        return Result(
             image,
             concat_grid_images_float([c.heatmap for c in cams], n_cols=col_count),
             concat_grid_images_float([c.masked for c in cams], n_cols=col_count),
@@ -148,24 +165,39 @@ class CLI(BaseMLCLI):
         images, paths = load_images_from_dir_or_file(a.src, with_path=True)
         t = tqdm(zip(images, paths), total=len(images))
         for image, path in t:
-            cam = self.cam_image(image, grid_size=a.grid_size, gt_id=DIAG_TO_NUM[a.gt])
+            result = self.cam_image(image, grid_size=a.grid_size, gt_id=DIAG_TO_NUM[a.gt])
             dest = J(a.model_dir, a.dest)
             os.makedirs(dest, exist_ok=True)
             name = os.path.splitext(os.path.basename(path))[0]
             # cam.heatmap.save(os.path.join(dest, f'{name}.jpg'))
-            cam.masked.save(os.path.join(dest, f'{name}.jpg'))
+            result.masked.save(os.path.join(dest, f'{name}.jpg'))
             t.set_description(f'processed {name}')
             t.refresh()
 
-    # def predict_image(self, image, grid_size=-1): if grid_size < 0:
-    #         return self.predict_images([image], batch_size=1)[0]
-    #     ii = grid_split(image, size=grid_size, flattern=True)
-    #     preds = self.predict_images(ii, batch_size=self.batch_size)
-    #     return torch.stack(preds).sum(dim=0) / len(preds)
+    class ImageArgs(CommonArgs):
+        src: str
+        grid_size:int = Field(512, cli=('--grid-size', '-g'))
+
+    def run_image(self, a:ImageArgs):
+        ip = load_images_from_dir_or_file(a.src, with_path=True)
+        image, path = ip[0][0], ip[1][0]
+        images = grid_split(image, size=a.grid_size, overwrap=False, flattern=True)
+        for i in images:
+            t = self.transform_image(i)
+            t = t[None, ...].to(self.device)
+            if self.config.mil:
+                p, aa = self.model(t, with_attentions=True, activate=True)
+                p = p.cpu().detach()
+                attention = aa[0].cpu()
+                print(p, attention)
+            else:
+                p = self.model(t, activate=True)
+                p = p[0].cpu().detach()
+                diag = self.config.code[torch.argmax(p)]
+                print(diag, torch.argmax(p), p)
 
 
 class CMD:
-
     def arg_dataset(self, parser):
         parser.add_argument('--target', '-t', choices=['test', 'train', 'all'], default='all')
         parser.add_argument('--src-dir', '-s', default='data/images')
