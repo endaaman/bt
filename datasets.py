@@ -35,7 +35,7 @@ Image.MAX_IMAGE_PIXELS = 1_000_000_000
 
 IMAGE_CACHE = {}
 
-DIAG_TO_NUM = OrderedDict([(c, i) for i, c in enumerate('LMGAO')])
+DIAG_TO_NUM = OrderedDict([(c, i) for i, c in enumerate('LMGAOB')])
 NUM_TO_DIAG = list(DIAG_TO_NUM.keys())
 
 # MEAN = [0.8032, 0.5991, 0.8318]
@@ -98,15 +98,17 @@ class BaseBrainTumorDataset(Dataset):
                  # train-test spec
                  test_ratio=0.25, seed=None,
                  # image spec
-                 crop_size=DEFAULT_SIZE, input_size=DEFAULT_SIZE, aug_mode='same', normalize=True,
+                 grid_size=DEFAULT_SIZE, crop_size=DEFAULT_SIZE, input_size=DEFAULT_SIZE,
+                 aug_mode='same', normalize=True,
                  ):
-        assert re.match('^[LMGAO_]{5}$', code)
+        assert re.match('^[LMGAOB_]{6}$', code)
         self.target = target
         self.code = [*code]
         self.unique_code = [c for c in dict.fromkeys(self.code) if c in 'LMGAO']
         self.source_dir = source_dir
         self.test_ratio = test_ratio
         self.seed = seed or get_global_seed()
+        self.grid_size = grid_size
         self.crop_size = crop_size
         self.input_size = input_size
         self.aug_mode = aug_mode
@@ -205,7 +207,7 @@ class BaseBrainTumorDataset(Dataset):
 class BrainTumorDataset(BaseBrainTumorDataset):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.items = self.split_by_grid(self.crop_size)
+        self.items = self.split_by_grid(self.grid_size)
 
     def __len__(self):
         return len(self.items)
@@ -219,7 +221,7 @@ class BrainTumorDataset(BaseBrainTumorDataset):
 class BatchedBrainTumorDataset(BaseBrainTumorDataset):
     def __init__(self, batch_size=9, **kwargs):
         super().__init__(**kwargs)
-        self.items = self.split_by_grid(self.crop_size)
+        self.items = self.split_by_grid(self.grid_size)
 
         items_by_label = {}
         for item in self.items:

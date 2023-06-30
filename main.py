@@ -57,6 +57,7 @@ class TrainerConfig(BaseTrainerConfig):
     loss_weights: str
     use_mil: bool
     model_name:str
+    grid_size: int
     crop_size: int
     input_size: int
     source: str
@@ -121,29 +122,31 @@ class CLI(BaseMLCLI):
     class TrainArgs(CommonArgs):
         lr: float = 0.0002
         batch_size: int = Field(16, cli=('--batch-size', '-B', ))
-        use_mil: bool = Field(False, cli=('--mil', ))
+        # use_mil: bool = Field(False, cli=('--mil', ))
         num_workers: int = 4
         epoch: int = 10
         model_name: str = Field('tf_efficientnetv2_b0', cli=('--model', '-m'))
         source: str = Field('images', cli=('--source', ))
         suffix: str = ''
+        grid_size: int = Field(512, cli=('--grid-size', '-g'))
         crop_size: int = Field(512, cli=('--crop-size', '-c'))
         input_size: int = Field(512, cli=('--input-size', '-i'))
         size: int = Field(-1, cli=('--size', '-s'))
-        code: str = 'LMGAO'
+        code: str = 'LMGAO_'
         loss_weights: str = '10'
         experiment_name:str = Field('Default', cli=('--exp', ))
         overwrite: bool = Field(False, cli=('--overwrite', '-o'))
 
     def run_train(self, a:TrainArgs):
         config = TrainerConfig(
-            batch_size=1 if a.use_mil else a.batch_size,
+            batch_size=a.batch_size,
             num_workers=a.num_workers,
             lr=a.lr,
             code=a.code,
-            use_mil=a.use_mil,
+            use_mil=False,
             model_name=a.model_name,
             loss_weights=a.loss_weights,
+            grid_size=a.size if a.size > 0 else a.grid_size,
             crop_size=a.size if a.size > 0 else a.crop_size,
             input_size=a.size if a.size > 0 else a.input_size,
             source=a.source,
@@ -151,34 +154,19 @@ class CLI(BaseMLCLI):
 
         source_dir = J('datasets/LMGAO', a.source)
 
-        if a.use_mil:
-            dss = [
-                BatchedBrainTumorDataset(
-                    target=t,
-                    source_dir=source_dir,
-                    code=a.code,
-                    aug_mode='same',
-                    crop_size=config.crop_size,
-                    input_size=config.input_size,
-                    batch_size=a.batch_size,
-                    seed=a.seed,
-                ) for t in ('train', 'test')
-            ]
-        else:
-            dss = [
-                BrainTumorDataset(
-                    target=t,
-                    source_dir=source_dir,
-                    code=a.code,
-                    aug_mode='same',
-                    crop_size=config.crop_size,
-                    input_size=config.input_size,
-                    seed=a.seed,
-                ) for t in ('train', 'test')
-            ]
+        dss = [
+            BrainTumorDataset(
+                target=t,
+                source_dir=source_dir,
+                code=a.code,
+                aug_mode='same',
+                crop_size=config.crop_size,
+                input_size=config.input_size,
+                seed=a.seed,
+            ) for t in ('train', 'test')
+        ]
 
-        subdir = f'{config.code}-MIL' if a.use_mil else config.code
-        out_dir = f'out/{a.experiment_name}/{subdir}/{config.model_name}_{a.source}'
+        out_dir = f'out/{a.experiment_name}/{config.code}/{config.model_name}_{a.source}'
         if a.suffix:
             out_dir += f'_{a.suffix}'
 
@@ -193,6 +181,8 @@ class CLI(BaseMLCLI):
         )
 
         trainer.start(a.epoch)
+
+
 
     class SingleArgs(CommonArgs):
         src: str
