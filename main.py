@@ -55,13 +55,16 @@ class LMGAccuracy(BaseMetrics):
 class TrainerConfig(BaseTrainerConfig):
     code: str
     loss_weights: str
-    use_mil: bool
     model_name:str
     grid_size: int
     crop_size: int
     input_size: int
     source: str
     skip: str
+    mil: bool = False
+    mil_target_count: int = -1
+    mil_activation: str = -1
+    mil_param_count: int = -1
 
 
 class Trainer(BaseTrainer):
@@ -78,17 +81,22 @@ class Trainer(BaseTrainer):
                 }])
         else:
             self.criterion = CrossEntropyLoss(input_logits=True)
-        if self.config.use_mil:
-            return AttentionModel(name=self.config.model_name, num_classes=num_classes, params_count=10)
+        if self.config.mil:
+            return AttentionModel(
+                name=self.config.model_name,
+                num_classes=num_classes,
+                activation=self.config.mil_activation,
+                params_count=self.config.mil_param_count,
+            )
         return TimmModel(name=self.config.model_name, num_classes=num_classes)
 
     def eval(self, inputs, gts):
-        if self.config.use_mil:
+        if self.config.mil:
             inputs = inputs[0]
             gts = gts[0]
         preds = self.model(inputs.to(self.device), activate=False)
         loss = self.criterion(preds, gts.to(self.device))
-        if self.config.use_mil:
+        if self.config.mil:
             preds = preds[None, ...]
         return loss, preds.detach().cpu()
 
@@ -120,10 +128,10 @@ class CLI(BaseMLCLI):
     class CommonArgs(BaseDLArgs):
         pass
 
-    class TrainArgs(CommonArgs):
+
+    class CommonTrainArgs(CommonArgs):
         lr: float = 0.0002
         batch_size: int = Field(16, cli=('--batch-size', '-B', ))
-        # use_mil: bool = Field(False, cli=('--mil', ))
         num_workers: int = 4
         epoch: int = 10
         model_name: str = Field('tf_efficientnetv2_b0', cli=('--model', '-m'))
@@ -139,13 +147,15 @@ class CLI(BaseMLCLI):
         overwrite: bool = Field(False, cli=('--overwrite', '-o'))
         skip:str = ''
 
+    class TrainArgs(CommonTrainArgs):
+        pass
+
     def run_train(self, a:TrainArgs):
         config = TrainerConfig(
             batch_size=a.batch_size,
             num_workers=a.num_workers,
             lr=a.lr,
             code=a.code,
-            use_mil=False,
             model_name=a.model_name,
             loss_weights=a.loss_weights,
             grid_size=a.size if a.size > 0 else a.grid_size,
@@ -153,6 +163,8 @@ class CLI(BaseMLCLI):
             input_size=a.size if a.size > 0 else a.input_size,
             source=a.source,
             skip=a.skip,
+            mil=False,
+            mil_count=-1,
         )
 
         source_dir = J('datasets/LMGAO', a.source)
@@ -170,7 +182,65 @@ class CLI(BaseMLCLI):
             ) for t in ('train', 'test')
         ]
 
-        out_dir = f'out/{a.experiment_name}/{config.code}/{config.model_name}_{a.source}'
+        out_dir = f'out/{a.experiment_name}/{a.config.code}/{config.model_name}_{a.source}'
+        if a.suffix:
+            out_dir += f'_{a.suffix}'
+
+        trainer = Trainer(
+            config=config,
+            out_dir=out_dir,
+            train_dataset=dss[0],
+            val_dataset=dss[1],
+            use_gpu=not a.cpu,
+            overwrite=a.overwrite,
+            experiment_name=a.experiment_name,
+        )
+
+        trainer.start(a.epoch)
+
+
+    class MilArgs(CommonTrainArgs):
+        target_count: int = Field(8, cli=('--target-count', ))
+        activation: str = 'softmax'
+        params_count: int = 128
+
+    def run_mil(self, a:MilArgs):
+        config = TrainerConfig(
+            batch_size=1,
+            num_workers=a.num_workers,
+            lr=a.lr,
+            code=a.code,
+            model_name=a.model_name,
+            loss_weights=a.loss_weights,
+            grid_size=a.size if a.size > 0 else a.grid_size,
+            crop_size=a.size if a.size > 0 else a.crop_size,
+            input_size=a.size if a.size > 0 else a.input_size,
+            source=a.source,
+            skip=a.skip,
+            mil=True,
+            mil_target_count=a.target_count,
+            mil_activation=a.activation,
+            mil_param_count=a.params_count,
+        )
+
+        source_dir = J('datasets/LMGAO', a.source)
+
+        dss = [
+            BatchedBrainTumorDataset(
+                target=t,
+                source_dir=source_dir,
+                code=a.code,
+                aug_mode='same',
+                crop_size=config.crop_size,
+                input_size=config.input_size,
+                seed=a.seed,
+                skip=a.skip,
+                batch_size=a.batch_size,
+                target_count=a.target_count,
+            ) for t in ('train', 'test')
+        ]
+
+        out_dir = f'out/{a.experiment_name}/{a.code}_MIL{a.target_count}/{config.model_name}_{a.source}'
         if a.suffix:
             out_dir += f'_{a.suffix}'
 

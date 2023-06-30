@@ -35,17 +35,18 @@ class TimmModel(nn.Module):
 
 
 class AttentionModel(nn.Module):
-    def __init__(self, name, num_classes, params_count=128, pretrained=True):
+    def __init__(self, name, num_classes, activation='softmax', params_count=128, pretrained=True):
         super().__init__()
         self.num_classes = num_classes
+        self.activation = activation
         self.base = timm.create_model(name, pretrained=pretrained, num_classes=num_classes)
         self.num_features = self.base.num_features
         self.params_count = params_count
+        self.classifier = nn.Linear(self.num_features, self.num_classes)
 
-        self.u = nn.Linear(self.num_features, params_count, bias=False)
-        self.v = nn.Linear(self.num_features, params_count, bias=False)
-        self.w = nn.Linear(params_count, 1, bias=False)
-        self.fc = nn.Linear(self.num_features, self.num_classes)
+        self.u = nn.Linear(self.num_features, self.params_count, bias=False)
+        self.v = nn.Linear(self.num_features, self.params_count, bias=False)
+        self.w = nn.Linear(self.params_count, 1, bias=False)
 
     def compute_attention_scores(self, x):
         xu = torch.tanh(self.u(x))
@@ -58,24 +59,31 @@ class AttentionModel(nn.Module):
         for feature in features:
             aa.append(self.compute_attention_scores(feature))
         aa = torch.stack(aa).flatten()
-        aa = torch.softmax(aa, dim=0)
+        if self.activation == 'softmax':
+            aa = torch.softmax(aa, dim=-1)
+        elif self.activation == 'sigmoid':
+            aa = torch.sigmoid(aa)
+        else:
+            raise RuntimeError('Invalid activation:', self.activation)
         return aa
 
     def forward(self, x, activate=False, with_attentions=False):
         x = self.base.forward_features(x)
         x = self.base.forward_head(x, pre_logits=True)
+        x = torch.flatten(x, 1)
+
         aa = self.compute_attentions(x)
-        x = x * aa[:, None]
-        x = x.sum(dim=0)
-        x = self.fc(x)
+        feature = (x * aa[:, None]).sum(dim=0)
+        y = self.classifier(feature)
+
         if activate:
             if self.num_classes > 1:
-                x = torch.softmax(x, dim=1)
+                y = torch.softmax(y, dim=-1)
             else:
-                x = torch.sigmoid(x)
+                y = torch.sigmoid(y)
         if with_attentions:
-            return x, aa.detach()
-        return x
+            return y, aa.detach()
+        return y
 
 
 

@@ -247,7 +247,7 @@ class BatchedBrainTumorDataset(BaseBrainTumorDataset):
                 self.batched_labels.append('B')
 
             l = len(target_items)
-            idxs = np.array_split(np.random.permutation(np.arrange(l)), l//self.target_count)
+            idxs = np.array_split(np.random.permutation(np.arange(l)), l//self.target_count)
 
             for idx in idxs:
                 target_ii = [target_items[i] for i in idx]
