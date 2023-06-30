@@ -61,6 +61,7 @@ class TrainerConfig(BaseTrainerConfig):
     crop_size: int
     input_size: int
     source: str
+    skip: str
 
 
 class Trainer(BaseTrainer):
@@ -136,6 +137,7 @@ class CLI(BaseMLCLI):
         loss_weights: str = '10'
         experiment_name:str = Field('Default', cli=('--exp', ))
         overwrite: bool = Field(False, cli=('--overwrite', '-o'))
+        skip:str = ''
 
     def run_train(self, a:TrainArgs):
         config = TrainerConfig(
@@ -150,6 +152,7 @@ class CLI(BaseMLCLI):
             crop_size=a.size if a.size > 0 else a.crop_size,
             input_size=a.size if a.size > 0 else a.input_size,
             source=a.source,
+            skip=a.skip,
         )
 
         source_dir = J('datasets/LMGAO', a.source)
@@ -163,6 +166,7 @@ class CLI(BaseMLCLI):
                 crop_size=config.crop_size,
                 input_size=config.input_size,
                 seed=a.seed,
+                skip=a.skip,
             ) for t in ('train', 'test')
         ]
 

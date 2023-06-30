@@ -100,11 +100,12 @@ class BaseBrainTumorDataset(Dataset):
                  # image spec
                  grid_size=DEFAULT_SIZE, crop_size=DEFAULT_SIZE, input_size=DEFAULT_SIZE,
                  aug_mode='same', normalize=True,
+                 skip='',
                  ):
         assert re.match('^[LMGAOB_]{6}$', code)
         self.target = target
         self.code = [*code]
-        self.unique_code = [c for c in dict.fromkeys(self.code) if c in 'LMGAO']
+        self.unique_code = [c for c in dict.fromkeys(self.code) if c in 'LMGAOB']
         self.source_dir = source_dir
         self.test_ratio = test_ratio
         self.seed = seed or get_global_seed()
@@ -113,6 +114,7 @@ class BaseBrainTumorDataset(Dataset):
         self.input_size = input_size
         self.aug_mode = aug_mode
         self.normalize = normalize
+        self.skip = {k:int(v) for k, v in dict(zip(*[iter([*skip])]*2)).items()}
 
         self.aug_mode = aug_mode
         self.normalize = normalize
@@ -182,24 +184,31 @@ class BaseBrainTumorDataset(Dataset):
             else:
                 imgss = grid_split(org_img, grid_size, overwrap=False)
             org_img.close()
+
+            offset = self.skip.get(row.diag, 1)
             del org_img
+            i = 0
             for h, imgs  in enumerate(imgss):
                 for v, img in enumerate(imgs):
-                    items.append(Item(
-                        path=row.path,
-                        diag=row.diag,
-                        image=img,
-                        name=name,
-                        grid_index=f'{h}_{v}',
-                        test=row.test,
-                    ))
+                    if i % offset == 0:
+                        items.append(Item(
+                            path=row.path,
+                            diag=row.diag,
+                            image=img,
+                            name=name,
+                            grid_index=f'{h}_{v}',
+                            test=row.test,
+                        ))
+                    else:
+                        img.close()
+                    i += 1
+            del imgss
         print(f'{self.target} images loaded')
         return items
 
     def as_xy(self, item):
         x = self.albu(image=np.array(item.image))['image']
         y = torch.tensor(self.unique_code.index(item.diag))
-        # y = F.one_hot(torch.tensor(DIAG_TO_NUM[item.diag]))
         return x, y
 
 
@@ -219,46 +228,49 @@ class BrainTumorDataset(BaseBrainTumorDataset):
 
 
 class BatchedBrainTumorDataset(BaseBrainTumorDataset):
-    def __init__(self, batch_size=9, **kwargs):
+    def __init__(self, batch_size=16, target_count=8, **kwargs):
         super().__init__(**kwargs)
+        self.batch_size = batch_size
+        self.target_count = target_count
         self.items = self.split_by_grid(self.grid_size)
 
-        items_by_label = {}
-        for item in self.items:
-            if item.diag in items_by_label:
-                items_by_label[item.diag].append(item)
-            else:
-                items_by_label[item.diag] = [item]
+        bg_items = [i for i in self.items if i.diag == 'B']
 
         self.batched_items = []
+        self.batched_labels = []
+        for c in self.code:
+            target_items = [i for i in self.items if i.diag == c]
+            if c == 'B':
+                bg_idx = np.random.choice(len(bg_items), self.batch_size)
+                bg_ii = [bg_items[i] for i in bg_idx]
+                self.batched_items.append(bg_ii)
+                self.batched_labels.append('B')
 
-        for __k, items in items_by_label.items():
-            ii = np.arange(len(items))
-            random.shuffle(ii)
-            batched_iii = np.array_split(ii, -(len(ii)//-batch_size))
-            for batched_ii in batched_iii:
-                self.batched_items.append([items[i] for i in batched_ii])
+            l = len(target_items)
+            idxs = np.array_split(np.random.permutation(np.arrange(l)), l//self.target_count)
 
-        random.shuffle(self.batched_items)
+            for idx in idxs:
+                target_ii = [target_items[i] for i in idx]
+                bg_count = batch_size - len(idx)
+                bg_idx = np.random.choice(len(bg_items), bg_count)
+                bg_ii = [bg_items[i] for i in bg_idx]
+                ii = target_ii + bg_ii
+                self.batched_items.append(ii)
+                self.batched_labels.append(c)
 
     def __len__(self):
         return len(self.batched_items)
 
     def __getitem__(self, idx):
-        items = self.batched_items[idx % len(self.items)]
+        items = self.batched_items[idx]
+        label = self.batched_labels[idx]
         xx = []
-        yy = []
         for item in items:
             x = self.albu(image=np.array(item.image))['image']
-            y = torch.tensor(self.unique_code.index(item.diag))
             xx.append(x)
-            yy.append(y)
-            # y = F.one_hot(torch.tensor(DIAG_TO_NUM[item.diag]))
         xx = torch.stack(xx)
-        yy = torch.stack(yy)
-
-        assert torch.all(yy == yy[0]), f'Batched labels are not all same: {yy}'
-        return xx, yy[0]
+        y = torch.tensor(self.unique_code.index(item.diag))
+        return xx, y
 
 
 class CLI(BaseMLCLI):

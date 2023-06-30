@@ -9,11 +9,10 @@ import numpy as np
 from tqdm import tqdm
 import imagesize
 
-from endaaman import load_images_from_dir_or_file
+from endaaman import load_images_from_dir_or_file, with_wrote
 from endaaman.cli import BaseCLI
 
 from datasets import grid_split
-from train import TrainerConfig
 
 
 class CLI(BaseCLI):
@@ -78,10 +77,11 @@ class CLI(BaseCLI):
 
 
     class DetailArgs(CommonArgs):
-        source: str = 'images'
+        source:str = 'images'
+        size:int = 512
 
     def run_detail(self, a):
-        diags = ['L', 'M', 'G', 'A', 'O']
+        diags = ['L', 'M', 'G', 'A', 'O', 'B']
         data_images = []
         cases = {}
         for diag in diags:
@@ -90,6 +90,7 @@ class CLI(BaseCLI):
                 name = os.path.splitext(os.path.basename(path))[0]
                 name, order = name.rsplit('_', 1)
                 width, height = imagesize.get(path)
+                patch_count = (width//a.size) * (height//a.size)
                 e = {
                     'name': name,
                     'path': path,
@@ -97,6 +98,7 @@ class CLI(BaseCLI):
                     'diag': diag,
                     'width': width,
                     'height': height,
+                    'patch_count': patch_count,
                 }
                 data_images.append(e)
                 if name in cases:
@@ -107,19 +109,21 @@ class CLI(BaseCLI):
         data_cases = []
         for case_name, ee in cases.items():
             total_area = 0
+            patch_count = 0
             for e in ee:
                 total_area += e['width'] * e['height']
+                patch_count += e['patch_count']
             data_cases.append({
                 'case': case_name,
                 'diag': ee[0]['diag'],
                 'count': len(ee),
                 'total_area': total_area,
+                'patch_count': patch_count,
             })
-            print(total_area)
 
         df_cases = pd.DataFrame(data_cases)
         df_images = pd.DataFrame(data_images)
-        with pd.ExcelWriter(f'out/detail_{a.source}.xlsx', engine='xlsxwriter') as writer:
+        with pd.ExcelWriter(with_wrote(f'out/detail_{a.source}.xlsx'), engine='xlsxwriter') as writer:
             df_cases.to_excel(writer, sheet_name='cases')
             df_images.to_excel(writer, sheet_name='images')
 
@@ -128,7 +132,7 @@ class CLI(BaseCLI):
         source: str = 'images'
 
     def run_average_size(self, a):
-        diags = ['L', 'M', 'G', 'A', 'O']
+        diags = ['L', 'M', 'G', 'A', 'O', 'B']
         data_images = []
         cases = {}
         for diag in diags:
