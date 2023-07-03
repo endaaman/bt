@@ -94,14 +94,16 @@ def aug_test(crop_size, input_size):
 class BaseBrainTumorDataset(Dataset):
     def __init__(self,
                  # data spec
-                 target='train', source_dir='datasets/LMGAO/images', code='LMGAO',
+                 target='train', source_dir='datasets/LMGAO/images', code='LMGAOB',
                  # train-test spec
                  test_ratio=0.25, seed=None,
                  # image spec
+                 size=-1,
                  grid_size=DEFAULT_SIZE, crop_size=DEFAULT_SIZE, input_size=DEFAULT_SIZE,
                  aug_mode='same', normalize=True,
                  skip='',
                  ):
+        print(code)
         assert re.match('^[LMGAOB_]{6}$', code)
         self.target = target
         self.code = [*code]
@@ -109,9 +111,14 @@ class BaseBrainTumorDataset(Dataset):
         self.source_dir = source_dir
         self.test_ratio = test_ratio
         self.seed = seed or get_global_seed()
+        if size > 0:
+            grid_size = size
+            crop_size = size
+            input_size = size
         self.grid_size = grid_size
         self.crop_size = crop_size
         self.input_size = input_size
+
         self.aug_mode = aug_mode
         self.normalize = normalize
         self.skip = {k:int(v) for k, v in dict(zip(*[iter([*skip])]*2)).items()}
@@ -120,8 +127,8 @@ class BaseBrainTumorDataset(Dataset):
         self.normalize = normalize
 
         augs = {}
-        augs['train'] = aug_train(crop_size, input_size)
-        augs['test'] = aug_test(crop_size, input_size)
+        augs['train'] = aug_train(self.crop_size, input_size)
+        augs['test'] = aug_test(self.crop_size, input_size)
         augs['all'] = augs['test']
 
         # select aug
@@ -235,20 +242,31 @@ class BatchedBrainTumorDataset(BaseBrainTumorDataset):
         self.items = self.split_by_grid(self.grid_size)
 
         bg_items = [i for i in self.items if i.diag == 'B']
+        print(len(bg_items))
+        B_idx = self.unique_code.index('B')
 
         self.batched_items = []
         self.batched_labels = []
         for c in self.code:
+            if c == '_':
+                continue
+            label_idx = self.unique_code.index(c)
             target_items = [i for i in self.items if i.diag == c]
             if c == 'B':
-                bg_idx = np.random.choice(len(bg_items), self.batch_size)
-                bg_ii = [bg_items[i] for i in bg_idx]
-                self.batched_items.append(bg_ii)
-                self.batched_labels.append('B')
+                l = int(len(self.items) / len(self.unique_code) / self.batch_size)
+                for _ in range(l):
+                    bg_idx = np.random.choice(len(bg_items), self.batch_size)
+                    bg_ii = [bg_items[i] for i in bg_idx]
+                    self.batched_items.append(bg_ii)
+                    self.batched_labels.append([B_idx]*(self.batch_size+1))
+
+                print('B', l)
+                continue
 
             l = len(target_items)
             idxs = np.array_split(np.random.permutation(np.arange(l)), l//self.target_count)
 
+            print(c, len(idxs), l, l//self.target_count)
             for idx in idxs:
                 target_ii = [target_items[i] for i in idx]
                 bg_count = batch_size - len(idx)
@@ -256,21 +274,23 @@ class BatchedBrainTumorDataset(BaseBrainTumorDataset):
                 bg_ii = [bg_items[i] for i in bg_idx]
                 ii = target_ii + bg_ii
                 self.batched_items.append(ii)
-                self.batched_labels.append(c)
+                self.batched_labels.append([label_idx]*(len(idx)+1) + [B_idx]*bg_count)
+
+        self.batched_labels = torch.tensor(self.batched_labels)
+
 
     def __len__(self):
         return len(self.batched_items)
 
     def __getitem__(self, idx):
         items = self.batched_items[idx]
-        label = self.batched_labels[idx]
+        yy = self.batched_labels[idx]
         xx = []
         for item in items:
             x = self.albu(image=np.array(item.image))['image']
             xx.append(x)
         xx = torch.stack(xx)
-        y = torch.tensor(self.unique_code.index(item.diag))
-        return xx, y
+        return xx, yy
 
 
 class CLI(BaseMLCLI):
@@ -371,13 +391,16 @@ if __name__ == '__main__':
     # cli = CLI()
     # cli.run()
 
-    # ds = BatchedBrainTumorDataset(batch_size=9, code='LMG__')
+    ds = BatchedBrainTumorDataset(
+        size=256,
+        source_dir='data/images_ishida/',
+        target_count=4, batch_size=8, code='LMGAOB')
 
-    ds = BrainTumorDataset(
-        target='all',
-        source_dir='datasets/LMGAO/images',
-        code='LMGAO',
-        aug_mode='same',
-        crop_size=512,
-        input_size=512,
-    )
+    # ds = BrainTumorDataset(
+    #     target='all',
+    #     source_dir='datasets/LMGAO/images',
+    #     code='LMGAO',
+    #     aug_mode='same',
+    #     crop_size=512,
+    #     input_size=512,
+    # )

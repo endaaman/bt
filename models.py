@@ -79,12 +79,14 @@ class AttentionModel(nn.Module):
     def forward(self, x, activate=False, with_attentions=False):
         x = self.base.forward_features(x)
         x = self.base.forward_head(x, pre_logits=True)
-        x = torch.flatten(x, 1)
+        features = torch.flatten(x, 1)
 
-        aa = self.compute_attentions(x)
-        feature = (x * aa[:, None]).sum(dim=0)
+        aa = self.compute_attentions(features)
+        feature = (features * aa[:, None]).sum(dim=0)
         y = self.classifier(feature)
+        yy = self.classifier(features)
 
+        y = torch.cat([y[None], yy])
         if activate:
             if self.num_classes > 1:
                 y = torch.softmax(y, dim=-1)

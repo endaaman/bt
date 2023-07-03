@@ -95,13 +95,18 @@ class Trainer(BaseTrainer):
             inputs = inputs[0]
             gts = gts[0]
         preds = self.model(inputs.to(self.device), activate=False)
-        loss = self.criterion(preds, gts.to(self.device))
+
         if self.config.mil:
-            preds = preds[None, ...]
+            loss_base = self.criterion(preds[1:], gts[1:].to(self.device))
+            loss_attention = self.criterion(preds[:1], gts[:1].to(self.device))
+            loss = loss_base + loss_attention
+        else:
+            loss = self.criterion(preds, gts.to(self.device))
         return loss, preds.detach().cpu()
 
     def _visualize_confusion(self, ax, label, preds, gts):
         preds = torch.argmax(preds, dim=-1)
+        gts = gts.flatten()
         cm = skmetrics.confusion_matrix(gts.numpy(), preds.numpy())
         ticks = [*self.train_dataset.unique_code]
         sns.heatmap(cm, annot=True, ax=ax, fmt='g', xticklabels=ticks, yticklabels=ticks)
@@ -141,7 +146,7 @@ class CLI(BaseMLCLI):
         crop_size: int = Field(512, cli=('--crop-size', '-c'))
         input_size: int = Field(512, cli=('--input-size', '-i'))
         size: int = Field(-1, cli=('--size', '-s'))
-        code: str = 'LMGAO_'
+        code: str = 'LMGAOB'
         loss_weights: str = '10'
         experiment_name:str = Field('Default', cli=('--exp', ))
         overwrite: bool = Field(False, cli=('--overwrite', '-o'))
@@ -199,7 +204,7 @@ class CLI(BaseMLCLI):
 
     class MilArgs(CommonTrainArgs):
         target_count: int = Field(8, cli=('--target-count', ))
-        activation: str = 'softmax'
+        activation: str = 'sigmoid'
         params_count: int = 128
 
     def run_mil(self, a:MilArgs):
