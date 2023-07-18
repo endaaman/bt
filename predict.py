@@ -136,7 +136,7 @@ class CLI(BaseMLCLI):
 
         heatmap, masked = overlay_heatmap(mask, pil_to_tensor(image), alpha=0.5, threshold=0.2)
         # attention = torch.sigmoid(attention_logit)
-        heatmap, masked = [draw_pred_gt((tensor_to_pil(i)), self.font, pred, gt_id, attention) for i in (heatmap, masked)]
+        heatmap, masked = [draw_pred_gt((tensor_to_pil(i)), self.font, pred, gt_id) for i in (heatmap, masked)]
         return Result(image, heatmap, masked, pred)
 
     def cam_image(self, image, gt_id=None, cam_type='gradcampp', grid_size=-1):
@@ -149,8 +149,8 @@ class CLI(BaseMLCLI):
         pred = torch.tensor([c.pred for c in results]).sum(dim=0).div(len(images)).tolist()
         return Result(
             image,
-            concat_grid_images_float([c.heatmap for c in cams], n_cols=col_count),
-            concat_grid_images_float([c.masked for c in cams], n_cols=col_count),
+            concat_grid_images_float([r.heatmap for r in results], n_cols=col_count),
+            concat_grid_images_float([r.masked for r in results], n_cols=col_count),
             pred,
         )
 
