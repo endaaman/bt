@@ -1,4 +1,5 @@
 import os
+import re
 from glob import glob
 import itertools
 
@@ -8,6 +9,7 @@ from PIL import Image, ImageOps, ImageFile
 import numpy as np
 from tqdm import tqdm
 import imagesize
+from sklearn.model_selection import StratifiedKFold
 
 from endaaman import load_images_from_dir_or_file, with_wrote
 from endaaman.cli import BaseCLI
@@ -143,6 +145,37 @@ class CLI(BaseCLI):
                 Ss.append(width*height)
             mean = np.mean(Ss) if len(Ss) > 0 else 0
             print(f'{diag}, {mean:.0f}')
+
+
+    def run_ds(self, a):
+        diags = ['L', 'M', 'G', 'A', 'O', 'B']
+        ee = {}
+        for diag in diags:
+            paths = sorted(glob(f'datasets/LMGAO/images/{diag}/*.jpg'))
+            for path in paths:
+                filename = os.path.basename(path)
+                m = re.match(r'^(.*)_\d*\.jpg$', filename)
+                if not m:
+                    raise RuntimeError('Invalid', path)
+                id = m[1]
+
+                ee[id] = {
+                    'case': m[1],
+                    # 'filename': filename,
+                    'diag': diag,
+                }
+        df = pd.DataFrame(data=ee.values())
+
+        skf = StratifiedKFold(n_splits=6)
+        df['fold'] = -1
+        for i, (train_index, test_index) in enumerate(skf.split(df, df['diag'])):
+            df.loc[test_index, 'fold'] = i
+            print(df.loc[test_index, 'fold'])
+
+        df.to_excel('d.xlsx')
+
+
+
 
 
 if __name__ == '__main__':
