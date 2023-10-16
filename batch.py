@@ -7,8 +7,10 @@ import pandas as pd
 import torch
 from PIL import Image, ImageOps, ImageFile
 import numpy as np
+import cv2
 from tqdm import tqdm
 import imagesize
+from matplotlib import pyplot as plt
 from sklearn.model_selection import StratifiedKFold
 
 from endaaman import load_images_from_dir_or_file, with_wrote
@@ -16,6 +18,8 @@ from endaaman.cli import BaseCLI
 
 from datasets import grid_split
 
+
+J = os.path.join
 
 class CLI(BaseCLI):
     class CommonArgs(BaseCLI.CommonArgs):
@@ -174,7 +178,75 @@ class CLI(BaseCLI):
 
         df.to_excel('d.xlsx')
 
+    class GridSplitArgs(CommonArgs):
+        ds: str = 'images'
+        target: str = 'L'
+        size: int = 512
 
+    def run_grid_split(self, a):
+        ff = sorted(glob(f'datasets/LMGAO/{a.ds}/{a.target}/*.jpg'))
+        basedir = f'tmp/grid/{a.size}_{a.target}'
+        os.makedirs(basedir, exist_ok=True)
+        data = {}
+        for f in tqdm(ff):
+            m = re.match(r'^(.*)_\d\.jpg$', os.path.basename(f))
+            if not m:
+                raise RuntimeError('Invalid name:', f)
+            name = m[1]
+            i = Image.open(f)
+            gg = grid_split(i, a.size, overwrap=False, flattern=True)
+            for i, g in enumerate(gg):
+                if name in data:
+                    data[name] += 1
+                else:
+                    data[name] = 0
+                num = data[name]
+                g.save(J(basedir, f'{name}_{num:04d}.jpg'))
+
+
+    class PurgeWhiteImagesArgs(CommonArgs):
+        num: int = -1
+
+    def run_purge_white_images(self, a):
+        nums = list(range(4000)) if a.num < 0 else [a.num]
+        for num in tqdm(nums):
+            image = np.array(Image.open(f'tmp/grid/L/{num}.jpg'))
+
+            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+            _, thresholded = cv2.threshold(gray, 230, 255, cv2.THRESH_BINARY)
+
+            contours, _ = cv2.findContours(thresholded, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+            # 各白色領域の面積を計算
+            areas = [cv2.contourArea(cnt) for cnt in contours]
+
+            # 面積の閾値を設定（広いと狭いを区別する閾値）
+            large_area_threshold = 1000  # 例: 広いと判断する面積の閾値
+            small_area_threshold = 500   # 例: 狭いと判断する面積の閾値
+
+            # 広い領域と狭い領域を区別
+            large_areas = [cnt for cnt, area in zip(contours, areas) if area >= large_area_threshold]
+            small_areas = [cnt for cnt, area in zip(contours, areas) if area < small_area_threshold]
+
+            ratio = np.max(areas)/gray.shape[0]/gray.shape[1]
+
+            # 広い領域と狭い領域の数を出力
+            # print(f"広い領域の数: {len(large_areas)}")
+            # print(f"狭い領域の数: {len(small_areas)}")
+            # print(f"最大占有率:   {ratio:.3f}")
+
+            # 画像に白色領域を描画して表示（任意）
+            cv2.drawContours(image, large_areas, -1, (0, 0, 255), 2)  # 広い領域を赤で描画
+            cv2.drawContours(image, small_areas, -1, (0, 255, 0), 2)  # 狭い領域を緑で描画
+
+            # fig = plt.figure()
+            # fig.add_subplot(1, 2, 1)
+            # plt.imshow(thresholded)
+
+            # fig.add_subplot(1, 2, 2)
+            # plt.imshow(image)
+            # plt.show()
+            cv2.imwrite(f'tmp/show/L/{num}_{ratio*100:.0f}.jpg', image)
 
 
 
