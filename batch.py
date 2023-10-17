@@ -178,30 +178,33 @@ class CLI(BaseCLI):
 
         df.to_excel('d.xlsx')
 
-    class GridSplitArgs(CommonArgs):
-        ds: str = 'images'
-        target: str = 'L'
+    class BuildDatasetArgs(CommonArgs):
+        source: str = 'enda_images2'
         size: int = 512
 
-    def run_grid_split(self, a):
-        ff = sorted(glob(f'datasets/LMGAO/{a.ds}/{a.target}/*.jpg'))
-        basedir = f'tmp/grid/{a.size}_{a.target}'
-        os.makedirs(basedir, exist_ok=True)
-        data = {}
-        for f in tqdm(ff):
-            m = re.match(r'^(.*)_\d\.jpg$', os.path.basename(f))
-            if not m:
-                raise RuntimeError('Invalid name:', f)
-            name = m[1]
-            i = Image.open(f)
-            gg = grid_split(i, a.size, overwrap=False, flattern=True)
-            for i, g in enumerate(gg):
-                if name in data:
-                    data[name] += 1
-                else:
-                    data[name] = 0
-                num = data[name]
-                g.save(J(basedir, f'{name}_{num:04d}.jpg'))
+    def run_build_dataset(self, a):
+        base_dir = f'cache/{a.source}_{a.size}'
+        for target in 'LMGAOB':
+            paths = sorted(glob(f'datasets/LMGAO/{a.source}/{a.target}/*.jpg'))
+            target_dir = J(base_dir, target)
+            os.makedirs(target_dir, exist_ok=True)
+            data = {}
+            for f in tqdm(ff):
+                m = re.match(r'^(.*)_\d\.jpg$', os.path.basename(f))
+                if not m:
+                    raise RuntimeError('Invalid name:', f)
+                name = m[1]
+                i = Image.open(f)
+                gg = grid_split(i, a.size, overwrap=False, flattern=True)
+                for i, g in enumerate(gg):
+                    if name in data:
+                        data[name] += 1
+                    else:
+                        data[name] = 0
+                    num = data[name]
+                    g.save(J(target_dir, f'{name}_{num:04d}.jpg'))
+
+
 
 
     class PurgeWhiteImagesArgs(CommonArgs):
