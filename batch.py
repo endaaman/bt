@@ -14,15 +14,17 @@ from matplotlib import pyplot as plt
 from sklearn.model_selection import StratifiedKFold
 
 from endaaman import load_images_from_dir_or_file, with_wrote
-from endaaman.cli import BaseCLI
+from endaaman.ml import BaseMLCLI
+from pydantic import Field
 
+from utils import calc_white_area
 from datasets import grid_split
 
 
 J = os.path.join
 
-class CLI(BaseCLI):
-    class CommonArgs(BaseCLI.CommonArgs):
+class CLI(BaseMLCLI):
+    class CommonArgs(BaseMLCLI.CommonArgs):
         pass
 
     class MeanStdArgs(CommonArgs):
@@ -179,41 +181,116 @@ class CLI(BaseCLI):
         df.to_excel('d.xlsx')
 
     class BuildDatasetArgs(CommonArgs):
-        source: str = 'enda_images2'
+        source: str = 'images_enda2'
         size: int = 512
+        gen: bool = Field(False, cli=('--gen', ))
 
     def run_build_dataset(self, a):
-        base_dir = f'cache/{a.source}_{a.size}'
-        for target in 'LMGAOB':
-            paths = sorted(glob(f'datasets/LMGAO/{a.source}/{a.target}/*.jpg'))
-            target_dir = J(base_dir, target)
-            os.makedirs(target_dir, exist_ok=True)
+        dst_dir = f'cache/{a.source}_{a.size}'
+        src_dir = f'data/{a.source}'
+        ee = []
+        for diag in 'LMGAO':
+            print(f'loading {diag}')
+            paths = sorted(glob(J(src_dir, f'{diag}/*.jpg')))
+            diag_dir = J(dst_dir, diag)
+            os.makedirs(diag_dir, exist_ok=True)
             data = {}
-            for f in tqdm(ff):
-                m = re.match(r'^(.*)_\d\.jpg$', os.path.basename(f))
+            for path in tqdm(paths):
+                m = re.match(r'^(.*)_\d\.jpg$', os.path.basename(path))
                 if not m:
-                    raise RuntimeError('Invalid name:', f)
+                    raise RuntimeError('Invalid name:', path)
                 name = m[1]
-                i = Image.open(f)
+                i = Image.open(path)
                 gg = grid_split(i, a.size, overwrap=False, flattern=True)
                 for i, g in enumerate(gg):
                     if name in data:
                         data[name] += 1
                     else:
                         data[name] = 0
-                    num = data[name]
-                    g.save(J(target_dir, f'{name}_{num:04d}.jpg'))
+                    order = data[name]
+                    case_dir = J(diag_dir, name)
+                    os.makedirs(case_dir, exist_ok=True)
+                    filename = f'{order:04d}.jpg'
+                    g.save(J(case_dir, filename))
+                    area = calc_white_area(g)
+                    ee.append({
+                        'name': name,
+                        'diag': diag,
+                        'order': order,
+                        'filename': filename,
+                        'width': g.width,
+                        'height': g.height,
+                        'area': area,
+                    })
+        df_tiles = pd.DataFrame(ee)
+        df.to_excel(with_wrote(J(dst_dir, 'base.xlsx')))
 
+
+    class SplitDatasetArgs(CommonArgs):
+        dir: str = 'cache/images_enda2_768'
+        fold: int = Field(5, cli=('--fold', ))
+
+    def run_split_dataset(self, a):
+        df_tiles = pd.read_excel(J(a.dir, 'base.xlsx'))
+        cases = []
+        for name, d in df_tiles.groupby('name'):
+            diag = d['diag'].iloc[0]
+            if not np.all(d['diag'] == diag):
+                raise RuntimeError('Invalid')
+            cases.append({
+                'name': name,
+                'diag': diag,
+                'count': len(d),
+            })
+
+        df = pd.DataFrame(cases).sort_values(by=['diag', 'count'])
+
+        # df['fold'] = -1
+        # skf = StratifiedKFold(n_splits=a.fold, shuffle=False)
+        # for i, (train_index, test_index) in enumerate(skf.split(df, df['diag'])):
+        #     df.loc[test_index, 'fold'] = i
+        #     print(df.loc[test_index, 'fold'])
+
+        cycle = np.arange(a.fold)
+        l = len(df)
+        ids = np.tile(cycle, (l // len(cycle)))
+        ids = np.concatenate([ids, cycle[:l % len(cycle)]])
+        df['fold'] = ids
+        df.to_excel('tmp/d.xlsx')
+
+        df_merge = pd.merge(df_tiles, df, on='name')
+        df_merge.to_excel(J(a.dir, f'dataset_{a.fold}folds.xlsx'))
+
+        # for diagnosis in 'LMGAO':
+        #     diagnosis_dir = J(dst_dir, diagnosis)
+        #     print(f'loading {diagnosis}')
+        #     for name in tqdm(os.listdir(diagnosis_dir)):
+        #         for path in sorted(glob(J(diagnosis_dir, name, '*.jpg'))):
+        #             # print(p)
+        #             # # ee = pd.DataFrame(data=ee)
+        #             # break
+        #             image = Image.open(path)
+        #             area = calc_white_area(image)
+        #             num = int(os.path.splitext(os.path.basename(path))[0])
+        #             ee.append({
+        #                 'name': name,
+        #                 'diagnosis': diagnosis,
+        #                 'num': num,
+        #                 'path': path,
+        #                 'area': area,
+        #             })
 
 
 
     class PurgeWhiteImagesArgs(CommonArgs):
-        num: int = -1
+        case: str = '19-0222'
 
     def run_purge_white_images(self, a):
-        nums = list(range(4000)) if a.num < 0 else [a.num]
-        for num in tqdm(nums):
-            image = np.array(Image.open(f'tmp/grid/L/{num}.jpg'))
+        pp = glob(f'cache/images_enda2_512/L/{a.case}/*.jpg')
+        dst_dir = f'tmp/show/L/{a.case}'
+        os.makedirs(dst_dir, exist_ok=True)
+        for i, p in enumerate(tqdm(pp)):
+            image = np.array(Image.open(p))
 
             gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
             _, thresholded = cv2.threshold(gray, 230, 255, cv2.THRESH_BINARY)
@@ -249,7 +326,7 @@ class CLI(BaseCLI):
             # fig.add_subplot(1, 2, 2)
             # plt.imshow(image)
             # plt.show()
-            cv2.imwrite(f'tmp/show/L/{num}_{ratio*100:.0f}.jpg', image)
+            cv2.imwrite(J(dst_dir, f'{i:04d}_{ratio*100:.0f}.jpg'), image)
 
 
 

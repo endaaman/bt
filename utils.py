@@ -10,6 +10,30 @@ from endaaman.ml import pil_to_tensor
 from endaaman import grid_split
 
 
+def calc_white_area(image, min=230, max=255):
+    if not isinstance(image, np.ndarray):
+        image = np.array(image)
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    _, thresholded = cv2.threshold(gray, min, max, cv2.THRESH_BINARY)
+
+    contours, _ = cv2.findContours(thresholded, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    # 各白色領域の面積を計算
+    areas = [cv2.contourArea(cnt) for cnt in contours]
+
+    # # 面積の閾値を設定（広いと狭いを区別する閾値）
+    # large_area_threshold = 1000  # 例: 広いと判断する面積の閾値
+    # small_area_threshold = 500   # 例: 狭いと判断する面積の閾値
+    # # 広い領域と狭い領域を区別
+    # large_areas = [cnt for cnt, area in zip(contours, areas) if area >= large_area_threshold]
+    # small_areas = [cnt for cnt, area in zip(contours, areas) if area < small_area_threshold]
+    if len(areas) > 0:
+        ratio = np.max(areas)/gray.shape[0]/gray.shape[1]
+    else:
+        ratio = 0
+    return ratio
+
+
 def overlay_heatmap(mask: torch.Tensor, img: torch.Tensor, alpha=1.0, threshold=0.2, cmap=cv2.COLORMAP_JET):
     """Make heatmap from mask and synthesize GradCAM result image using heatmap and img.
     Args:
