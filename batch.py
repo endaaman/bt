@@ -223,15 +223,16 @@ class CLI(BaseMLCLI):
                         'area': area,
                     })
         df_tiles = pd.DataFrame(ee)
-        df.to_excel(with_wrote(J(dst_dir, 'base.xlsx')))
+        df_tiles.to_excel(with_wrote(J(dst_dir, 'base.xlsx')))
 
 
     class SplitDatasetArgs(CommonArgs):
-        dir: str = 'cache/images_enda2_768'
+        src: str = 'cache/images_enda2_768'
         fold: int = Field(5, cli=('--fold', ))
+        skf: bool = Field(False, cli=('--skf', ))
 
     def run_split_dataset(self, a):
-        df_tiles = pd.read_excel(J(a.dir, 'base.xlsx'))
+        df_tiles = pd.read_excel(J(a.src, 'base.xlsx'))
         cases = []
         for name, d in df_tiles.groupby('name'):
             diag = d['diag'].iloc[0]
@@ -245,47 +246,37 @@ class CLI(BaseMLCLI):
 
         df = pd.DataFrame(cases).sort_values(by=['diag', 'count'])
 
-        # df['fold'] = -1
-        # skf = StratifiedKFold(n_splits=a.fold, shuffle=False)
-        # for i, (train_index, test_index) in enumerate(skf.split(df, df['diag'])):
-        #     df.loc[test_index, 'fold'] = i
-        #     print(df.loc[test_index, 'fold'])
-
-        cycle = np.arange(a.fold)
-        l = len(df)
-        ids = np.tile(cycle, (l // len(cycle)))
-        ids = np.concatenate([ids, cycle[:l % len(cycle)]])
-        df['fold'] = ids
-        df.to_excel('tmp/d.xlsx')
+        if a.skf:
+            df['fold'] = -1
+            skf = StratifiedKFold(n_splits=a.fold, shuffle=False)
+            for i, (train_index, test_index) in enumerate(skf.split(df, df['diag'])):
+                df.loc[test_index, 'fold'] = i
+        else:
+            cycle = np.arange(a.fold)
+            l = len(df)
+            ids = np.tile(cycle, (l // len(cycle)))
+            ids = np.concatenate([ids, cycle[:l % len(cycle)]])
+            df['fold'] = ids
 
         df_merge = pd.merge(df_tiles, df, on='name')
-        df_merge.to_excel(J(a.dir, f'dataset_{a.fold}folds.xlsx'))
 
-        # for diagnosis in 'LMGAO':
-        #     diagnosis_dir = J(dst_dir, diagnosis)
-        #     print(f'loading {diagnosis}')
-        #     for name in tqdm(os.listdir(diagnosis_dir)):
-        #         for path in sorted(glob(J(diagnosis_dir, name, '*.jpg'))):
-        #             # print(p)
-        #             # # ee = pd.DataFrame(data=ee)
-        #             # break
-        #             image = Image.open(path)
-        #             area = calc_white_area(image)
-        #             num = int(os.path.splitext(os.path.basename(path))[0])
-        #             ee.append({
-        #                 'name': name,
-        #                 'diagnosis': diagnosis,
-        #                 'num': num,
-        #                 'path': path,
-        #                 'area': area,
-        #             })
+        # pylint: disable=abstract-class-instantiated
+        with pd.ExcelWriter(J(a.src, f'{a.fold}folds.xlsx')) as w:
+            df.to_excel(w, sheet_name='cases', index=False)
+            df_merge.to_excel(w, sheet_name='tiles', index=False)
+
+        for fold, df0 in df.groupby('fold'):
+            counts = {}
+            counts['all'] = df0['count'].sum()
+            for diag, df1 in df0.groupby('diag'):
+                counts[diag] = df1['count'].sum()
+            print(fold, ' '.join(f'{k}:{v}' for k, v in counts.items()))
 
 
-
-    class PurgeWhiteImagesArgs(CommonArgs):
+    class DetectWhiteAreaArgs(CommonArgs):
         case: str = '19-0222'
 
-    def run_purge_white_images(self, a):
+    def run_detect_white_area(self, a):
         pp = glob(f'cache/images_enda2_512/L/{a.case}/*.jpg')
         dst_dir = f'tmp/show/L/{a.case}'
         os.makedirs(dst_dir, exist_ok=True)
