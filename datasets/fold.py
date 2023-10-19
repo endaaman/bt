@@ -132,10 +132,14 @@ class FoldDataset(Dataset):
         show_fold_diag(self.df)
 
     def inspect(self):
-        fig, axes = plt.subplots(self.total_fold, 1, figsize=(4, 10))
+        fig, axes = plt.subplots(self.total_fold, 2, figsize=(6, 10))
         for fold in range(self.total_fold):
             f = self.df_cases[self.df_cases['fold'] == fold]
-            sns.barplot(x=f['diag'], y=f['count'], ax=axes[fold])
+            sns.histplot(f['diag'], ax=axes[fold, 0])
+
+        for fold in range(self.total_fold):
+            f = self.df_cases[self.df_cases['fold'] == fold]
+            sns.barplot(x=f['diag'], y=f['count'], ax=axes[fold, 1])
         plt.show()
 
     def __len__(self):
