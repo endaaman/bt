@@ -12,13 +12,13 @@ from tqdm import tqdm
 import imagesize
 from matplotlib import pyplot as plt
 from sklearn.model_selection import StratifiedKFold
-
-from endaaman import load_images_from_dir_or_file, with_wrote
-from endaaman.ml import BaseMLCLI
 from pydantic import Field
 
+from endaaman import load_images_from_dir_or_file, with_wrote, grid_split
+from endaaman.ml import BaseMLCLI
+
+from datasets import show_fold_diag
 from utils import calc_white_area
-from datasets import grid_split
 
 
 J = os.path.join
@@ -223,7 +223,7 @@ class CLI(BaseMLCLI):
                         'area': area,
                     })
         df_tiles = pd.DataFrame(ee)
-        df_tiles.to_excel(with_wrote(J(dst_dir, 'base.xlsx')))
+        df_tiles.to_excel(with_wrote(J(dst_dir, 'tiles.xlsx')))
 
 
     class SplitDatasetArgs(CommonArgs):
@@ -232,7 +232,7 @@ class CLI(BaseMLCLI):
         skf: bool = Field(False, cli=('--skf', ))
 
     def run_split_dataset(self, a):
-        df_tiles = pd.read_excel(J(a.src, 'base.xlsx'))
+        df_tiles = pd.read_excel(J(a.src, 'tiles.xlsx'))
         cases = []
         for name, d in df_tiles.groupby('name'):
             diag = d['diag'].iloc[0]
@@ -244,33 +244,29 @@ class CLI(BaseMLCLI):
                 'count': len(d),
             })
 
-        df = pd.DataFrame(cases).sort_values(by=['diag', 'count'])
+        df_cases = pd.DataFrame(cases).sort_values(by=['diag', 'count'])
 
         if a.skf:
-            df['fold'] = -1
+            df_cases['fold'] = -1
             skf = StratifiedKFold(n_splits=a.fold, shuffle=False)
             for i, (train_index, test_index) in enumerate(skf.split(df, df['diag'])):
-                df.loc[test_index, 'fold'] = i
+                df_cases.loc[test_index, 'fold'] = i
         else:
             cycle = np.arange(a.fold)
-            l = len(df)
+            # cycle = np.concatenate([cycle, cycle[::-1]])
+            l = len(df_cases)
             ids = np.tile(cycle, (l // len(cycle)))
             ids = np.concatenate([ids, cycle[:l % len(cycle)]])
-            df['fold'] = ids
-
-        df_merge = pd.merge(df_tiles, df, on='name')
+            df_cases['fold'] = ids
 
         # pylint: disable=abstract-class-instantiated
         with pd.ExcelWriter(J(a.src, f'{a.fold}folds.xlsx')) as w:
-            df.to_excel(w, sheet_name='cases', index=False)
-            df_merge.to_excel(w, sheet_name='tiles', index=False)
+            df_cases.to_excel(w, sheet_name='cases', index=False)
+            # df_merge.to_excel(w, sheet_name='tiles', index=False)
 
-        for fold, df0 in df.groupby('fold'):
-            counts = {}
-            counts['all'] = df0['count'].sum()
-            for diag, df1 in df0.groupby('diag'):
-                counts[diag] = df1['count'].sum()
-            print(fold, ' '.join(f'{k}:{v}' for k, v in counts.items()))
+        df_merge = pd.merge(df_tiles, df_cases.drop(columns='diag'), on='name')
+        show_fold_diag(df_cases)
+        show_fold_diag(df_merge)
 
 
     class DetectWhiteAreaArgs(CommonArgs):
