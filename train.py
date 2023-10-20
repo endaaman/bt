@@ -20,8 +20,13 @@ from pydantic import Field
 # from pytorch_grad_cam.utils.image import show_cam_on_image
 # from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
 
+from endaaman.ml.metrics import MultiAccuracy
 from endaaman.ml import BaseMLCLI, BaseDLArgs, BaseTrainerConfig, BaseTrainer
+
+
+from models import TimmModel, CrossEntropyLoss
 from datasets.fold import FoldDataset
+
 
 
 J = os.path.join
@@ -39,10 +44,13 @@ class TrainerConfig(BaseTrainerConfig):
 
 class Trainer(BaseTrainer):
     def prepare(self):
-        return TimmModel(name=self.config.model_name, num_classes=num_classes)
+        self.criterion = CrossEntropyLoss(input_logits=True)
+        self.fig_col_count = 2
+        return TimmModel(name=self.config.model_name, num_classes=self.config.num_classes)
 
     def eval(self, inputs, gts):
         preds = self.model(inputs.to(self.device), activate=False)
+        loss = self.criterion(preds, gts.to(self.device))
         return loss, preds.detach().cpu()
 
     def _visualize_confusion(self, ax, label, preds, gts):
@@ -61,6 +69,9 @@ class Trainer(BaseTrainer):
     def visualize_val_confusion(self, ax, train_preds, train_gts, val_preds, val_gts):
         self._visualize_confusion(ax, 'val', val_preds, val_gts)
 
+    def create_scheduler(self):
+        return optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, patience=3)
+
     def get_metrics(self):
         return {
             'acc': MultiAccuracy(),
@@ -75,7 +86,7 @@ class CLI(BaseMLCLI):
         batch_size: int = Field(16, cli=('--batch-size', '-B', ))
         num_workers: int = 4
         minimum_area: float = 0.7
-        epoch: int = 50
+        epoch: int = Field(50, cli=('--epoch', '-E'))
         total_fold: int = Field(6, cli=('--total-fold', ))
         fold: int = 0
         model_name: str = Field('tf_efficientnet_b0', cli=('--model', '-m'))
@@ -83,7 +94,7 @@ class CLI(BaseMLCLI):
         suffix: str = ''
         size: int = Field(512, cli=('--size', '-s'))
         code: str = 'LMGAO'
-        experiment_name:str = Field('Default', cli=('--exp', ))
+        experiment_name:str = Field('cached', cli=('--exp', ))
         overwrite: bool = Field(False, cli=('--overwrite', '-o'))
 
     def run_train(self, a:TrainArgs):

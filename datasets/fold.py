@@ -91,7 +91,7 @@ class FoldDataset(Dataset):
         self.normalize = normalize
         self.seed = seed or get_global_seed()
 
-        self.unique_code = [c for c in dict.fromkeys(self.code) if c in 'LMGAOB']
+        self.unique_code = [c for c in dict.fromkeys(self.code) if c in 'LMGAO']
 
         df_tiles = pd.read_excel(J(source_dir, f'tiles.xlsx'), index_col=0)
         df_cases = pd.read_excel(J(source_dir, f'{total_fold}folds.xlsx'), index_col=0)
@@ -127,12 +127,13 @@ class FoldDataset(Dataset):
             self.df = self.df[self.df['white_area'] < minimum_area]
 
 
+        print(f'loaded {target} for fold {fold}')
         if self.target == 'train':
-            self.df = self.df[~self.df['fold'].isin(fold)]
-            self.df_case = self.df_case[~self.df_case['fold'].isin(fold)]
+            self.df = self.df[self.df['fold'] != fold]
+            self.df_cases = self.df_cases[self.df_cases['fold'] != fold]
         elif self.target == 'test':
-            self.df = self.df[self.df['fold'] == fold)]
-            self.df_case = self.df_case[self.df_case['fold'] == fold]
+            self.df = self.df[self.df['fold'] == fold]
+            self.df_cases = self.df_cases[self.df_cases['fold'] == fold]
         elif self.target == 'all':
             pass
         else:
@@ -158,8 +159,12 @@ class FoldDataset(Dataset):
         return len(self.df)
 
     def __getitem__(self, idx):
-        item = self.items[idx % len(self.items)]
-        return self.as_xy(item)
+        row = self.df.iloc[idx]
+        image = Image.open(J(self.source_dir, row['diag'], row['name'], row['filename']))
+
+        x = self.albu(image=np.array(image))['image']
+        y = torch.tensor(self.unique_code.index(row['diag']))
+        return x, y
 
 
 if __name__ == '__main__':
