@@ -30,7 +30,7 @@ from albumentations.augmentations.crops.functional import center_crop
 from endaaman import grid_split, select_side
 from endaaman.ml import BaseMLCLI, pil_to_tensor, tensor_to_pil, get_global_seed
 
-from __init__ import show_fold_diag
+from . import show_fold_diag
 
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 Image.MAX_IMAGE_PIXELS = 1_000_000_000

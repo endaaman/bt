@@ -31,7 +31,6 @@ from endaaman.ml.functional import multi_accuracy
 
 from models import TimmModel, AttentionModel, CrossEntropyLoss, NestedCrossEntropyLoss
 from datasets.holdout import BrainTumorDataset, BatchedBrainTumorDataset, NUM_TO_DIAG, MEAN, STD
-from datasets.fold import FoldDataset
 
 J = os.path.join
 
