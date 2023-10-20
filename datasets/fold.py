@@ -126,6 +126,18 @@ class FoldDataset(Dataset):
         if minimum_area > 0:
             self.df = self.df[self.df['white_area'] < minimum_area]
 
+
+        if self.target == 'train':
+            self.df = self.df[~self.df['fold'].isin(fold)]
+            self.df_case = self.df_case[~self.df_case['fold'].isin(fold)]
+        elif self.target == 'test':
+            self.df = self.df[self.df['fold'] == fold)]
+            self.df_case = self.df_case[self.df_case['fold'] == fold]
+        elif self.target == 'all':
+            pass
+        else:
+            raise RuntimeError('Invalid target:', self.target)
+
         print('Balance: cases')
         show_fold_diag(self.df_cases)
         print('Balance: tiles')
