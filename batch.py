@@ -85,7 +85,7 @@ class CLI(BaseMLCLI):
 
 
     class DetailArgs(CommonArgs):
-        source:str = 'images'
+        source:str = 'enda2'
         size:int = 512
 
     def run_detail(self, a):
@@ -93,7 +93,7 @@ class CLI(BaseMLCLI):
         data_images = []
         cases = {}
         for diag in diags:
-            paths = sorted(glob(f'datasets/LMGAO/{a.source}/{diag}/*.jpg'))
+            paths = sorted(glob(f'datasets/LMGAO/images/{a.source}/{diag}/*.jpg'))
             for path in paths:
                 name = os.path.splitext(os.path.basename(path))[0]
                 name, order = name.rsplit('_', 1)
@@ -181,13 +181,13 @@ class CLI(BaseMLCLI):
         df.to_excel('d.xlsx')
 
     class BuildDatasetArgs(CommonArgs):
-        source: str = 'images_enda2'
+        source: str = 'enda2'
         size: int = 512
         gen: bool = Field(False, cli=('--gen', ))
 
     def run_build_dataset(self, a):
-        dst_dir = f'cache/{a.source}_{a.size}'
-        src_dir = f'data/{a.source}'
+        dst_dir = f'cache/images/{a.source}_{a.size}'
+        src_dir = f'data/images/{a.source}'
         ee = []
         for diag in 'LMGAO':
             print(f'loading {diag}')
@@ -227,7 +227,7 @@ class CLI(BaseMLCLI):
 
 
     class SplitDatasetArgs(CommonArgs):
-        src: str = 'cache/images_enda2_768'
+        src: str = 'cache/images/enda2_768'
         fold: int = Field(5, cli=('--fold', ))
         skf: bool = Field(False, cli=('--skf', ))
 
@@ -260,7 +260,7 @@ class CLI(BaseMLCLI):
             df_cases['fold'] = ids
 
         # pylint: disable=abstract-class-instantiated
-        with pd.ExcelWriter(J(a.src, f'{a.fold}folds.xlsx')) as w:
+        with pd.ExcelWriter(J(a.src, f'folds{a.fold}.xlsx')) as w:
             df_cases.to_excel(w, sheet_name='cases', index=False)
             # df_merge.to_excel(w, sheet_name='tiles', index=False)
 
@@ -273,7 +273,7 @@ class CLI(BaseMLCLI):
         case: str = '19-0222'
 
     def run_detect_white_area(self, a):
-        pp = glob(f'cache/images_enda2_512/L/{a.case}/*.jpg')
+        pp = glob(f'cache/images/enda2_512/L/{a.case}/*.jpg')
         dst_dir = f'tmp/show/L/{a.case}'
         os.makedirs(dst_dir, exist_ok=True)
         for i, p in enumerate(tqdm(pp)):

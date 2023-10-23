@@ -90,7 +90,7 @@ class CLI(BaseMLCLI):
         total_fold: int = Field(6, cli=('--total-fold', ))
         fold: int = 0
         model_name: str = Field('tf_efficientnet_b0', cli=('--model', '-m'))
-        source: str = Field('images_enda2_512', cli=('--source', ))
+        source: str = Field('enda2_512', cli=('--source', ))
         suffix: str = ''
         size: int = Field(512, cli=('--size', '-s'))
         code: str = 'LMGAO'
@@ -113,7 +113,7 @@ class CLI(BaseMLCLI):
             minimum_area = a.minimum_area,
         )
 
-        source_dir = J('cache/', a.source)
+        source_dir = J('cache/images', a.source)
 
         dss = [
             FoldDataset(
@@ -121,7 +121,7 @@ class CLI(BaseMLCLI):
                  fold=a.fold,
                  source_dir=source_dir,
                  target=t,
-                 code='LMGAO',
+                 code=a.code,
                  size=a.size,
                  minimum_area=a.minimum_area,
                  aug_mode='same',
@@ -130,7 +130,7 @@ class CLI(BaseMLCLI):
             ) for t in ('train', 'test')
         ]
 
-        out_dir = f'out/{a.experiment_name}/{config.code}/{config.model_name}_{a.source}'
+        out_dir = f'out/{a.experiment_name}/{config.code}/{config.model_name}_{a.source}_fold{a.fold}'
         if a.suffix:
             out_dir += f'_{a.suffix}'
 

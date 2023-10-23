@@ -30,7 +30,7 @@ from albumentations.augmentations.crops.functional import center_crop
 from endaaman import grid_split, select_side
 from endaaman.ml import BaseMLCLI, pil_to_tensor, tensor_to_pil, get_global_seed
 
-from . import show_fold_diag
+from .utils import show_fold_diag
 
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 Image.MAX_IMAGE_PIXELS = 1_000_000_000
@@ -70,7 +70,7 @@ class FoldDataset(Dataset):
     def __init__(self,
                  total_fold,
                  fold=0,
-                 source_dir='cache/images_enda2_512',
+                 source_dir='cache/images/enda2_512',
                  target='train',
                  code='LMGAO',
                  size=-1,
@@ -94,10 +94,10 @@ class FoldDataset(Dataset):
         self.unique_code = [c for c in dict.fromkeys(self.code) if c in 'LMGAO']
 
         df_tiles = pd.read_excel(J(source_dir, f'tiles.xlsx'), index_col=0)
-        df_cases = pd.read_excel(J(source_dir, f'{total_fold}folds.xlsx'), index_col=0)
+        df_cases = pd.read_excel(J(source_dir, f'folds{total_fold}.xlsx'), index_col=0)
         df_merge = pd.merge(df_tiles, df_cases.drop(columns='diag'), on='name')
-        self.df = df_merge
-        self.df_cases = df_cases
+        self.df = df_merge.copy()
+        self.df_cases = df_cases.copy()
 
         self.total_fold = self.df['fold'].max() + 1
 
@@ -126,6 +126,25 @@ class FoldDataset(Dataset):
         if minimum_area > 0:
             self.df = self.df[self.df['white_area'] < minimum_area]
 
+        replacer = []
+        self.df.loc[:, 'diag_org'] = self.df['diag']
+        self.df_cases.loc[:, 'diag_org'] = self.df_cases['diag']
+        for old_diag, new_diag in zip('LMGAO', self.code):
+            if old_diag == new_diag:
+                continue
+            replacer.append([
+                new_diag,
+                self.df[self.df['diag'] == old_diag].index,
+                self.df_cases[self.df_cases['diag'] == old_diag].index,
+            ])
+
+        for new_diag, df_idx, df_cases_idx in replacer:
+            if new_diag == '_':
+                self.df.drop(df_idx, inplace=True)
+                self.df_cases.drop(df_idx, inplace=True)
+            else:
+                self.df.loc[df_idx, 'diag'] = new_diag
+                self.df_cases.loc[df_cases_idx, 'diag'] = new_diag
 
         print(f'loaded {target} for fold {fold}')
         if self.target == 'train':
@@ -144,36 +163,31 @@ class FoldDataset(Dataset):
         print('Balance: tiles')
         show_fold_diag(self.df)
 
-    def inspect(self):
-        fig, axes = plt.subplots(self.total_fold, 2, figsize=(6, 10))
-        for fold in range(self.total_fold):
-            f = self.df_cases[self.df_cases['fold'] == fold]
-            sns.histplot(f['diag'], ax=axes[fold, 0])
 
-        for fold in range(self.total_fold):
-            f = self.df_cases[self.df_cases['fold'] == fold]
-            sns.barplot(x=f['diag'], y=f['count'], ax=axes[fold, 1])
-        plt.show()
+    def inspect(self, df=None):
+        if df is None:
+            df = self.df_cases
+        folds =df['fold'].unique()
+        total = len(folds)
+        fig, axes = plt.subplots(total, 2, figsize=(6, total*2))
+        if len(axes.shape) == 1:
+            axes = axes[None, :]
+        for i, fold in enumerate(folds):
+            f = df[df['fold'] == fold]
+            sns.histplot(f['diag'], ax=axes[i, 0])
+
+        for i, fold in enumerate(folds):
+            f = df[df['fold'] == fold]
+            sns.barplot(x=f['diag'], y=f['count'], ax=axes[i, 1])
+        return fig
 
     def __len__(self):
         return len(self.df)
 
     def __getitem__(self, idx):
         row = self.df.iloc[idx]
-        image = Image.open(J(self.source_dir, row['diag'], row['name'], row['filename']))
+        image = Image.open(J(self.source_dir, row['diag_org'], row['name'], row['filename']))
 
         x = self.albu(image=np.array(image))['image']
         y = torch.tensor(self.unique_code.index(row['diag']))
         return x, y
-
-
-if __name__ == '__main__':
-    # cli = CLI()
-    # cli.run()
-
-    ds = FoldDataset(
-        fold=0,
-        total_fold=6,
-        source_dir='cache/images_enda2_512',
-        )
-    ds.inspect()
