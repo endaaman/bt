@@ -17,9 +17,11 @@ from pydantic import Field
 from endaaman import load_images_from_dir_or_file, with_wrote, grid_split
 from endaaman.ml import BaseMLCLI
 
-from datasets import show_fold_diag
+from datasets.utils import show_fold_diag
 from utils import calc_white_area
 
+
+Image.MAX_IMAGE_PIXELS = None
 
 J = os.path.join
 
@@ -227,7 +229,7 @@ class CLI(BaseMLCLI):
 
 
     class SplitDatasetArgs(CommonArgs):
-        src: str = 'cache/images/enda2_768'
+        src: str = 'cache/images/enda2_512'
         fold: int = Field(5, cli=('--fold', ))
         skf: bool = Field(False, cli=('--skf', ))
 
@@ -249,7 +251,7 @@ class CLI(BaseMLCLI):
         if a.skf:
             df_cases['fold'] = -1
             skf = StratifiedKFold(n_splits=a.fold, shuffle=False)
-            for i, (train_index, test_index) in enumerate(skf.split(df, df['diag'])):
+            for i, (train_index, test_index) in enumerate(skf.split(df_cases, df_cases['diag'])):
                 df_cases.loc[test_index, 'fold'] = i
         else:
             cycle = np.arange(a.fold)

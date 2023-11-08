@@ -33,7 +33,8 @@ from endaaman.ml import BaseMLCLI, pil_to_tensor, tensor_to_pil, get_global_seed
 from .utils import show_fold_diag
 
 ImageFile.LOAD_TRUNCATED_IMAGES = True
-Image.MAX_IMAGE_PIXELS = 1_000_000_000
+# Image.MAX_IMAGE_PIXELS = 1_000_000_000_000
+Image.MAX_IMAGE_PIXELS = None
 
 IMAGE_CACHE = {}
 
@@ -191,3 +192,5 @@ class FoldDataset(Dataset):
         x = self.albu(image=np.array(image))['image']
         y = torch.tensor(self.unique_code.index(row['diag']))
         return x, y
+
+
