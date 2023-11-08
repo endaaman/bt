@@ -203,27 +203,30 @@ class CLI(BaseMLCLI):
                     raise RuntimeError('Invalid name:', path)
                 name = m[1]
                 i = Image.open(path)
-                gg = grid_split(i, a.size, overwrap=False, flattern=True)
-                for i, g in enumerate(gg):
-                    if name in data:
-                        data[name] += 1
-                    else:
-                        data[name] = 0
-                    order = data[name]
-                    case_dir = J(diag_dir, name)
-                    os.makedirs(case_dir, exist_ok=True)
-                    filename = f'{order:04d}.jpg'
-                    g.save(J(case_dir, filename))
-                    area = calc_white_area(g)
-                    ee.append({
-                        'name': name,
-                        'diag': diag,
-                        'order': order,
-                        'filename': filename,
-                        'width': g.width,
-                        'height': g.height,
-                        'area': area,
-                    })
+                ggg = grid_split(i, a.size, overwrap=False)
+                for y, gg in enumerate(ggg):
+                    for x, g in enumerate(gg):
+                        if name in data:
+                            data[name] += 1
+                        else:
+                            data[name] = 0
+                        order = data[name]
+                        case_dir = J(diag_dir, name)
+                        os.makedirs(case_dir, exist_ok=True)
+                        filename = f'{order:04d}.jpg'
+                        g.save(J(case_dir, filename))
+                        area = calc_white_area(g)
+                        ee.append({
+                            'name': name,
+                            'diag': diag,
+                            'order': order,
+                            'y': y,
+                            'x': x,
+                            'filename': filename,
+                            'width': g.width,
+                            'height': g.height,
+                            'area': area,
+                        })
         df_tiles = pd.DataFrame(ee)
         df_tiles.to_excel(with_wrote(J(dst_dir, 'tiles.xlsx')))
 
