@@ -1,4 +1,5 @@
 import os
+import math
 import json
 import re
 from glob import glob
@@ -21,8 +22,7 @@ from pydantic import Field
 # from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
 
 from endaaman.ml.metrics import MultiAccuracy
-from endaaman.ml import BaseMLCLI, BaseDLArgs, BaseTrainerConfig, BaseTrainer
-
+from endaaman.ml import BaseMLCLI, BaseDLArgs, BaseTrainerConfig, BaseTrainer, Checkpoint, pil_to_tensor
 
 from models import TimmModel, CrossEntropyLoss
 from datasets.fold import FoldDataset
@@ -126,7 +126,6 @@ class CLI(BaseMLCLI):
                  minimum_area=a.minimum_area,
                  aug_mode='same',
                  normalize=True,
-                 seed=a.seed,
             ) for t in ('train', 'test')
         ]
 
@@ -145,6 +144,70 @@ class CLI(BaseMLCLI):
         )
 
         trainer.start(a.epoch)
+
+
+    class ValidateArgs(CommonArgs):
+        model_dir: str = Field(..., cli=('--model-dir', '-d'))
+
+        batch_size: int = Field(16, cli=('--batch-size', '-B', ))
+        total_fold: int = Field(6, cli=('--total-fold', ))
+        fold: int = 0
+        source: str = Field('enda2_512', cli=('--source', ))
+        size: int = Field(512, cli=('--size', '-s'))
+        code: str = 'LMGAO'
+
+    def run_validate(self, a:ValidateArgs):
+        checkpoint:Checkpoint = torch.load(J(a.model_dir, 'checkpoint_best.pt'))
+        config = TrainerConfig.from_file(J(a.model_dir, 'config.json'))
+        model = TimmModel(name=config.model_name, num_classes=config.num_classes)
+        model.load_state_dict(checkpoint.model_state)
+        model.to(a.device())
+
+        image = Image.open('cache/images/enda2_512/M/20-0112/0000.jpg')
+
+        transform = transforms.Compose([
+            transforms.CenterCrop(a.size),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=0.7, std=0.1),
+        ])
+
+        # result = model(t.to(a.device()), activate=True).detach().cpu().numpy()[0]
+
+        ds = FoldDataset(
+             total_fold=a.total_fold,
+             fold=a.fold,
+             source_dir=J('cache/images', a.source),
+             target='test',
+             code=a.code,
+             size=a.size,
+             minimum_area=-1,
+             aug_mode='same',
+             normalize=True,
+        )
+
+        num_chunks = math.ceil(len(ds.df) / a.batch_size)
+
+        np.set_printoptions(suppress=True, floatmode='fixed')
+
+        df = ds.df.copy()
+        df[['L', 'M', 'G']] = -1.0
+        t = tqdm(range(num_chunks))
+        for chunk in t:
+            i0 = chunk*a.batch_size
+            i1 = (chunk+1)*a.batch_size
+            rows = df[i0:i1]
+            tt = []
+            for i, row in rows.iterrows():
+                fp = J(f'cache/images/{a.source}', row['diag'], row['name'], row['filename'])
+                tt.append(transform(Image.open(fp)))
+
+            tt = torch.stack(tt)
+            o = model(tt.to(a.device()), activate=True).detach().cpu().numpy()
+            df.loc[df.index[i0:i1], ['L', 'M', 'G']] = o
+            t.set_description(f'{i0} - {i1}')
+            t.refresh()
+
+        df.to_excel(J(a.model_dir, f'result_{a.total_fold}_{a.fold}.xlsx'))
 
 
 if __name__ == '__main__':

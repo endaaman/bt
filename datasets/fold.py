@@ -57,6 +57,7 @@ def aug_train(size):
     return [
         A.RandomCrop(width=size, height=size),
         A.RandomRotate90(p=1),
+        A.Flip(p=0.5),
     ]
 
 def aug_test(size):
@@ -78,7 +79,6 @@ class FoldDataset(Dataset):
                  minimum_area=-1,
                  aug_mode='same',
                  normalize=True,
-                 seed=None,
                  ):
         assert re.match('^[LMGAO_]{5}$', code)
         self.fold = fold
@@ -90,7 +90,6 @@ class FoldDataset(Dataset):
         self.minimum_area = minimum_area
         self.aug_mode = aug_mode
         self.normalize = normalize
-        self.seed = seed or get_global_seed()
 
         self.unique_code = [c for c in dict.fromkeys(self.code) if c in 'LMGAO']
 

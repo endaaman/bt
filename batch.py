@@ -198,10 +198,10 @@ class CLI(BaseMLCLI):
             os.makedirs(diag_dir, exist_ok=True)
             data = {}
             for path in tqdm(paths):
-                m = re.match(r'^(.*)_\d\.jpg$', os.path.basename(path))
+                m = re.match(r'^(.*)_(\d)\.jpg$', os.path.basename(path))
                 if not m:
                     raise RuntimeError('Invalid name:', path)
-                name = m[1]
+                name, image_order = m[1], m[2]
                 i = Image.open(path)
                 ggg = grid_split(i, a.size, overwrap=False)
                 for y, gg in enumerate(ggg):
@@ -210,16 +210,16 @@ class CLI(BaseMLCLI):
                             data[name] += 1
                         else:
                             data[name] = 0
-                        order = data[name]
+                        tile_order = data[name]
                         case_dir = J(diag_dir, name)
                         os.makedirs(case_dir, exist_ok=True)
-                        filename = f'{order:04d}.jpg'
+                        filename = f'{tile_order:04d}.jpg'
                         g.save(J(case_dir, filename))
                         area = calc_white_area(g)
                         ee.append({
                             'name': name,
                             'diag': diag,
-                            'order': order,
+                            'order': image_order,
                             'y': y,
                             'x': x,
                             'filename': filename,
@@ -320,6 +320,11 @@ class CLI(BaseMLCLI):
             # plt.show()
             cv2.imwrite(J(dst_dir, f'{i:04d}_{ratio*100:.0f}.jpg'), image)
 
+
+    def run_draw_accs(self, a):
+        '''
+        各foldのvalidationのtileの予測を画像上に表示し、
+        '''
 
 
 if __name__ == '__main__':
