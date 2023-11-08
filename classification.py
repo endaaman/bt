@@ -28,7 +28,7 @@ from models import TimmModel, CrossEntropyLoss
 from datasets.fold import FoldDataset
 
 
-
+np.set_printoptions(suppress=True, floatmode='fixed')
 J = os.path.join
 
 class TrainerConfig(BaseTrainerConfig):
@@ -113,13 +113,11 @@ class CLI(BaseMLCLI):
             minimum_area = a.minimum_area,
         )
 
-        source_dir = J('cache/images', a.source)
-
         dss = [
             FoldDataset(
                  total_fold=a.total_fold,
                  fold=a.fold,
-                 source_dir=source_dir,
+                 source_dir=J('cache/images', a.source),
                  target=t,
                  code=a.code,
                  size=a.size,
@@ -149,6 +147,7 @@ class CLI(BaseMLCLI):
     class ValidateArgs(CommonArgs):
         model_dir: str = Field(..., cli=('--model-dir', '-d'))
 
+        target: str = 'test'
         batch_size: int = Field(16, cli=('--batch-size', '-B', ))
         total_fold: int = Field(6, cli=('--total-fold', ))
         fold: int = 0
@@ -177,7 +176,7 @@ class CLI(BaseMLCLI):
              total_fold=a.total_fold,
              fold=a.fold,
              source_dir=J('cache/images', a.source),
-             target='test',
+             target=a.target,
              code=a.code,
              size=a.size,
              minimum_area=-1,
@@ -185,13 +184,13 @@ class CLI(BaseMLCLI):
              normalize=True,
         )
 
-        num_chunks = math.ceil(len(ds.df) / a.batch_size)
-
-        np.set_printoptions(suppress=True, floatmode='fixed')
-
         df = ds.df.copy()
-        df[['L', 'M', 'G']] = -1.0
+        df = df.iloc[:10000]
+        df[ds.unique_code] = -1.0
+
+        num_chunks = math.ceil(len(df) / a.batch_size)
         t = tqdm(range(num_chunks))
+
         for chunk in t:
             i0 = chunk*a.batch_size
             i1 = (chunk+1)*a.batch_size
@@ -203,11 +202,11 @@ class CLI(BaseMLCLI):
 
             tt = torch.stack(tt)
             o = model(tt.to(a.device()), activate=True).detach().cpu().numpy()
-            df.loc[df.index[i0:i1], ['L', 'M', 'G']] = o
+            df.loc[df.index[i0:i1], ds.unique_code] = o
             t.set_description(f'{i0} - {i1}')
             t.refresh()
 
-        df.to_excel(J(a.model_dir, f'result_{a.total_fold}_{a.fold}.xlsx'))
+        df.to_excel(J(a.model_dir, f'{a.target}_{a.total_fold}_{a.fold}.xlsx'))
 
 
 if __name__ == '__main__':

@@ -46,26 +46,29 @@ NUM_TO_DIAG = list(DIAG_TO_NUM.keys())
 # MEAN = np.array([216, 172, 212]) / 255
 # STD = np.array([34, 61, 30]) / 255
 MEAN = 0.7
-STD = 0.1
+STD = 0.2
 
 DEFAULT_SIZE = 512
 
 J = os.path.join
 
+def get_augs(train, size, normalize):
+    if train:
+        aa = [
+            A.RandomCrop(width=size, height=size),
+            A.RandomRotate90(p=1),
+            A.Flip(p=0.5),
+        ]
+    else:
+        aa = [
+            A.CenterCrop(width=size, height=size),
+            # A.Resize(width=size, height=size),
+        ]
 
-def aug_train(size):
-    return [
-        A.RandomCrop(width=size, height=size),
-        A.RandomRotate90(p=1),
-        A.Flip(p=0.5),
-    ]
-
-def aug_test(size):
-    return [
-        A.CenterCrop(width=size, height=size),
-        A.Resize(width=size, height=size),
-    ]
-
+    if normalize:
+        aa += [A.Normalize(mean=MEAN, std=STD)]
+    aa += [ToTensorV2()]
+    return A.Compose(aa)
 
 
 class FoldDataset(Dataset):
@@ -104,23 +107,14 @@ class FoldDataset(Dataset):
         assert self.fold < self.total_fold
 
         augs = {}
-        augs['train'] = aug_train(self.size)
-        augs['test'] = aug_test(self.size)
+        augs['train'] = self.aug_train = get_augs(True, self.size, normalize)
+        augs['test'] = self.aug_test = get_augs(False, self.size, normalize)
         augs['all'] = augs['test']
 
-        # select aug
         if aug_mode == 'same':
-            aug = augs[target]
-        elif aug_mode == 'none':
-            aug = []
+            self.aug = augs[target]
         else:
-            aug = augs[aug_mode]
-
-        if normalize:
-            aug += [A.Normalize(mean=MEAN, std=STD)]
-        aug += [ToTensorV2()]
-
-        self.albu = A.Compose(aug)
+            self.aug = augs[aug_mode]
 
         # filter by area
         if minimum_area > 0:
@@ -188,7 +182,7 @@ class FoldDataset(Dataset):
         row = self.df.iloc[idx]
         image = Image.open(J(self.source_dir, row['diag_org'], row['name'], row['filename']))
 
-        x = self.albu(image=np.array(image))['image']
+        x = self.aug(image=np.array(image))['image']
         y = torch.tensor(self.unique_code.index(row['diag']))
         return x, y
 
