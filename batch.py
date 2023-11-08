@@ -225,7 +225,7 @@ class CLI(BaseMLCLI):
                             'filename': filename,
                             'width': g.width,
                             'height': g.height,
-                            'area': area,
+                            'white_area': area,
                         })
         df_tiles = pd.DataFrame(ee)
         df_tiles.to_excel(with_wrote(J(dst_dir, 'tiles.xlsx')))
