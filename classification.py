@@ -70,7 +70,7 @@ class Trainer(BaseTrainer):
         self._visualize_confusion(ax, 'val', val_preds, val_gts)
 
     def create_scheduler(self):
-        return optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, patience=3)
+        return optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, patience=5)
 
     def get_metrics(self):
         return {
