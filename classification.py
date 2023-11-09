@@ -44,7 +44,7 @@ class TrainerConfig(BaseTrainerConfig):
 
 class Trainer(BaseTrainer):
     def prepare(self):
-        self.criterion = CrossEntropyLoss(input_logits=True)
+        self.criterion = nn.CrossEntropyLoss()
         self.fig_col_count = 2
         return TimmModel(name=self.config.model_name, num_classes=self.config.num_classes)
 
