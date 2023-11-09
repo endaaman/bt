@@ -188,7 +188,7 @@ class CLI(BaseMLCLI):
         gen: bool = Field(False, cli=('--gen', ))
 
     def run_build_dataset(self, a):
-        dst_dir = f'cache/images/{a.source}_{a.size}'
+        dst_dir = f'cache/{a.source}_{a.size}'
         src_dir = f'data/images/{a.source}'
         ee = []
         for diag in 'LMGAO':
@@ -232,7 +232,7 @@ class CLI(BaseMLCLI):
 
 
     class SplitDatasetArgs(CommonArgs):
-        src: str = 'cache/images/enda2_512'
+        src: str = 'cache/enda2_512'
         fold: int = Field(5, cli=('--fold', ))
         skf: bool = Field(False, cli=('--skf', ))
 
@@ -278,7 +278,7 @@ class CLI(BaseMLCLI):
         case: str = '19-0222'
 
     def run_detect_white_area(self, a):
-        pp = glob(f'cache/images/enda2_512/L/{a.case}/*.jpg')
+        pp = glob(f'cache/enda2_512/L/{a.case}/*.jpg')
         dst_dir = f'tmp/show/L/{a.case}'
         os.makedirs(dst_dir, exist_ok=True)
         for i, p in enumerate(tqdm(pp)):

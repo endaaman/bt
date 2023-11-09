@@ -153,7 +153,6 @@ class CLI(BaseMLCLI):
         fold: int = 0
         source: str = Field('enda2_512', cli=('--source', ))
         size: int = Field(512, cli=('--size', '-s'))
-        code: str = 'LMGAO'
 
     def run_validate(self, a:ValidateArgs):
         checkpoint:Checkpoint = torch.load(J(a.model_dir, 'checkpoint_best.pt'))
@@ -162,7 +161,6 @@ class CLI(BaseMLCLI):
         model.load_state_dict(checkpoint.model_state)
         model.to(a.device())
 
-        image = Image.open('cache/images/enda2_512/M/20-0112/0000.jpg')
 
         transform = transforms.Compose([
             transforms.CenterCrop(a.size),
@@ -170,14 +168,12 @@ class CLI(BaseMLCLI):
             transforms.Normalize(mean=0.7, std=0.1),
         ])
 
-        # result = model(t.to(a.device()), activate=True).detach().cpu().numpy()[0]
-
         ds = FoldDataset(
              total_fold=a.total_fold,
              fold=a.fold,
-             source_dir=J('cache/images', a.source),
+             source_dir=J('cache', a.source),
              target=a.target,
-             code=a.code,
+             code=config.code,
              size=a.size,
              minimum_area=-1,
              aug_mode='same',
@@ -197,7 +193,7 @@ class CLI(BaseMLCLI):
             rows = df[i0:i1]
             tt = []
             for i, row in rows.iterrows():
-                fp = J(f'cache/images/{a.source}', row['diag'], row['name'], row['filename'])
+                fp = J(f'cache/{a.source}', row['diag'], row['name'], row['filename'])
                 tt.append(transform(Image.open(fp)))
 
             tt = torch.stack(tt)
