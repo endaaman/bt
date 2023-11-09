@@ -75,7 +75,7 @@ class FoldDataset(Dataset):
     def __init__(self,
                  total_fold,
                  fold=0,
-                 source_dir='cache/images/enda2_512',
+                 source_dir='cache/enda2_512',
                  target='train',
                  code='LMGAO',
                  size=-1,

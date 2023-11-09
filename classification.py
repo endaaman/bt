@@ -117,7 +117,7 @@ class CLI(BaseMLCLI):
             FoldDataset(
                  total_fold=a.total_fold,
                  fold=a.fold,
-                 source_dir=J('cache/images', a.source),
+                 source_dir=J('cache', a.source),
                  target=t,
                  code=a.code,
                  size=a.size,
