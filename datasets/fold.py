@@ -52,13 +52,29 @@ DEFAULT_SIZE = 512
 
 J = os.path.join
 
-def get_augs(train, size, normalize):
+def get_augs(train, size, image_aug, normalize):
     if train:
         aa = [
             A.RandomCrop(width=size, height=size),
             A.RandomRotate90(p=1),
             A.Flip(p=0.5),
         ]
+        if image_aug:
+            aa += [
+                A.GaussNoise(p=0.2),
+                A.OneOf([
+                    A.MotionBlur(p=0.2),
+                    A.MedianBlur(blur_limit=3, p=0.1),
+                    A.Blur(blur_limit=3, p=0.1),
+                ], p=0.2),
+                A.ShiftScaleRotate(shift_limit=0.0625, scale_limit=0.2, rotate_limit=5, p=0.5),
+                A.OneOf([
+                    A.CLAHE(clip_limit=2),
+                    A.Emboss(),
+                    A.RandomBrightnessContrast(),
+                ], p=0.3),
+                A.HueSaturationValue(p=0.3),
+            ]
     else:
         aa = [
             A.CenterCrop(width=size, height=size),
@@ -78,9 +94,11 @@ class FoldDataset(Dataset):
                  source_dir='cache/enda2_512',
                  target='train',
                  code='LMGAO',
-                 size=-1,
+                 size=512,
                  minimum_area=-1,
+                 limit=-1,
                  aug_mode='same',
+                 image_aug=False,
                  normalize=True,
                  ):
         assert re.match('^[LMGAO_]{5}$', code)
@@ -91,7 +109,9 @@ class FoldDataset(Dataset):
         self.code = [*code]
         self.size = size
         self.minimum_area = minimum_area
+        self.limit = limit
         self.aug_mode = aug_mode
+        self.image_aug = image_aug
         self.normalize = normalize
 
         self.unique_code = [c for c in dict.fromkeys(self.code) if c in 'LMGAO']
@@ -107,8 +127,8 @@ class FoldDataset(Dataset):
         assert self.fold < self.total_fold
 
         augs = {}
-        augs['train'] = self.aug_train = get_augs(True, self.size, normalize)
-        augs['test'] = self.aug_test = get_augs(False, self.size, normalize)
+        augs['train'] = self.aug_train = get_augs(True, self.size, image_aug, normalize)
+        augs['test'] = self.aug_test = get_augs(False, self.size, False, normalize)
         augs['all'] = augs['test']
 
         if aug_mode == 'same':
@@ -116,10 +136,7 @@ class FoldDataset(Dataset):
         else:
             self.aug = augs[aug_mode]
 
-        # filter by area
-        if minimum_area > 0:
-            self.df = self.df[self.df['white_area'] < minimum_area]
-
+        # process like converting LMGAO to LMGGG
         replacer = []
         self.df.loc[:, 'diag_org'] = self.df['diag']
         self.df_cases.loc[:, 'diag_org'] = self.df_cases['diag']
@@ -140,6 +157,26 @@ class FoldDataset(Dataset):
                 self.df.loc[df_idx, 'diag'] = new_diag
                 self.df_cases.loc[df_cases_idx, 'diag'] = new_diag
 
+
+        # filter by area
+        self.df['flag_area'] = True
+        if minimum_area > 0:
+            self.df.loc[self.df['white_area'] > minimum_area, 'flag_area'] = False
+
+        self.df['flag_limit'] = True
+        if limit > 0:
+            for i, row in self.df_cases.iterrows():
+                if row['count'] < limit:
+                    continue
+                rows = self.df[self.df['name'] == row.name]
+                rows = rows[rows['flag_area']]
+                drop_idx = np.random.choice(rows.index, row['count']-limit)
+                # drop_idx = rows.sort_values('white_area')
+                self.df.loc[drop_idx, 'flag_limit'] = False
+
+        self.df = self.df[self.df['flag_limit'] & self.df['flag_area']].copy()
+
+        # assign train/val/all
         print(f'loaded {target} for fold {fold}')
         if self.target == 'train':
             self.df = self.df[self.df['fold'] != fold]
@@ -185,5 +222,3 @@ class FoldDataset(Dataset):
         x = self.aug(image=np.array(image))['image']
         y = torch.tensor(self.unique_code.index(row['diag']))
         return x, y
-
-

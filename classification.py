@@ -40,11 +40,13 @@ class TrainerConfig(BaseTrainerConfig):
     num_classes: int
     size: int
     minimum_area: float
+    limit: int = -1
+    image_aug: bool = False
 
 
 class Trainer(BaseTrainer):
     def prepare(self):
-        self.criterion = nn.CrossEntropyLoss()
+        self.criterion = CrossEntropyLoss(input_logits=True)
         self.fig_col_count = 2
         return TimmModel(name=self.config.model_name, num_classes=self.config.num_classes)
 
@@ -86,6 +88,8 @@ class CLI(BaseMLCLI):
         batch_size: int = Field(16, cli=('--batch-size', '-B', ))
         num_workers: int = 4
         minimum_area: float = 0.7
+        limit: int = -1
+        aug: bool = Field(False, cli=('--aug', ))
         epoch: int = Field(50, cli=('--epoch', '-E'))
         total_fold: int = Field(6, cli=('--total-fold', ))
         fold: int = 0
@@ -111,6 +115,8 @@ class CLI(BaseMLCLI):
             fold = a.fold,
             num_classes = num_classes,
             minimum_area = a.minimum_area,
+            limit = a.limit,
+            image_aug = a.aug,
         )
 
         dss = [
@@ -122,6 +128,8 @@ class CLI(BaseMLCLI):
                  code=a.code,
                  size=a.size,
                  minimum_area=a.minimum_area,
+                 limit=a.limit,
+                 image_aug=a.aug,
                  aug_mode='same',
                  normalize=True,
             ) for t in ('train', 'test')
@@ -142,7 +150,6 @@ class CLI(BaseMLCLI):
         )
 
         trainer.start(a.epoch)
-
 
     class ValidateArgs(CommonArgs):
         model_dir: str = Field(..., cli=('--model-dir', '-d'))
