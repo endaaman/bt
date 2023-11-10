@@ -166,11 +166,11 @@ class FoldDataset(Dataset):
         self.df['flag_limit'] = True
         if limit > 0:
             for i, row in self.df_cases.iterrows():
-                if row['count'] < limit:
-                    continue
                 rows = self.df[self.df['name'] == row.name]
                 rows = rows[rows['flag_area']]
-                drop_idx = np.random.choice(rows.index, row['count']-limit)
+                if len(rows) < limit:
+                    continue
+                drop_idx = np.random.choice(rows.index, size=len(rows)-limit, replace=False)
                 # drop_idx = rows.sort_values('white_area')
                 self.df.loc[drop_idx, 'flag_limit'] = False
 

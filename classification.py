@@ -74,6 +74,10 @@ class Trainer(BaseTrainer):
     def create_scheduler(self):
         return optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, patience=5)
 
+    def continues(self):
+        lr = self.get_current_lr()
+        return lr > 0.00001
+
     def get_metrics(self):
         return {
             'acc': MultiAccuracy(),
@@ -135,7 +139,8 @@ class CLI(BaseMLCLI):
             ) for t in ('train', 'test')
         ]
 
-        out_dir = f'out/{a.experiment_name}/{config.code}/{config.model_name}_{a.source}_fold{a.fold}'
+        out_dir = f'out/{a.experiment_name}/{a.source}/{config.code}/' \
+            f'/fold{a.total_fold}_{a.fold}/{config.model_name}'
         if a.suffix:
             out_dir += f'_{a.suffix}'
 

@@ -38,7 +38,7 @@ class CLI(BaseMLCLI):
             code='LMGGG',
             source_dir='cache/enda2_512',
             minimum_area=0.7,
-            limit=500,
+            limit=10,
             target='all',
         )
 
