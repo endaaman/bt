@@ -139,7 +139,7 @@ class CLI(BaseMLCLI):
             ) for t in ('train', 'test')
         ]
 
-        out_dir = f'out/{a.experiment_name}/{a.source}/{config.code}/' \
+        out_dir = f'out/{a.experiment_name}/{a.source}/{config.code}' \
             f'/fold{a.total_fold}_{a.fold}/{config.model_name}'
         if a.suffix:
             out_dir += f'_{a.suffix}'
