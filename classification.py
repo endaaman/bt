@@ -4,6 +4,7 @@ import json
 import re
 from glob import glob
 
+import cv2
 import numpy as np
 import torch
 from torch import nn
@@ -172,7 +173,7 @@ class CLI(BaseMLCLI):
         model = TimmModel(name=config.model_name, num_classes=config.num_classes)
         model.load_state_dict(checkpoint.model_state)
         model.to(a.device())
-
+        model = model.eval()
 
         transform = transforms.Compose([
             transforms.CenterCrop(a.size),
@@ -193,8 +194,10 @@ class CLI(BaseMLCLI):
         )
 
         df = ds.df.copy()
-        df = df.iloc[:10000]
+        if a.target == 'train':
+            df = df.iloc[:1000]
         df[ds.unique_code] = -1.0
+        df['pred'] = ''
 
         num_chunks = math.ceil(len(df) / a.batch_size)
         t = tqdm(range(num_chunks))
@@ -205,12 +208,14 @@ class CLI(BaseMLCLI):
             rows = df[i0:i1]
             tt = []
             for i, row in rows.iterrows():
-                fp = J(f'cache/{a.source}', row['diag'], row['name'], row['filename'])
+                fp = J(f'cache/{a.source}', row['diag_org'], row['name'], row['filename'])
                 tt.append(transform(Image.open(fp)))
 
             tt = torch.stack(tt)
-            o = model(tt.to(a.device()), activate=True).detach().cpu().numpy()
+            with torch.set_grad_enabled(False):
+                o = model(tt.to(a.device()), activate=True).detach().cpu().numpy()
             df.loc[df.index[i0:i1], ds.unique_code] = o
+            df.loc[df.index[i0:i1], 'pred'] = [ds.unique_code[i] for i in np.argmax(o, axis=1)]
             t.set_description(f'{i0} - {i1}')
             t.refresh()
 

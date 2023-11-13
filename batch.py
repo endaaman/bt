@@ -5,7 +5,7 @@ import itertools
 
 import pandas as pd
 import torch
-from PIL import Image, ImageOps, ImageFile
+from PIL import Image, ImageOps, ImageFile, ImageDraw, ImageFont
 import numpy as np
 import cv2
 from tqdm import tqdm
@@ -198,7 +198,8 @@ class CLI(BaseMLCLI):
             os.makedirs(diag_dir, exist_ok=True)
             data = {}
             for path in tqdm(paths):
-                m = re.match(r'^(.*)_(\d)\.jpg$', os.path.basename(path))
+                image_name = os.path.basename(path)
+                m = re.match(r'^(.*)_(\d)\.jpg$', image_name)
                 if not m:
                     raise RuntimeError('Invalid name:', path)
                 name, image_order = m[1], m[2]
@@ -223,6 +224,7 @@ class CLI(BaseMLCLI):
                             'y': y,
                             'x': x,
                             'filename': filename,
+                            'original': image_name,
                             'width': g.width,
                             'height': g.height,
                             'white_area': area,
@@ -281,6 +283,7 @@ class CLI(BaseMLCLI):
         pp = glob(f'cache/enda2_512/L/{a.case}/*.jpg')
         dst_dir = f'tmp/show/L/{a.case}'
         os.makedirs(dst_dir, exist_ok=True)
+        data = []
         for i, p in enumerate(tqdm(pp)):
             image = np.array(Image.open(p))
 
@@ -319,12 +322,94 @@ class CLI(BaseMLCLI):
             # plt.imshow(image)
             # plt.show()
             cv2.imwrite(J(dst_dir, f'{i:04d}_{ratio*100:.0f}.jpg'), image)
+            data.append({
+                'number': i,
+                'white_area': ratio,
+            })
+        df = pd.DataFrame(data)
+        df.to_excel(J(dst_dir, '_.xlsx'))
 
+    class DrawAccsArgs(CommonArgs):
+        src: str
+        render: bool = Field(False, cli=('--render', ))
 
     def run_draw_accs(self, a):
-        '''
-        各foldのvalidationのtileの予測を画像上に表示し、
-        '''
+        model_dir = os.path.dirname(a.src)
+
+        df = pd.read_excel(a.src)
+        df['base_image'] = df['name'].str.cat(df['order'].astype(str), sep='_')
+
+        colors = {
+            'L': 'green',
+            'M': 'blue',
+            'G': 'red',
+            'A': 'yellow',
+            'O': 'purple',
+        }
+
+        font = ImageFont.truetype('/usr/share/fonts/ubuntu/Ubuntu-R.ttf', size=16)
+
+        data = []
+
+        for image_name, items in tqdm(df.groupby('base_image')):
+            diag = items.iloc[0]['diag_org']
+            name = items.iloc[0]['name']
+            if a.render:
+                row_images = []
+                for base, cols in items.groupby('y'):
+                    ii = []
+                    for i, item in cols.iterrows():
+                        # print(item['x'], item['y'], item['pred'])
+                        i = Image.new('RGBA', (item['width'], item['height']), color=(0,0,0,0,))
+                        draw = ImageDraw.Draw(i)
+                        draw.rectangle(
+                            xy=((0, 0), (item['width'], item['height'])),
+                            outline=colors[item['pred']],
+                        )
+                        draw.rectangle(
+                            xy=((0, 0), (200, 16)),
+                            fill=colors[item['pred']],
+                        )
+                        draw.text(
+                            xy=(0, 0),
+                            text=' '.join([f'{k}:{item[k]:.2f}' for k in ['L', 'M', 'G']]),
+                            font=font,
+                            fill='white'
+                        )
+                        ii.append(np.array(i))
+                    row_image = cv2.hconcat(ii)
+                    row_images.append(row_image)
+                overlay = Image.fromarray(cv2.vconcat(row_images))
+                original_image = Image.open(f'data/images/enda2/{diag}/{image_name}.jpg').convert('RGBA')
+                # original_image.paste(overlay)
+                original_image = Image.alpha_composite(original_image, overlay)
+                d = J(model_dir, 'result', diag)
+                os.makedirs(d, exist_ok=True)
+                original_image = original_image.convert('RGB')
+                original_image.save(J(d, f'{image_name}.jpg'))
+                original_image.close()
+
+            preds = items[['L', 'M', 'G']]
+            preds_sum = np.sum(preds, axis=0)
+            pred_sum = list('LMGAO')[np.argmax(preds_sum)]
+
+            print(pred_sum, preds_sum)
+            preds_label = np.argmax(preds, axis=1)
+
+            unique_values, counts = np.unique(preds_label, return_counts=True)
+            pred_vote = list('LMGAO')[unique_values[np.argmax(counts)]]
+
+            data.append({
+                'name': name,
+                'image_name': image_name,
+                'gt': diag,
+                'pred(vote)': pred_vote,
+                'pred(sum)': pred_sum,
+            })
+
+        data = pd.DataFrame(data)
+        data.to_excel(J(model_dir, 'report.xlsx'))
+
 
 
 if __name__ == '__main__':
