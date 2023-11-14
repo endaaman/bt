@@ -78,7 +78,7 @@ class Trainer(BaseTrainer):
 
     def continues(self):
         lr = self.get_current_lr()
-        return lr > 1e-8
+        return lr > 1e-5
 
     def get_metrics(self):
         return {
@@ -106,7 +106,6 @@ class CLI(BaseMLCLI):
         prefix: str = ''
         size: int = Field(512, cli=('--size', '-s'))
         code: str = 'LMGAO'
-        experiment_name:str = Field('cached', cli=('--exp', ))
         overwrite: bool = Field(False, cli=('--overwrite', '-o'))
 
     def run_train(self, a:TrainArgs):
@@ -146,7 +145,7 @@ class CLI(BaseMLCLI):
         ]
 
         out_dir = J(
-            'out', a.experiment_name, a.source, config.code,
+            'out', a.source, config.code,
             f'fold{a.total_fold}_{a.fold}', a.prefix, config.model_name
         )
         if a.suffix:
@@ -159,7 +158,7 @@ class CLI(BaseMLCLI):
             val_dataset=dss[1],
             use_gpu=not a.cpu,
             overwrite=a.overwrite,
-            experiment_name=a.experiment_name,
+            experiment_name=a.source,
         )
 
         trainer.start(a.epoch)
