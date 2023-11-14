@@ -185,11 +185,11 @@ class CLI(BaseMLCLI):
 
 
 
-    class DrawAccsArgs(CommonArgs):
+    class CalcResultArgs(CommonArgs):
         src: str
         render: bool = Field(False, cli=('--render', ))
 
-    def run_draw_accs(self, a):
+    def run_calc_result(self, a):
         model_dir = os.path.dirname(a.src)
         target_name = os.path.splitext(os.path.basename(a.src))[0]
         dest_dir= J(model_dir, target_name,)
@@ -214,8 +214,10 @@ class CLI(BaseMLCLI):
         data = []
 
         for image_name, items in tqdm(df.groupby('base_image')):
-            diag = items.iloc[0]['diag_org']
-            name = items.iloc[0]['name']
+            # diag_org = items.iloc[0]['diag_org']
+            # diag = items.iloc[0]['diag']
+            # name = items.iloc[0]['name']
+            diag_org, diag, name = items.iloc[0][['diag_org', 'diag', 'name']]
             if a.render:
                 row_images = []
                 for base, cols in items.groupby('y'):
@@ -242,7 +244,7 @@ class CLI(BaseMLCLI):
                     row_image = cv2.hconcat(ii)
                     row_images.append(row_image)
                 overlay = Image.fromarray(cv2.vconcat(row_images))
-                original_image = Image.open(f'data/images/enda2/{diag}/{image_name}.jpg').convert('RGBA')
+                original_image = Image.open(f'data/images/enda2/{diag_org}/{image_name}.jpg').convert('RGBA')
                 # original_image.paste(overlay)
                 original_image = Image.alpha_composite(original_image, overlay)
                 d = J(dest_dir, diag)
@@ -263,13 +265,15 @@ class CLI(BaseMLCLI):
             data.append({
                 'name': name,
                 'image_name': image_name,
+                'diag_org': diag_org,
                 'gt': diag,
                 'pred(vote)': pred_vote,
                 'pred(sum)': pred_sum,
+                'correct': int(diag == pred_sum),
             })
 
-        data = pd.DataFrame(data)
-        data.to_excel(with_wrote(J(dest_dir, 'report.xlsx')))
+        data = pd.DataFrame(data).sort_values(['diag_org', 'image_name'])
+        data.to_excel(with_wrote(J(dest_dir, 'report.xlsx')), index=False)
 
 
 

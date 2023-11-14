@@ -23,8 +23,9 @@ from pydantic import Field
 # from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
 
 from endaaman import with_wrote
+from endaaman.ml import BaseTrainerConfig, BaseTrainer, Checkpoint, pil_to_tensor
 from endaaman.ml.metrics import MultiAccuracy
-from endaaman.ml import BaseMLCLI, BaseDLArgs, BaseTrainerConfig, BaseTrainer, Checkpoint, pil_to_tensor
+from endaaman.ml.cli import BaseMLCLI, BaseDLArgs, BaseTrainArgs
 
 from models import TimmModel, CrossEntropyLoss
 from datasets.fold import FoldDataset
@@ -87,10 +88,10 @@ class Trainer(BaseTrainer):
         }
 
 class CLI(BaseMLCLI):
-    class CommonArgs(BaseDLArgs):
+    class CommonArgs(BaseMLCLI.CommonArgs):
         pass
 
-    class TrainArgs(CommonArgs):
+    class TrainArgs(BaseTrainArgs):
         lr: float = 0.0002
         batch_size: int = Field(16, cli=('--batch-size', '-B', ))
         num_workers: int = 4
@@ -98,8 +99,8 @@ class CLI(BaseMLCLI):
         limit: int = -1
         upsample: bool = Field(False, cli=('--upsample', ))
         aug: bool = Field(False, cli=('--aug', ))
-        epoch: int = Field(50, cli=('--epoch', '-E'))
-        total_fold: int = Field(6, cli=('--total-fold', ))
+        epoch: int = Field(100, cli=('--epoch', '-E'))
+        total_fold: int = Field(..., cli=('--total-fold', ))
         fold: int = 0
         model_name: str = Field('tf_efficientnet_b0', cli=('--model', '-m'))
         source: str = Field('enda2_512', cli=('--source', ))
@@ -164,15 +165,11 @@ class CLI(BaseMLCLI):
 
         trainer.start(a.epoch)
 
-    class ValidateArgs(CommonArgs):
+    class ValidateArgs(BaseDLArgs):
         model_dir: str = Field(..., cli=('--model-dir', '-d'))
 
         target: str = 'test'
         batch_size: int = Field(16, cli=('--batch-size', '-B', ))
-        total_fold: int = Field(6, cli=('--total-fold', ))
-        fold: int = 0
-        source: str = Field('enda2_512', cli=('--source', ))
-        size: int = Field(512, cli=('--size', '-s'))
 
     def run_validate(self, a:ValidateArgs):
         checkpoint:Checkpoint = torch.load(J(a.model_dir, 'checkpoint_best.pt'))
@@ -183,18 +180,18 @@ class CLI(BaseMLCLI):
         model = model.eval()
 
         transform = transforms.Compose([
-            transforms.CenterCrop(a.size),
+            transforms.CenterCrop(config.size),
             transforms.ToTensor(),
             transforms.Normalize(mean=0.7, std=0.1),
         ])
 
         ds = FoldDataset(
-             total_fold=a.total_fold,
-             fold=a.fold,
-             source_dir=J('cache', a.source),
+             total_fold=config.total_fold,
+             fold=config.fold,
+             source_dir=J('cache', config.source),
              target=a.target,
              code=config.code,
-             size=a.size,
+             size=config.size,
              minimum_area=-1,
              aug_mode='same',
              normalize=True,
@@ -215,7 +212,7 @@ class CLI(BaseMLCLI):
             rows = df[i0:i1]
             tt = []
             for i, row in rows.iterrows():
-                fp = J(f'cache/{a.source}', row['diag_org'], row['name'], row['filename'])
+                fp = J(f'cache', config.source,  row['diag_org'], row['name'], row['filename'])
                 tt.append(transform(Image.open(fp)))
 
             tt = torch.stack(tt)

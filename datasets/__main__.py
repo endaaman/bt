@@ -91,7 +91,7 @@ class CLI(BaseMLCLI):
 
     class SplitDatasetArgs(CommonArgs):
         src: str = 'cache/enda2_512'
-        fold: int = Field(5, cli=('--fold', ))
+        fold: int
         skf: bool = Field(False, cli=('--skf', ))
 
     def run_split_dataset(self, a):
