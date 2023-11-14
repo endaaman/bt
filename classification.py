@@ -42,6 +42,7 @@ class TrainerConfig(BaseTrainerConfig):
     size: int
     minimum_area: float
     limit: int = -1
+    upsample: bool = False
     image_aug: bool = False
 
 
@@ -94,6 +95,7 @@ class CLI(BaseMLCLI):
         num_workers: int = 4
         minimum_area: float = 0.7
         limit: int = -1
+        upsample: bool = Field(False, cli=('--upsample', ))
         aug: bool = Field(False, cli=('--aug', ))
         epoch: int = Field(50, cli=('--epoch', '-E'))
         total_fold: int = Field(6, cli=('--total-fold', ))
@@ -101,6 +103,7 @@ class CLI(BaseMLCLI):
         model_name: str = Field('tf_efficientnet_b0', cli=('--model', '-m'))
         source: str = Field('enda2_512', cli=('--source', ))
         suffix: str = ''
+        prefix: str = ''
         size: int = Field(512, cli=('--size', '-s'))
         code: str = 'LMGAO'
         experiment_name:str = Field('cached', cli=('--exp', ))
@@ -121,6 +124,7 @@ class CLI(BaseMLCLI):
             num_classes = num_classes,
             minimum_area = a.minimum_area,
             limit = a.limit,
+            upsample = a.upsample,
             image_aug = a.aug,
         )
 
@@ -134,14 +138,17 @@ class CLI(BaseMLCLI):
                  size=a.size,
                  minimum_area=a.minimum_area,
                  limit=a.limit,
+                 upsample = a.upsample,
                  image_aug=a.aug,
                  aug_mode='same',
                  normalize=True,
             ) for t in ('train', 'test')
         ]
 
-        out_dir = f'out/{a.experiment_name}/{a.source}/{config.code}' \
-            f'/fold{a.total_fold}_{a.fold}/{config.model_name}'
+        out_dir = J(
+            'out', a.experiment_name, a.source, config.code,
+            f'fold{a.total_fold}_{a.fold}', a.prefix, config.model_name
+        )
         if a.suffix:
             out_dir += f'_{a.suffix}'
 
