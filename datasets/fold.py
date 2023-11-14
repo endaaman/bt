@@ -97,6 +97,7 @@ class FoldDataset(Dataset):
                  size=512,
                  minimum_area=-1,
                  limit=-1,
+                 upsample=False,
                  aug_mode='same',
                  image_aug=False,
                  normalize=True,
@@ -157,24 +158,35 @@ class FoldDataset(Dataset):
                 self.df.loc[df_idx, 'diag'] = new_diag
                 self.df_cases.loc[df_cases_idx, 'diag'] = new_diag
 
-
-        # filter by area
-        self.df['flag_area'] = True
+        ##* Filter by area
         if minimum_area > 0:
-            self.df.loc[self.df['white_area'] > minimum_area, 'flag_area'] = False
+            # self.df.loc[self.df['white_area'] > minimum_area, 'flag_area'] = False
+            self.df = self.df[self.df['white_area'] > minimum_area].copy()
 
-        self.df['flag_limit'] = True
+        ##* Filter by area
         if limit > 0:
+            drop_idxs = []
             for i, row in self.df_cases.iterrows():
                 rows = self.df[self.df['name'] == row.name]
-                rows = rows[rows['flag_area']]
+                # rows = rows[rows['flag_area']]
                 if len(rows) < limit:
                     continue
-                drop_idx = np.random.choice(rows.index, size=len(rows)-limit, replace=False)
+                drop_idxs.append(np.random.choice(rows.index, size=len(rows)-limit, replace=False))
                 # drop_idx = rows.sort_values('white_area')
-                self.df.loc[drop_idx, 'flag_limit'] = False
+            self.df = self.df.drop(np.concatenate(drop_idxs))
 
-        self.df = self.df[self.df['flag_limit'] & self.df['flag_area']].copy()
+        ##* Upsample
+        if upsample:
+            rows_to_concat = []
+            assert limit > 0, 'limit must be positive when upsampling'
+            for i, row in self.df_cases.iterrows():
+                rows = self.df[self.df['name'] == row.name]
+                if len(rows) >= limit:
+                    continue
+                scale, res = divmod(limit, len(rows))
+                rows_to_concat += [rows] * (scale-1) + [rows[:res]]
+
+            self.df = pd.concat([self.df] + rows_to_concat, ignore_index=True).copy()
 
         # assign train/val/all
         print(f'loaded {target} for fold {fold}')
