@@ -161,7 +161,7 @@ class FoldDataset(Dataset):
         ##* Filter by area
         if minimum_area > 0:
             # self.df.loc[self.df['white_area'] > minimum_area, 'flag_area'] = False
-            self.df = self.df[self.df['white_area'] > minimum_area].copy()
+            self.df = self.df[self.df['white_area'] < minimum_area].copy()
 
         ##* Filter by area
         if limit > 0:
