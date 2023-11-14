@@ -22,6 +22,7 @@ from pydantic import Field
 # from pytorch_grad_cam.utils.image import show_cam_on_image
 # from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
 
+from endaaman import with_wrote
 from endaaman.ml.metrics import MultiAccuracy
 from endaaman.ml import BaseMLCLI, BaseDLArgs, BaseTrainerConfig, BaseTrainer, Checkpoint, pil_to_tensor
 
@@ -225,7 +226,7 @@ class CLI(BaseMLCLI):
             t.set_description(f'{i0} - {i1}')
             t.refresh()
 
-        df.to_excel(J(a.model_dir, f'{a.target}_{a.total_fold}_{a.fold}.xlsx'))
+        df.to_excel(with_wrote(J(a.model_dir, f'{a.target}.xlsx')))
 
 
 if __name__ == '__main__':

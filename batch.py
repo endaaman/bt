@@ -19,6 +19,7 @@ from endaaman.ml import BaseMLCLI
 
 from datasets.utils import show_fold_diag
 from utils import calc_white_area
+from classification import TrainerConfig
 
 
 Image.MAX_IMAGE_PIXELS = None
@@ -192,6 +193,7 @@ class CLI(BaseMLCLI):
         model_dir = os.path.dirname(a.src)
         target_name = os.path.splitext(os.path.basename(a.src))[0]
         dest_dir= J(model_dir, target_name,)
+        os.makedirs(dest_dir, exist_ok=True)
 
         config = TrainerConfig.from_file(J(model_dir, 'config.json'))
         unique_code = list(config.code)
@@ -253,7 +255,6 @@ class CLI(BaseMLCLI):
             preds_sum = np.sum(preds, axis=0)
             pred_sum = unique_code[np.argmax(preds_sum)]
 
-            print(pred_sum, preds_sum)
             preds_label = np.argmax(preds, axis=1)
 
             unique_values, counts = np.unique(preds_label, return_counts=True)
@@ -268,7 +269,7 @@ class CLI(BaseMLCLI):
             })
 
         data = pd.DataFrame(data)
-        data.to_excel(J(dest_dir, 'report.xlsx'))
+        data.to_excel(with_wrote(J(dest_dir, 'report.xlsx')))
 
 
 
