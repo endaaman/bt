@@ -184,7 +184,8 @@ class FoldDataset(Dataset):
                 if len(rows) >= limit:
                     continue
                 scale, res = divmod(limit, len(rows))
-                rows_to_concat += [rows] * (scale-1) + [rows[:res]]
+                # rows_to_concat += [rows] * (scale-1) + [rows[:res]]
+                rows_to_concat += [rows] * (scale-1)
 
             self.df = pd.concat([self.df] + rows_to_concat, ignore_index=True).copy()
 
