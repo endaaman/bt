@@ -2,6 +2,7 @@ import os
 import re
 from glob import glob
 import itertools
+import hashlib
 
 import pandas as pd
 import torch
@@ -184,6 +185,94 @@ class CLI(BaseMLCLI):
         df.to_excel('d.xlsx')
 
 
+    class HashImagesArgs(CommonArgs):
+        dir: str = 'cache/enda2_512'
+
+    def run_hash_images(self, a):
+        total_hash = ''
+        BUF_SIZE = 65536
+        for p in tqdm(glob(J(a.dir, '**/*.jpg'), recursive=True)):
+            hasher = hashlib.new('sha1')
+            with open(p, 'rb') as f:
+                while True:
+                    data = f.read(BUF_SIZE)
+                    if not data:
+                        break
+                    hasher.update(data)
+            total_hash += str(hasher.hexdigest())
+
+
+        hasher = hashlib.new('sha1')
+        hasher.update(total_hash.encode('utf-8'))
+        print(hasher.hexdigest())
+
+
+    class DrawResultArgs(CommonArgs):
+        src: str
+
+    def run_draw_result(self, a):
+        model_dir = os.path.dirname(a.src)
+        target_name = os.path.splitext(os.path.basename(a.src))[0]
+        dest_dir= J(model_dir, target_name,)
+        os.makedirs(dest_dir, exist_ok=True)
+
+        config = TrainerConfig.from_file(J(model_dir, 'config.json'))
+        unique_code = list(config.code)
+
+        df = pd.read_excel(a.src)
+        df['image_name'] = df['name'].str.cat(df['order'].astype(str), sep='_')
+
+        colors = {
+            'L': 'green',
+            'M': 'blue',
+            'G': 'red',
+            'A': 'yellow',
+            'O': 'purple',
+        }
+
+        font = ImageFont.truetype('/usr/share/fonts/ubuntu/Ubuntu-R.ttf', size=16)
+
+        data = []
+
+        for image_name, rows in tqdm(df.groupby('image_name')):
+            diag_org, diag = rows.iloc[0][['diag_org', 'diag']]
+
+            row_images = []
+            for _y, cols in rows.groupby('y'):
+                row_image_list = []
+                for _x, item in cols.iterrows():
+                    # print(item['x'], item['y'], item['pred'])
+                    i = Image.new('RGBA', (item['width'], item['height']), color=(0,0,0,0,))
+                    draw = ImageDraw.Draw(i)
+                    draw.rectangle(
+                        xy=((0, 0), (item['width'], item['height'])),
+                        outline=colors[item['pred']],
+                    )
+                    draw.rectangle(
+                        xy=((0, 0), (200, 16)),
+                        fill=colors[item['pred']],
+                    )
+                    draw.text(
+                        xy=(0, 0),
+                        text=' '.join([f'{k}:{item[k]:.2f}' for k in ['L', 'M', 'G']]),
+                        font=font,
+                        fill='white'
+                    )
+                    row_image_list.append(np.array(i))
+                row_image = cv2.hconcat(row_image_list)
+                row_images.append(row_image)
+            overlay = Image.fromarray(cv2.vconcat(row_images))
+            original_image = Image.open(
+                f'data/images/enda2/{diag_org}/{image_name}.jpg',
+            ).convert('RGBA')
+            original_image = Image.alpha_composite(original_image, overlay)
+            d = J(dest_dir, diag)
+            os.makedirs(d, exist_ok=True)
+            original_image = original_image.convert('RGB')
+            original_image.save(J(d, f'{image_name}.jpg'))
+            original_image.close()
+
+
 
     class CalcResultArgs(CommonArgs):
         src: str
@@ -199,61 +288,13 @@ class CLI(BaseMLCLI):
         unique_code = list(config.code)
 
         df = pd.read_excel(a.src)
-        df['base_image'] = df['name'].str.cat(df['order'].astype(str), sep='_')
+        df['image_name'] = df['name'].str.cat(df['order'].astype(str), sep='_')
 
-        colors = {
-            'L': 'green',
-            'M': 'blue',
-            'G': 'red',
-            'A': 'yellow',
-            'O': 'purple',
-        }
-
-        font = ImageFont.truetype('/usr/share/fonts/ubuntu/Ubuntu-R.ttf', size=16)
-
-        data = []
-
-        for image_name, items in tqdm(df.groupby('base_image')):
-            # diag_org = items.iloc[0]['diag_org']
-            # diag = items.iloc[0]['diag']
-            # name = items.iloc[0]['name']
-            diag_org, diag, name = items.iloc[0][['diag_org', 'diag', 'name']]
-            if a.render:
-                row_images = []
-                for base, cols in items.groupby('y'):
-                    ii = []
-                    for i, item in cols.iterrows():
-                        # print(item['x'], item['y'], item['pred'])
-                        i = Image.new('RGBA', (item['width'], item['height']), color=(0,0,0,0,))
-                        draw = ImageDraw.Draw(i)
-                        draw.rectangle(
-                            xy=((0, 0), (item['width'], item['height'])),
-                            outline=colors[item['pred']],
-                        )
-                        draw.rectangle(
-                            xy=((0, 0), (200, 16)),
-                            fill=colors[item['pred']],
-                        )
-                        draw.text(
-                            xy=(0, 0),
-                            text=' '.join([f'{k}:{item[k]:.2f}' for k in ['L', 'M', 'G']]),
-                            font=font,
-                            fill='white'
-                        )
-                        ii.append(np.array(i))
-                    row_image = cv2.hconcat(ii)
-                    row_images.append(row_image)
-                overlay = Image.fromarray(cv2.vconcat(row_images))
-                original_image = Image.open(f'data/images/enda2/{diag_org}/{image_name}.jpg').convert('RGBA')
-                # original_image.paste(overlay)
-                original_image = Image.alpha_composite(original_image, overlay)
-                d = J(dest_dir, diag)
-                os.makedirs(d, exist_ok=True)
-                original_image = original_image.convert('RGB')
-                original_image.save(J(d, f'{image_name}.jpg'))
-                original_image.close()
-
+        data_by_case = []
+        for name, items in tqdm(df.groupby('name')):
+            diag_org, diag = items.iloc[0][['diag_org', 'diag']]
             preds = items[['L', 'M', 'G']]
+
             preds_sum = np.sum(preds, axis=0)
             pred_sum = unique_code[np.argmax(preds_sum)]
 
@@ -262,7 +303,31 @@ class CLI(BaseMLCLI):
             unique_values, counts = np.unique(preds_label, return_counts=True)
             pred_vote = unique_code[unique_values[np.argmax(counts)]]
 
-            data.append({
+            data_by_case.append({
+                'name': name,
+                'diag_org': diag_org,
+                'gt': diag,
+                'pred(vote)': pred_vote,
+                'pred(sum)': pred_sum,
+                'correct': int(diag == pred_sum),
+            })
+
+
+        data_by_image = []
+        for image_name, items in tqdm(df.groupby('image_name')):
+            diag_org, diag = items.iloc[0][['diag_org', 'diag']]
+
+            preds = items[unique_code]
+
+            preds_sum = np.sum(preds, axis=0)
+            pred_sum = unique_code[np.argmax(preds_sum)]
+
+            preds_label = np.argmax(preds, axis=1)
+
+            unique_values, counts = np.unique(preds_label, return_counts=True)
+            pred_vote = unique_code[unique_values[np.argmax(counts)]]
+
+            data_by_image.append({
                 'name': name,
                 'image_name': image_name,
                 'diag_org': diag_org,
@@ -272,8 +337,18 @@ class CLI(BaseMLCLI):
                 'correct': int(diag == pred_sum),
             })
 
-        data = pd.DataFrame(data).sort_values(['diag_org', 'image_name'])
-        data.to_excel(with_wrote(J(dest_dir, 'report.xlsx')), index=False)
+        df_by_case = pd.DataFrame(data_by_case).sort_values(['diag_org'])
+        df_by_image = pd.DataFrame(data_by_image).sort_values(['diag_org', 'image_name'])
+
+        print('Acc by case')
+        print(df_by_case['correct'].mean())
+
+        print('Acc by image')
+        print(df_by_image['correct'].mean())
+
+        with pd.ExcelWriter(with_wrote(J(dest_dir, 'report.xlsx')), engine='xlsxwriter') as writer:
+            df_by_case.to_excel(writer, sheet_name='cases', index=False)
+            df_by_image.to_excel(writer, sheet_name='images', index=False)
 
 
 

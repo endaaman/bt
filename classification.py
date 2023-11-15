@@ -197,8 +197,6 @@ class CLI(BaseMLCLI):
         )
 
         df = ds.df.copy()
-        if a.target == 'train':
-            df = df.iloc[:1000]
         df[ds.unique_code] = -1.0
         df['pred'] = ''
 
