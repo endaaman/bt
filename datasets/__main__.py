@@ -41,7 +41,6 @@ class CLI(BaseMLCLI):
     class BuildDatasetArgs(CommonArgs):
         source: str = 'enda2'
         size: int = 512
-        gen: bool = Field(False, cli=('--gen', ))
 
     def run_build_dataset(self, a):
         dst_dir = f'cache/{a.source}_{a.size}'
@@ -190,7 +189,7 @@ class CLI(BaseMLCLI):
 
     class BaseDatasetArgs(BaseMLCLI.CommonArgs):
         source: str = 'cache/enda2_512/'
-        code: str = 'LMGGG'
+        code: str = 'LMGGGB'
         fold: int = 0
         total_fold: int = 5
         limit: int = -1

@@ -154,7 +154,7 @@ class FoldDataset(Dataset):
         for new_diag, df_idx, df_cases_idx in replacer:
             if new_diag == '_':
                 self.df.drop(df_idx, inplace=True)
-                self.df_cases.drop(df_idx, inplace=True)
+                self.df_cases.drop(df_cases_idx, inplace=True)
             else:
                 self.df.loc[df_idx, 'diag'] = new_diag
                 self.df_cases.loc[df_cases_idx, 'diag'] = new_diag
@@ -173,8 +173,13 @@ class FoldDataset(Dataset):
                 # rows = rows[rows['flag_area']]
                 if len(rows) < limit:
                     continue
-                drop_idxs.append(np.random.choice(rows.index, size=len(rows)-limit, replace=False))
-                # drop_idx = rows.sort_values('white_area')
+                # random
+                # drop_idxs.append(np.random.choice(rows.index, size=len(rows)-limit, replace=False))
+                # print(np.random.choice(rows.index, size=len(rows)-limit, replace=False))
+
+                # drop more white
+                rows = rows.sort_values('white_area', ascending=False)
+                drop_idxs.append(rows.index[limit:])
             self.df = self.df.drop(np.concatenate(drop_idxs))
 
         ##* Upsample
@@ -182,6 +187,9 @@ class FoldDataset(Dataset):
             rows_to_concat = []
             assert limit > 0, 'limit must be positive when upsampling'
             for i, row in self.df_cases.iterrows():
+                # do not upsample for B case
+                if row['diag'] == 'B':
+                    continue
                 rows = self.df[self.df['name'] == row.name]
                 if len(rows) >= limit:
                     continue
