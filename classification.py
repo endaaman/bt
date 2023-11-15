@@ -92,22 +92,22 @@ class CLI(BaseMLCLI):
         pass
 
     class TrainArgs(BaseTrainArgs):
-        lr: float = 0.0002
+        lr: float = 0.01
         batch_size: int = Field(16, cli=('--batch-size', '-B', ))
         num_workers: int = 4
         minimum_area: float = 0.7
         limit: int = -1
         upsample: bool = Field(False, cli=('--upsample', ))
-        aug: bool = Field(False, cli=('--aug', ))
-        epoch: int = Field(100, cli=('--epoch', '-E'))
+        noaug: bool = Field(False, cli=('--noaug', ))
+        epoch: int = Field(200, cli=('--epoch', '-E'))
         total_fold: int = Field(..., cli=('--total-fold', ))
-        fold: int = 0
+        fold: int
         model_name: str = Field('tf_efficientnet_b0', cli=('--model', '-m'))
-        source: str = Field('enda2_512', cli=('--source', ))
+        source: str = Field('enda3_512', cli=('--source', ))
         suffix: str = ''
         prefix: str = ''
         size: int = Field(512, cli=('--size', '-s'))
-        code: str = 'LMGAO'
+        code: str = 'LMGGGB'
         overwrite: bool = Field(False, cli=('--overwrite', '-o'))
 
     def run_train(self, a:TrainArgs):
@@ -126,7 +126,7 @@ class CLI(BaseMLCLI):
             minimum_area = a.minimum_area,
             limit = a.limit,
             upsample = a.upsample,
-            image_aug = a.aug,
+            image_aug = not a.noaug,
         )
 
         dss = [
@@ -140,7 +140,7 @@ class CLI(BaseMLCLI):
                  minimum_area=a.minimum_area,
                  limit=a.limit,
                  upsample = a.upsample,
-                 image_aug=a.aug,
+                 image_aug=not a.noaug,
                  aug_mode='same',
                  normalize=True,
             ) for t in ('train', 'test')
