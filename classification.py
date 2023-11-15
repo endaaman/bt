@@ -167,7 +167,6 @@ class CLI(BaseMLCLI):
 
     class ValidateArgs(BaseDLArgs):
         model_dir: str = Field(..., cli=('--model-dir', '-d'))
-
         target: str = 'test'
         batch_size: int = Field(16, cli=('--batch-size', '-B', ))
 

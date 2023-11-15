@@ -90,10 +90,10 @@ def get_augs(train, size, image_aug, normalize):
 class FoldDataset(Dataset):
     def __init__(self,
                  total_fold,
-                 fold=0,
-                 source_dir='cache/enda2_512',
+                 fold,
+                 source_dir,
                  target='train',
-                 code='LMGAO',
+                 code='LMGAO_',
                  size=512,
                  minimum_area=-1,
                  limit=-1,
@@ -102,7 +102,9 @@ class FoldDataset(Dataset):
                  image_aug=False,
                  normalize=True,
                  ):
-        assert re.match('^[LMGAO_]{5}$', code)
+        if len(code) == 5:
+            code += '_'
+        assert re.match('^[LMGAOB_]{6}$', code)
         self.fold = fold
         self.total_fold = total_fold
         self.source_dir = source_dir
@@ -115,14 +117,13 @@ class FoldDataset(Dataset):
         self.image_aug = image_aug
         self.normalize = normalize
 
-        self.unique_code = [c for c in dict.fromkeys(self.code) if c in 'LMGAO']
+        self.unique_code = [c for c in dict.fromkeys(self.code) if c in 'LMGAOB']
 
         df_tiles = pd.read_excel(J(source_dir, f'tiles.xlsx'), index_col=0)
         df_cases = pd.read_excel(J(source_dir, f'folds{total_fold}.xlsx'), index_col=0)
         df_merge = pd.merge(df_tiles, df_cases.drop(columns='diag'), on='name')
         self.df = df_merge.copy()
         self.df_cases = df_cases.copy()
-
         self.total_fold = self.df['fold'].max() + 1
 
         assert self.fold < self.total_fold
@@ -141,7 +142,7 @@ class FoldDataset(Dataset):
         replacer = []
         self.df.loc[:, 'diag_org'] = self.df['diag']
         self.df_cases.loc[:, 'diag_org'] = self.df_cases['diag']
-        for old_diag, new_diag in zip('LMGAO', self.code):
+        for old_diag, new_diag in zip('LMGAOB', self.code):
             if old_diag == new_diag:
                 continue
             replacer.append([
@@ -161,7 +162,8 @@ class FoldDataset(Dataset):
         ##* Filter by area
         if minimum_area > 0:
             # self.df.loc[self.df['white_area'] > minimum_area, 'flag_area'] = False
-            self.df = self.df[self.df['white_area'] < minimum_area].copy()
+            # self.df = self.df[self.df['white_area'] < minimum_area].copy()
+            self.df = self.df[(self.df['white_area'] < 0.7) | (self.df['diag'] == 'B')].copy()
 
         ##* Filter by area
         if limit > 0:
@@ -208,21 +210,27 @@ class FoldDataset(Dataset):
         show_fold_diag(self.df)
 
 
-    def inspect(self, df=None):
-        if df is None:
-            df = self.df_cases
-        folds =df['fold'].unique()
+    def inspect(self):
+        folds = self.df_cases['fold'].unique()
         total = len(folds)
-        fig, axes = plt.subplots(total, 2, figsize=(6, total*2))
+        fig, axes = plt.subplots(total, 3, figsize=(12, total*3))
         if len(axes.shape) == 1:
             axes = axes[None, :]
+
+        axes[0, 0].set_title('Cases by diag')
         for i, fold in enumerate(folds):
-            f = df[df['fold'] == fold]
+            f = self.df_cases[self.df_cases['fold'] == fold]
             sns.histplot(f['diag'], ax=axes[i, 0])
 
+        axes[0, 1].set_title('Tiles by case')
         for i, fold in enumerate(folds):
-            f = df[df['fold'] == fold]
+            f = self.df_cases[self.df_cases['fold'] == fold]
             sns.barplot(x=f['diag'], y=f['count'], ax=axes[i, 1])
+
+        axes[0, 2].set_title('Tiles by diag')
+        for i, fold in enumerate(folds):
+            f = self.df[self.df['fold'] == fold]
+            sns.countplot(x=f['diag'], ax=axes[i, 2])
         return fig
 
     def __len__(self):

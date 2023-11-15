@@ -47,7 +47,7 @@ class CLI(BaseMLCLI):
         dst_dir = f'cache/{a.source}_{a.size}'
         src_dir = f'data/images/{a.source}'
         ee = []
-        for diag in 'LMGAO':
+        for diag in 'LMGAOB':
             print(f'loading {diag}')
             paths = sorted(glob(J(src_dir, f'{diag}/*.jpg')))
             diag_dir = J(dst_dir, diag)
@@ -55,7 +55,7 @@ class CLI(BaseMLCLI):
             data = {}
             for path in tqdm(paths):
                 image_name = os.path.basename(path)
-                m = re.match(r'^(.*)_(\d)\.jpg$', image_name)
+                m = re.match(r'^(.*)_(\d+)\.jpg$', image_name)
                 if not m:
                     raise RuntimeError('Invalid name:', path)
                 name, image_order = m[1], m[2]
@@ -90,12 +90,12 @@ class CLI(BaseMLCLI):
 
 
     class SplitDatasetArgs(CommonArgs):
-        src: str = 'cache/enda2_512'
+        source: str = 'cache/enda2_512'
         fold: int
         skf: bool = Field(False, cli=('--skf', ))
 
     def run_split_dataset(self, a):
-        df_tiles = pd.read_excel(J(a.src, 'tiles.xlsx'))
+        df_tiles = pd.read_excel(J(a.source, 'tiles.xlsx'))
         cases = []
         for name, d in df_tiles.groupby('name'):
             diag = d['diag'].iloc[0]
@@ -123,7 +123,7 @@ class CLI(BaseMLCLI):
             df_cases['fold'] = ids
 
         # pylint: disable=abstract-class-instantiated
-        with pd.ExcelWriter(J(a.src, f'folds{a.fold}.xlsx')) as w:
+        with pd.ExcelWriter(J(a.source, f'folds{a.fold}.xlsx')) as w:
             df_cases.to_excel(w, sheet_name='cases', index=False)
             # df_merge.to_excel(w, sheet_name='tiles', index=False)
 
@@ -192,7 +192,7 @@ class CLI(BaseMLCLI):
         source: str = 'cache/enda2_512/'
         code: str = 'LMGGG'
         fold: int = 0
-        total_fold: int = 6
+        total_fold: int = 5
         limit: int = -1
         upsample: bool = Field(False, cli=('--upsample', ))
         show: bool = Field(False, cli=('--show', ))
