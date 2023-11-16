@@ -47,6 +47,9 @@ class TrainerConfig(BaseTrainerConfig):
     upsample: bool = False
     image_aug: bool = False
 
+    def unique_code(self):
+        return [c for c in dict.fromkeys(self.code) if c in 'LMGAOB']
+
 
 class Trainer(BaseTrainer):
     def prepare(self):
@@ -80,7 +83,7 @@ class Trainer(BaseTrainer):
 
     def continues(self):
         lr = self.get_current_lr()
-        return lr > 1e-7
+        return lr > 1e-5
 
     def get_metrics(self):
         return {
@@ -99,7 +102,7 @@ class CLI(BaseMLCLI):
         limit: int = -1
         upsample: bool = Field(False, cli=('--upsample', ))
         noaug: bool = Field(False, cli=('--noaug', ))
-        epoch: int = Field(200, cli=('--epoch', '-E'))
+        epoch: int = Field(100, cli=('--epoch', '-E'))
         total_fold: int = Field(..., cli=('--total-fold', ))
         fold: int
         model_name: str = Field('tf_efficientnet_b0', cli=('--model', '-m'))
@@ -171,7 +174,7 @@ class CLI(BaseMLCLI):
         batch_size: int = Field(16, cli=('--batch-size', '-B', ))
 
     def run_validate(self, a:ValidateArgs):
-        checkpoint:Checkpoint = torch.load(J(a.model_dir, 'checkpoint_best.pt'))
+        checkpoint:Checkpoint = torch.load(J(a.model_dir, 'checkpoint_last.pt'))
         config = TrainerConfig.from_file(J(a.model_dir, 'config.json'))
         model = TimmModel(name=config.model_name, num_classes=config.num_classes)
         model.load_state_dict(checkpoint.model_state)
@@ -198,11 +201,12 @@ class CLI(BaseMLCLI):
 
         df = ds.df.copy()
         df[ds.unique_code] = -1.0
-        df['pred'] = ''
+        df['pred'] = '_'
 
         num_chunks = math.ceil(len(df) / a.batch_size)
         t = tqdm(range(num_chunks))
 
+        ff = []
         for chunk in t:
             i0 = chunk*a.batch_size
             i1 = (chunk+1)*a.batch_size
@@ -214,13 +218,23 @@ class CLI(BaseMLCLI):
 
             tt = torch.stack(tt)
             with torch.set_grad_enabled(False):
-                o = model(tt.to(a.device()), activate=True).detach().cpu().numpy()
+                o, f = model(tt.to(a.device()), activate=True, with_feautres=True)
+                o = o.detach().cpu().numpy()
+                f = f.detach().cpu().numpy()
             df.loc[df.index[i0:i1], ds.unique_code] = o
             df.loc[df.index[i0:i1], 'pred'] = [ds.unique_code[i] for i in np.argmax(o, axis=1)]
+            ff.append(f)
             t.set_description(f'{i0} - {i1}')
             t.refresh()
 
         df.to_excel(with_wrote(J(a.model_dir, f'{a.target}.xlsx')))
+
+        features = np.concatenate(ff)
+        names = list(df['name'] + '_' + df['order'].astype(str) + '_' + df['x'].astype(str) + '_' + df['y'].astype(str))
+        feature_list = list(zip(names, features))
+        torch.save(feature_list, J(a.model_dir, f'{a.target}_features.pt'))
+        # for name, feature in zip(names, features):
+        #     np.save(J(a.model_dir, 'features', name), feature)
 
 
 if __name__ == '__main__':

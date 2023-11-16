@@ -14,6 +14,7 @@ import imagesize
 from matplotlib import pyplot as plt
 from sklearn.model_selection import StratifiedKFold
 from pydantic import Field
+import umap
 
 from endaaman import load_images_from_dir_or_file, with_wrote, grid_split
 from endaaman.ml import BaseMLCLI
@@ -207,18 +208,16 @@ class CLI(BaseMLCLI):
 
 
     class DrawResultArgs(CommonArgs):
-        src: str
+        model_dir: str = Field(..., cli=('--model-dir', '-m'))
+        target: str = 'test'
 
     def run_draw_result(self, a):
-        model_dir = os.path.dirname(a.src)
-        target_name = os.path.splitext(os.path.basename(a.src))[0]
-        dest_dir= J(model_dir, target_name,)
+        dest_dir= J(a.model_dir, a.target)
         os.makedirs(dest_dir, exist_ok=True)
+        config = TrainerConfig.from_file(J(a.model_dir, 'config.json'))
+        unique_code = config.unique_code()
 
-        config = TrainerConfig.from_file(J(model_dir, 'config.json'))
-        unique_code = list(config.code)
-
-        df = pd.read_excel(a.src)
+        df = pd.read_excel(J(a.model_dir, f'{a.target}.xlsx'))
         df['image_name'] = df['name'].str.cat(df['order'].astype(str), sep='_')
 
         colors = {
@@ -227,6 +226,7 @@ class CLI(BaseMLCLI):
             'G': 'red',
             'A': 'yellow',
             'O': 'purple',
+            'B': 'black',
         }
 
         font = ImageFont.truetype('/usr/share/fonts/ubuntu/Ubuntu-R.ttf', size=16)
@@ -241,58 +241,62 @@ class CLI(BaseMLCLI):
                 row_image_list = []
                 for _x, item in cols.iterrows():
                     # print(item['x'], item['y'], item['pred'])
-                    i = Image.new('RGBA', (item['width'], item['height']), color=(0,0,0,0,))
+                    name, filename = item[['name', 'filename']]
+                    # i = Image.new('RGBA', (item['width'], item['height']), color=(0,0,0,0,))
+                    i = Image.open(f'cache/{config.source}/{diag_org}/{name}/{filename}')
                     draw = ImageDraw.Draw(i)
                     draw.rectangle(
                         xy=((0, 0), (item['width'], item['height'])),
                         outline=colors[item['pred']],
                     )
+                    text = ' '.join([f'{k}:{item[k]:.2f}' for k in unique_code])
+                    bb = draw.textbbox(xy=(0, 0), text=text, font=font, spacing=8)
                     draw.rectangle(
-                        xy=((0, 0), (200, 16)),
+                        xy=bb,
                         fill=colors[item['pred']],
                     )
                     draw.text(
                         xy=(0, 0),
-                        text=' '.join([f'{k}:{item[k]:.2f}' for k in ['L', 'M', 'G']]),
+                        text=text,
                         font=font,
                         fill='white'
                     )
                     row_image_list.append(np.array(i))
+
+
                 row_image = cv2.hconcat(row_image_list)
                 row_images.append(row_image)
-            overlay = Image.fromarray(cv2.vconcat(row_images))
-            original_image = Image.open(
-                f'data/images/enda2/{diag_org}/{image_name}.jpg',
-            ).convert('RGBA')
-            original_image = Image.alpha_composite(original_image, overlay)
+
+            merged_image = Image.fromarray(cv2.vconcat(row_images))
+            # original_image = Image.open(
+            #     f'data/images/enda3/{diag_org}/{image_name}.jpg',
+            # ).convert('RGBA')
+            # original_image = Image.alpha_composite(original_image, overlay)
             d = J(dest_dir, diag)
             os.makedirs(d, exist_ok=True)
-            original_image = original_image.convert('RGB')
-            original_image.save(J(d, f'{image_name}.jpg'))
-            original_image.close()
+            # original_image = original_image.convert('RGB')
+            merged_image.save(J(d, f'{image_name}.jpg'))
+            merged_image.close()
 
 
 
     class CalcResultArgs(CommonArgs):
-        src: str
-        render: bool = Field(False, cli=('--render', ))
+        model_dir: str = Field(..., cli=('--model-dir', '-m'))
+        target: str = 'test'
 
     def run_calc_result(self, a):
-        model_dir = os.path.dirname(a.src)
-        target_name = os.path.splitext(os.path.basename(a.src))[0]
-        dest_dir= J(model_dir, target_name,)
+        dest_dir= J(a.model_dir, a.target)
         os.makedirs(dest_dir, exist_ok=True)
+        config = TrainerConfig.from_file(J(a.model_dir, 'config.json'))
+        unique_code = config.unique_code()
+        df = pd.read_excel(J(a.model_dir, f'{a.target}.xlsx'))
 
-        config = TrainerConfig.from_file(J(model_dir, 'config.json'))
-        unique_code = list(config.code)
-
-        df = pd.read_excel(a.src)
         df['image_name'] = df['name'].str.cat(df['order'].astype(str), sep='_')
 
         data_by_case = []
         for name, items in tqdm(df.groupby('name')):
             diag_org, diag = items.iloc[0][['diag_org', 'diag']]
-            preds = items[['L', 'M', 'G']]
+            preds = items[unique_code]
 
             preds_sum = np.sum(preds, axis=0)
             pred_sum = unique_code[np.argmax(preds_sum)]
@@ -348,6 +352,50 @@ class CLI(BaseMLCLI):
         with pd.ExcelWriter(with_wrote(J(dest_dir, 'report.xlsx')), engine='xlsxwriter') as writer:
             df_by_case.to_excel(writer, sheet_name='cases', index=False)
             df_by_image.to_excel(writer, sheet_name='images', index=False)
+
+
+    class ClusterArgs(CommonArgs):
+        model_dir: str = Field(..., cli=('--model-dir', '-m'))
+        target: str = 'test'
+        count: int = 10
+        show: bool = Field(False, cli=('--show', ))
+
+    def run_cluster(self, a):
+        config = TrainerConfig.from_file(J(a.model_dir, 'config.json'))
+        unique_code = config.unique_code()
+
+        df = pd.read_excel(J(a.model_dir, f'{a.target}.xlsx'), index_col=0)
+
+        features = dict(torch.load(J(a.model_dir, f'{a.target}_features.pt')))
+
+        target_features = []
+        diags = []
+
+        for name, rows in df.groupby('name'):
+            selected_rows = df.loc[np.random.choice(rows.index, a.count)]
+            # 19-3046_1_0_0
+            selected_features = [features['_'.join(str(s) for s in [name, row['order'], row['x'], row['y']])] for i, row in selected_rows.iterrows()]
+
+            # print(selected_rows)
+            # print(selected_features[0].shape)
+            # break
+            target_features += selected_features
+            diags += [unique_code.index(d) for d in selected_rows['diag']]
+
+        target_features = np.array(target_features)
+        embedding = umap.UMAP().fit_transform(target_features)
+
+        embedding_x = embedding[:, 0]
+        embedding_y = embedding[:, 1]
+        for n in np.unique(diags):
+            plt.scatter(embedding_x[diags == n], embedding_y[diags == n], label=unique_code[n])
+        plt.legend()
+        plt.savefig(with_wrote(J(a.model_dir, f'umap_{a.count}.png')))
+        if a.show:
+            plt.show()
+
+
+
 
 
 
