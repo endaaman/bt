@@ -191,7 +191,7 @@ class CLI(BaseMLCLI):
     def run_hash_images(self, a):
         total_hash = ''
         BUF_SIZE = 65536
-        for p in tqdm(glob(J(a.dir, '**/*.jpg'), recursive=True)):
+        for p in tqdm(sorted(glob(J(a.dir, '**/*.jpg'), recursive=True))):
             hasher = hashlib.new('sha1')
             with open(p, 'rb') as f:
                 while True:
@@ -200,7 +200,6 @@ class CLI(BaseMLCLI):
                         break
                     hasher.update(data)
             total_hash += str(hasher.hexdigest())
-
 
         hasher = hashlib.new('sha1')
         hasher.update(total_hash.encode('utf-8'))
