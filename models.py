@@ -7,6 +7,8 @@ import timm
 from torch import nn
 from torch.nn import functional as F
 from torchvision import transforms, models
+from pydantic import Field
+
 from endaaman.ml import BaseMLCLI
 
 
@@ -24,13 +26,19 @@ class TimmModel(nn.Module):
             return [self.base.layer4[-1].act3]
         return []
 
-    def forward(self, x, activate=False):
-        x = self.base(x)
+    def forward(self, x, activate=False, with_feautres=False):
+        features = self.base.forward_features(x)
+        x = self.base.forward_head(features)
+
         if activate:
             if self.num_classes > 1:
                 x = torch.softmax(x, dim=1)
             else:
                 x = torch.sigmoid(x)
+
+        if with_feautres:
+            features = self.base.global_pool(features)
+            return x, features
         return x
 
 
@@ -218,14 +226,17 @@ class CLI(BaseMLCLI):
         print( c(x1, y1) )
 
     class ModelArgs(CommonArgs):
-        model : str = 'tf_efficientnetv2_b0'
+        name : str = Field('tf_efficientnetv2_b0', cli=('--name', '-n'))
 
     def run_model(self, a):
-        model = AttentionModel(name=a.model, num_classes=3)
+        # model = AttentionModel(name=a.model, num_classes=3)
+        # y, aa = model(x, with_attentions=True)
+
+        model = TimmModel(name=a.name, num_classes=3)
         x = torch.rand([4, 3, 512, 512])
-        y, aa = model(x, with_attentions=True)
-        print('y', y, y.shape)
-        print('aa', aa, aa.shape)
+        y, f = model(x, with_feautres=True)
+        print('y', y.shape)
+        print('f', f.shape)
 
 
 if __name__ == '__main__':
