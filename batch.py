@@ -3,6 +3,7 @@ import re
 from glob import glob
 import itertools
 import hashlib
+from itertools import compress
 
 import pandas as pd
 import torch
@@ -14,7 +15,10 @@ import imagesize
 from matplotlib import pyplot as plt
 from sklearn.model_selection import StratifiedKFold
 from pydantic import Field
+from torchvision import transforms
 import umap
+
+from matplotlib.offsetbox import OffsetImage, AnnotationBbox
 
 from endaaman import load_images_from_dir_or_file, with_wrote, grid_split
 from endaaman.ml import BaseMLCLI
@@ -370,11 +374,15 @@ class CLI(BaseMLCLI):
 
         target_features = []
         diags = []
+        images = []
+
+        center_crop = transforms.CenterCrop((512, 512))
 
         for name, rows in df.groupby('name'):
             selected_rows = df.loc[np.random.choice(rows.index, a.count)]
             # 19-3046_1_0_0
             selected_features = [features['_'.join(str(s) for s in [name, row['order'], row['x'], row['y']])] for i, row in selected_rows.iterrows()]
+
 
             # print(selected_rows)
             # print(selected_features[0].shape)
@@ -382,13 +390,80 @@ class CLI(BaseMLCLI):
             target_features += selected_features
             diags += [unique_code.index(d) for d in selected_rows['diag']]
 
-        target_features = np.array(target_features)
-        embedding = umap.UMAP().fit_transform(target_features)
+            images += [
+                np.array(center_crop(Image.open(f'cache/{config.source}/{diag}/{name}/{fn}')))
+                for _, (diag, name, fn) in selected_rows[['diag_org', 'name', 'filename']].iterrows()
+            ]
 
+        diags = np.array(diags)
+        print('Loaded samples.')
+
+        ##* UMAP
+        embedding = umap.UMAP().fit_transform(target_features)
         embedding_x = embedding[:, 0]
         embedding_y = embedding[:, 1]
-        for n in np.unique(diags):
-            plt.scatter(embedding_x[diags == n], embedding_y[diags == n], label=unique_code[n])
+
+
+        ##* Plot
+        fig, ax = plt.subplots(1, 1, figsize=(8, 6))
+
+        target_features = np.array(target_features)
+        scs = []
+        dds = []
+        iis = []
+        for n in range(len(unique_code)):
+            scs.append(plt.scatter(embedding_x[diags == n], embedding_y[diags == n], label=unique_code[n], s=24))
+            dds.append(diags[diags == n])
+            iis.append([i for (i, d) in zip(images, diags) if d == n])
+
+        # annot = ax.annotate("", xy=(0,0), xytext=(20,20),textcoords="offset points",
+        #                 bbox=dict(boxstyle="round", fc="w"),
+        #                 arrowprops=dict(arrowstyle="->"))
+        imagebox = OffsetImage(images[0], zoom=.25)
+        imagebox.image.axes = ax
+
+        annot = AnnotationBbox(imagebox,
+                               xy=(0, 0),
+                               # xybox=(256, 256),
+                               # xycoords='data',
+                               boxcoords='offset points',
+                               # boxcoords=('axes fraction', 'data'),
+                               pad=0.1,
+                               arrowprops=dict( arrowstyle="->", connectionstyle="arc3,rad=-0.3"))
+        annot.set_visible(False)
+        ax.add_artist(annot)
+
+        def hover(event):
+            vis = annot.get_visible()
+            if event.inaxes != ax:
+                return
+
+            for n, (sc, ii) in enumerate(zip(scs, iis)):
+                cont, index = sc.contains(event)
+                if cont:
+                    i = index['ind'][0]
+                    pos = sc.get_offsets()[i]
+                    annot.xy = pos
+                    annot.xybox = pos + np.array([130, 130])
+                    # print(pos)
+                    image = ii[i]
+                    text = unique_code[n]
+                    # annot.set_text(text)
+                    # annot.get_bbox_patch().set_facecolor(cmap(int(text)/10))
+
+                    imagebox.set_data(image)
+
+                    annot.set_visible(True)
+                    fig.canvas.draw_idle()
+                    return
+
+            if vis:
+               annot.set_visible(False)
+               fig.canvas.draw_idle()
+               return
+
+        fig.canvas.mpl_connect('motion_notify_event', hover)
+
         plt.legend()
         plt.savefig(with_wrote(J(a.model_dir, f'umap_{a.count}.png')))
         if a.show:
