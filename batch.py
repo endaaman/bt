@@ -363,9 +363,11 @@ class CLI(BaseMLCLI):
         target: str = 'test'
         count: int = 10
         show: bool = Field(False, cli=('--show', ))
+        mode: str = Field('uniq', regex=r'uniq|all')
 
     def run_cluster(self, a):
         config = TrainerConfig.from_file(J(a.model_dir, 'config.json'))
+
         unique_code = config.unique_code()
 
         df = pd.read_excel(J(a.model_dir, f'{a.target}.xlsx'), index_col=0)
@@ -388,7 +390,10 @@ class CLI(BaseMLCLI):
             # print(selected_features[0].shape)
             # break
             target_features += selected_features
-            diags += [unique_code.index(d) for d in selected_rows['diag']]
+            if a.mode == 'uniq':
+                diags += [unique_code.index(d) for d in selected_rows['diag']]
+            else:
+                diags += ['LMGAOB'.index(d) for d in selected_rows['diag_org']]
 
             images += [
                 np.array(center_crop(Image.open(f'cache/{config.source}/{diag}/{name}/{fn}')))
@@ -403,7 +408,6 @@ class CLI(BaseMLCLI):
         embedding_x = embedding[:, 0]
         embedding_y = embedding[:, 1]
 
-
         ##* Plot
         fig, ax = plt.subplots(1, 1, figsize=(8, 6))
 
@@ -411,15 +415,16 @@ class CLI(BaseMLCLI):
         scs = []
         dds = []
         iis = []
-        for n in range(len(unique_code)):
-            scs.append(plt.scatter(embedding_x[diags == n], embedding_y[diags == n], label=unique_code[n], s=24))
+        for n in np.unique(diags):
+            label = 'LMGAOB'[n] if a.mode == 'uniq' else 'LMGAOB'[n]
+            scs.append(plt.scatter(embedding_x[diags == n], embedding_y[diags == n], label=label, s=24))
             dds.append(diags[diags == n])
             iis.append([i for (i, d) in zip(images, diags) if d == n])
 
         # annot = ax.annotate("", xy=(0,0), xytext=(20,20),textcoords="offset points",
         #                 bbox=dict(boxstyle="round", fc="w"),
         #                 arrowprops=dict(arrowstyle="->"))
-        imagebox = OffsetImage(images[0], zoom=.25)
+        imagebox = OffsetImage(images[0], zoom=.5)
         imagebox.image.axes = ax
 
         annot = AnnotationBbox(imagebox,
@@ -429,7 +434,7 @@ class CLI(BaseMLCLI):
                                boxcoords='offset points',
                                # boxcoords=('axes fraction', 'data'),
                                pad=0.1,
-                               arrowprops=dict( arrowstyle="->", connectionstyle="arc3,rad=-0.3"))
+                               arrowprops=dict(arrowstyle='->', connectionstyle='arc3,rad=-0.3'))
         annot.set_visible(False)
         ax.add_artist(annot)
 
@@ -444,15 +449,12 @@ class CLI(BaseMLCLI):
                     i = index['ind'][0]
                     pos = sc.get_offsets()[i]
                     annot.xy = pos
-                    annot.xybox = pos + np.array([130, 130])
-                    # print(pos)
+                    annot.xybox = pos + np.array([150, 30])
                     image = ii[i]
-                    text = unique_code[n]
+                    # text = unique_code[n]
                     # annot.set_text(text)
                     # annot.get_bbox_patch().set_facecolor(cmap(int(text)/10))
-
                     imagebox.set_data(image)
-
                     annot.set_visible(True)
                     fig.canvas.draw_idle()
                     return
@@ -465,7 +467,9 @@ class CLI(BaseMLCLI):
         fig.canvas.mpl_connect('motion_notify_event', hover)
 
         plt.legend()
-        plt.savefig(with_wrote(J(a.model_dir, f'umap_{a.count}.png')))
+        d = J(a.model_dir, 'umap')
+        os.makedirs(d, exist_ok=True)
+        plt.savefig(with_wrote(J(d, f'{a.target}_{a.mode}_{a.count}.png')))
         if a.show:
             plt.show()
 
