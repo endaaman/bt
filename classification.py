@@ -83,7 +83,7 @@ class Trainer(BaseTrainer):
 
     def continues(self):
         lr = self.get_current_lr()
-        return lr > 1e-5
+        return lr > 1e-6
 
     def get_metrics(self):
         return {

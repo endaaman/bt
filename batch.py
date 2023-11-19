@@ -212,7 +212,7 @@ class CLI(BaseMLCLI):
 
 
     class DrawResultArgs(CommonArgs):
-        model_dir: str = Field(..., cli=('--model-dir', '-m'))
+        model_dir: str = Field(..., cli=('--model-dir', '-d'))
         target: str = 'test'
 
     def run_draw_result(self, a):
@@ -285,7 +285,7 @@ class CLI(BaseMLCLI):
 
 
     class CalcResultArgs(CommonArgs):
-        model_dir: str = Field(..., cli=('--model-dir', '-m'))
+        model_dir: str = Field(..., cli=('--model-dir', '-d'))
         target: str = 'test'
 
     def run_calc_result(self, a):
@@ -359,11 +359,11 @@ class CLI(BaseMLCLI):
 
 
     class ClusterArgs(CommonArgs):
-        model_dir: str = Field(..., cli=('--model-dir', '-m'))
+        model_dir: str = Field(..., cli=('--model-dir', '-d'))
         target: str = 'test'
         count: int = 10
         show: bool = Field(False, cli=('--show', ))
-        mode: str = Field('uniq', regex=r'uniq|all')
+        mode: str = Field('all', regex=r'uniq|all')
 
     def run_cluster(self, a):
         config = TrainerConfig.from_file(J(a.model_dir, 'config.json'))
