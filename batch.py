@@ -383,7 +383,10 @@ class CLI(BaseMLCLI):
         for name, rows in df.groupby('name'):
             selected_rows = df.loc[np.random.choice(rows.index, a.count)]
             # 19-3046_1_0_0
-            selected_features = [features['_'.join(str(s) for s in [name, row['order'], row['x'], row['y']])] for i, row in selected_rows.iterrows()]
+            selected_features = [
+                features['_'.join(str(s) for s in [name, row['order'], row['x'], row['y']])]
+                for i, row in selected_rows.iterrows()
+            ]
 
 
             # print(selected_rows)

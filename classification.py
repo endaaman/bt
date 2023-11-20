@@ -18,11 +18,12 @@ import pandas as pd
 from PIL import Image, ImageDraw, ImageFont
 from pydantic import Field
 # from timm.scheduler.cosine_lr import CosineLRScheduler
-# import pytorch_grad_cam as CAM
-# from pytorch_grad_cam.utils.image import show_cam_on_image
-# from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
 
-from endaaman import with_wrote
+import pytorch_grad_cam as CAM
+from pytorch_grad_cam.utils.image import show_cam_on_image
+from pytorch_grad_cam.utils.model_targets import BinaryClassifierOutputTarget, ClassifierOutputTarget
+
+from endaaman import with_wrote, load_images_from_dir_or_file
 from endaaman.ml import BaseTrainerConfig, BaseTrainer, Checkpoint, pil_to_tensor
 from endaaman.ml.metrics import MultiAccuracy
 from endaaman.ml.cli import BaseMLCLI, BaseDLArgs, BaseTrainArgs
@@ -235,6 +236,67 @@ class CLI(BaseMLCLI):
         torch.save(feature_list, J(a.model_dir, f'{a.target}_features.pt'))
         # for name, feature in zip(names, features):
         #     np.save(J(a.model_dir, 'features', name), feature)
+
+
+    class PredictArgs(BaseDLArgs):
+        model_dir: str = Field(..., cli=('--model-dir', '-d'))
+        src: str
+        cam: bool = Field(False, cli=('--cam', '-c'))
+        cam_label: str = Field('', cli=('--cam-label', ))
+
+    def run_predict(self, a:ValidateArgs):
+        checkpoint:Checkpoint = torch.load(J(a.model_dir, 'checkpoint_last.pt'))
+        config = TrainerConfig.from_file(J(a.model_dir, 'config.json'))
+        model = TimmModel(name=config.model_name, num_classes=config.num_classes)
+        model.load_state_dict(checkpoint.model_state)
+        model.to(a.device())
+        model = model.eval()
+
+        transform = transforms.Compose([
+            # transforms.CenterCrop(config.size),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=0.7, std=0.1),
+        ])
+
+        gradcam = CAM.GradCAM(
+            model=model,
+            target_layers=model.get_cam_layers(),
+            use_cuda=not a.cpu)
+
+        paths = load_images_from_dir_or_file(a.src, with_path=True, with_image=False)
+
+        image = None
+        for path in paths:
+            if image:
+                image.close()
+            image = Image.open(path)
+            t = transform(image)[None, ...].to(a.device())
+            with torch.set_grad_enabled(False):
+                o = model(t, activate=True)
+                o = o.detach().cpu().numpy()[0]
+
+            unique_code = config.unique_code()
+            pred_id = np.argmax(o)
+            pred = unique_code[pred_id]
+            label = ' '.join([f'{c}:{int(v*100):3d}' for c, v in zip(unique_code, o)])
+            h, w = t.shape[2], t.shape[3]
+            print(f'{path}: ({w}x{h}) {pred} ({label})')
+
+            if not a.cam:
+                continue
+            cam_class_id = unique_code.index(a.cam_label) if a.cam_label  else pred_id
+            cam_calss = unique_code[cam_class_id]
+            targets = [ClassifierOutputTarget(cam_class_id)]
+
+            mask = gradcam(input_tensor=t, targets=targets)[0]
+            visualization = show_cam_on_image(np.array(image)/255, mask, use_rgb=True)
+            visualization = Image.fromarray(visualization)
+            d = J(a.model_dir, 'cam')
+            os.makedirs(d, exist_ok=True)
+            name = os.path.splitext(os.path.basename(a.src))[0]
+            visualization.save(with_wrote(J(d, f'{name}_{cam_calss}.jpg')))
+
+
 
 
 if __name__ == '__main__':

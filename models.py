@@ -24,6 +24,10 @@ class TimmModel(nn.Module):
             return [self.base.conv_head]
         if re.match(r'^resnetrs.*', self.name):
             return [self.base.layer4[-1].act3]
+        if re.match(r'^resnet\d+', self.name):
+            return [self.base.layer4[-1].act2]
+
+        raise RuntimeError('CAM layers are not determined.')
         return []
 
     def forward(self, x, activate=False, with_feautres=False):
