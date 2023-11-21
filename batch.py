@@ -236,8 +236,8 @@ class CLI(BaseMLCLI):
         font = ImageFont.truetype('/usr/share/fonts/ubuntu/Ubuntu-R.ttf', size=16)
 
         data = []
-
-        for image_name, rows in tqdm(df.groupby('image_name')):
+        tq = tqdm(df.groupby('image_name'))
+        for image_name, rows in tq:
             diag_org, diag = rows.iloc[0][['diag_org', 'diag']]
 
             row_images = []
@@ -281,6 +281,9 @@ class CLI(BaseMLCLI):
             # original_image = original_image.convert('RGB')
             merged_image.save(J(d, f'{image_name}.jpg'))
             merged_image.close()
+
+            tq.set_description(f'Drew {image_name}')
+            tq.refresh()
 
 
 
@@ -364,6 +367,7 @@ class CLI(BaseMLCLI):
         count: int = 10
         show: bool = Field(False, cli=('--show', ))
         mode: str = Field('all', regex=r'uniq|all')
+        notrained: bool = Field(False, cli=('--notrained', ))
 
     def run_cluster(self, a):
         config = TrainerConfig.from_file(J(a.model_dir, 'config.json'))
@@ -478,7 +482,21 @@ class CLI(BaseMLCLI):
 
 
 
-
+    def run_gather_reports(self, a):
+        df = []
+        for fold in range(5):
+            for model_dir in glob(f'out/enda3_512/LMGGGB/fold5_{fold}/*'):
+                name = os.path.split(model_dir)[-1]
+                df_case = pd.read_excel(J(model_dir, 'test/report.xlsx'), sheet_name='cases')
+                df_image = pd.read_excel(J(model_dir, 'test/report.xlsx'), sheet_name='images')
+                df.append({
+                    'name': name,
+                    'fold': fold,
+                    'case': np.mean(df_case['correct']),
+                    'image': np.mean(df_image['correct'])
+                })
+        df = pd.DataFrame(df)
+        df.to_excel('out/enda3_512/LMGGGB/acc.xlsx')
 
 
 if __name__ == '__main__':

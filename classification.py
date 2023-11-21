@@ -173,12 +173,15 @@ class CLI(BaseMLCLI):
         model_dir: str = Field(..., cli=('--model-dir', '-d'))
         target: str = 'test'
         batch_size: int = Field(16, cli=('--batch-size', '-B', ))
+        default: bool = Field(False, cli=('--default', ))
+        features: bool = Field(False, cli=('--features', '-F'))
 
     def run_validate(self, a:ValidateArgs):
         checkpoint:Checkpoint = torch.load(J(a.model_dir, 'checkpoint_last.pt'), map_location='cpu')
         config = TrainerConfig.from_file(J(a.model_dir, 'config.json'))
         model = TimmModel(name=config.model_name, num_classes=config.num_classes)
-        model.load_state_dict(checkpoint.model_state)
+        if not a.default:
+            model.load_state_dict(checkpoint.model_state)
         model.to(a.device())
         model = model.eval()
 
@@ -200,42 +203,53 @@ class CLI(BaseMLCLI):
              normalize=True,
         )
 
+        target = 'un' + a.target if a.default else a.target
+
         df = ds.df.copy()
         df[ds.unique_code] = -1.0
         df['pred'] = '_'
 
         num_chunks = math.ceil(len(df) / a.batch_size)
-        t = tqdm(range(num_chunks))
+        tq = tqdm(range(num_chunks))
 
         ff = []
-        for chunk in t:
+        for chunk in tq:
             i0 = chunk*a.batch_size
             i1 = (chunk+1)*a.batch_size
             rows = df[i0:i1]
             tt = []
             for i, row in rows.iterrows():
                 fp = J(f'cache', config.source,  row['diag_org'], row['name'], row['filename'])
-                tt.append(transform(Image.open(fp)))
+                image = Image.open(fp)
+                tt.append(transform(image))
+                image.close()
 
             tt = torch.stack(tt)
             with torch.set_grad_enabled(False):
-                o, f = model(tt.to(a.device()), activate=True, with_feautres=True)
+                i = tt.to(a.device())
+                if a.features:
+                    o, f = model(i, activate=True, with_feautres=True)
+                    f = f.detach().cpu().numpy()
+                    ff.append(f)
+                else:
+                    o = model(i, activate=True, with_feautres=False)
                 o = o.detach().cpu().numpy()
-                f = f.detach().cpu().numpy()
             df.loc[df.index[i0:i1], ds.unique_code] = o
-            df.loc[df.index[i0:i1], 'pred'] = [ds.unique_code[i] for i in np.argmax(o, axis=1)]
-            ff.append(f)
-            t.set_description(f'{i0} - {i1}')
-            t.refresh()
+            preds = [ds.unique_code[i] for i in np.argmax(o, axis=1)]
+            df.loc[df.index[i0:i1], 'pred'] = preds
 
-        df.to_excel(with_wrote(J(a.model_dir, f'{a.target}.xlsx')))
+            diags = df.loc[df.index[i0:i1], 'diag']
+            acc = np.mean(diags == preds)
+            tq.set_description(f'{i0} - {i1}: Acc: {acc:.3f}')
+            tq.refresh()
 
-        features = np.concatenate(ff)
-        names = list(df['name'] + '_' + df['order'].astype(str) + '_' + df['x'].astype(str) + '_' + df['y'].astype(str))
-        feature_list = list(zip(names, features))
-        torch.save(feature_list, J(a.model_dir, f'{a.target}_features.pt'))
-        # for name, feature in zip(names, features):
-        #     np.save(J(a.model_dir, 'features', name), feature)
+        df.to_excel(with_wrote(J(a.model_dir, f'{target}.xlsx')))
+
+        if a.features:
+            features = np.concatenate(ff)
+            names = list(df['name'] + '_' + df['order'].astype(str) + '_' + df['x'].astype(str) + '_' + df['y'].astype(str))
+            feature_list = list(zip(names, features))
+            torch.save(feature_list, J(a.model_dir, f'{target}_features.pt'))
 
 
     class PredictArgs(BaseDLArgs):
@@ -247,7 +261,7 @@ class CLI(BaseMLCLI):
         crop: int = -1
         cols: int = 3
 
-    def run_predict(self, a:ValidateArgs):
+    def run_predict(self, a:PredictArgs):
         checkpoint:Checkpoint = torch.load(J(a.model_dir, 'checkpoint_last.pt'), map_location='cpu')
         config = TrainerConfig.from_file(J(a.model_dir, 'config.json'))
         model = TimmModel(name=config.model_name, num_classes=config.num_classes)
@@ -309,7 +323,8 @@ class CLI(BaseMLCLI):
             ax.set_title(f'{name} {pred} (CAM: {cam_class})')
             ax.set(xlabel=None, ylabel=None)
 
-        plt.show()
+        if a.show:
+            plt.show()
 
 
 
