@@ -467,9 +467,9 @@ class CLI(BaseMLCLI):
                     return
 
             if vis:
-               annot.set_visible(False)
-               fig.canvas.draw_idle()
-               return
+                annot.set_visible(False)
+                fig.canvas.draw_idle()
+                return
 
         fig.canvas.mpl_connect('motion_notify_event', hover)
 
@@ -479,7 +479,6 @@ class CLI(BaseMLCLI):
         plt.savefig(with_wrote(J(d, f'{a.target}_{a.mode}_{a.count}.png')))
         if a.show:
             plt.show()
-
 
 
     def run_gather_reports(self, a):
