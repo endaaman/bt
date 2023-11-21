@@ -175,7 +175,7 @@ class CLI(BaseMLCLI):
         batch_size: int = Field(16, cli=('--batch-size', '-B', ))
 
     def run_validate(self, a:ValidateArgs):
-        checkpoint:Checkpoint = torch.load(J(a.model_dir, 'checkpoint_last.pt'))
+        checkpoint:Checkpoint = torch.load(J(a.model_dir, 'checkpoint_last.pt'), map_location='cpu')
         config = TrainerConfig.from_file(J(a.model_dir, 'config.json'))
         model = TimmModel(name=config.model_name, num_classes=config.num_classes)
         model.load_state_dict(checkpoint.model_state)
@@ -247,7 +247,7 @@ class CLI(BaseMLCLI):
         crop: int = -1
 
     def run_predict(self, a:ValidateArgs):
-        checkpoint:Checkpoint = torch.load(J(a.model_dir, 'checkpoint_last.pt'))
+        checkpoint:Checkpoint = torch.load(J(a.model_dir, 'checkpoint_last.pt'), map_location='cpu')
         config = TrainerConfig.from_file(J(a.model_dir, 'config.json'))
         model = TimmModel(name=config.model_name, num_classes=config.num_classes)
         model.load_state_dict(checkpoint.model_state)
