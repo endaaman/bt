@@ -243,6 +243,8 @@ class CLI(BaseMLCLI):
         src: str
         cam: bool = Field(False, cli=('--cam', '-c'))
         cam_label: str = Field('', cli=('--cam-label', ))
+        show: bool = Field(False, cli=('--show', ))
+        crop: int = -1
 
     def run_predict(self, a:ValidateArgs):
         checkpoint:Checkpoint = torch.load(J(a.model_dir, 'checkpoint_last.pt'))
@@ -252,24 +254,28 @@ class CLI(BaseMLCLI):
         model.to(a.device())
         model = model.eval()
 
-        transform = transforms.Compose([
-            # transforms.CenterCrop(config.size),
+        image_transform = transforms.CenterCrop(a.crop) if a.crop > 0 else lambda x:x
+
+        transform = transforms.Compose([v for v in [
             transforms.ToTensor(),
             transforms.Normalize(mean=0.7, std=0.1),
-        ])
+        ] if v])
 
-        gradcam = CAM.GradCAM(
-            model=model,
-            target_layers=model.get_cam_layers(),
-            use_cuda=not a.cpu)
+        if a.cam:
+            gradcam = CAM.GradCAM(
+                model=model,
+                target_layers=model.get_cam_layers(),
+                use_cuda=not a.cpu)
 
         paths = load_images_from_dir_or_file(a.src, with_path=True, with_image=False)
 
         image = None
+        viss = []
         for path in paths:
             if image:
                 image.close()
             image = Image.open(path)
+            image = image_transform(image)
             t = transform(image)[None, ...].to(a.device())
             with torch.set_grad_enabled(False):
                 o = model(t, activate=True)
@@ -284,17 +290,27 @@ class CLI(BaseMLCLI):
 
             if not a.cam:
                 continue
+
             cam_class_id = unique_code.index(a.cam_label) if a.cam_label  else pred_id
             cam_calss = unique_code[cam_class_id]
             targets = [ClassifierOutputTarget(cam_class_id)]
 
             mask = gradcam(input_tensor=t, targets=targets)[0]
-            visualization = show_cam_on_image(np.array(image)/255, mask, use_rgb=True)
-            visualization = Image.fromarray(visualization)
+            vis = show_cam_on_image(np.array(image)/255, mask, use_rgb=True)
+            vis = Image.fromarray(vis)
             d = J(a.model_dir, 'cam')
             os.makedirs(d, exist_ok=True)
             name = os.path.splitext(os.path.basename(a.src))[0]
-            visualization.save(with_wrote(J(d, f'{name}_{cam_calss}.jpg')))
+            vis.save(with_wrote(J(d, f'{name}_{cam_calss}.jpg')))
+            viss.append(vis)
+
+        if a.show and a.cam:
+            fig, axes = plt.subplots(1, len(viss), figsize=(8, len(viss)*4))
+            if len(viss) == 1:
+                axes = [axes]
+            for vis, ax in zip(viss, axes):
+                ax.imshow(vis)
+            plt.show()
 
 
 
