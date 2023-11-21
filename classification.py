@@ -245,6 +245,7 @@ class CLI(BaseMLCLI):
         cam_label: str = Field('', cli=('--cam-label', ))
         show: bool = Field(False, cli=('--show', ))
         crop: int = -1
+        cols: int = 3
 
     def run_predict(self, a:ValidateArgs):
         checkpoint:Checkpoint = torch.load(J(a.model_dir, 'checkpoint_last.pt'), map_location='cpu')
@@ -254,6 +255,11 @@ class CLI(BaseMLCLI):
         model.to(a.device())
         model = model.eval()
 
+        gradcam = CAM.GradCAM(
+            model=model,
+            target_layers=model.get_cam_layers(),
+            use_cuda=not a.cpu) if a.cam else None
+
         image_transform = transforms.CenterCrop(a.crop) if a.crop > 0 else lambda x:x
 
         transform = transforms.Compose([v for v in [
@@ -261,21 +267,13 @@ class CLI(BaseMLCLI):
             transforms.Normalize(mean=0.7, std=0.1),
         ] if v])
 
-        if a.cam:
-            gradcam = CAM.GradCAM(
-                model=model,
-                target_layers=model.get_cam_layers(),
-                use_cuda=not a.cpu)
+        images, paths  = load_images_from_dir_or_file(a.src, with_path=True)
+        images = [image_transform(i) for i in images]
 
-        paths = load_images_from_dir_or_file(a.src, with_path=True, with_image=False)
+        rows = math.ceil(len(images) / a.cols)
+        fig = plt.figure(figsize=(a.cols*4, rows*3))
 
-        image = None
-        viss = []
-        for path in paths:
-            if image:
-                image.close()
-            image = Image.open(path)
-            image = image_transform(image)
+        for i, (path, image) in enumerate(zip(paths, images)):
             t = transform(image)[None, ...].to(a.device())
             with torch.set_grad_enabled(False):
                 o = model(t, activate=True)
@@ -292,7 +290,7 @@ class CLI(BaseMLCLI):
                 continue
 
             cam_class_id = unique_code.index(a.cam_label) if a.cam_label  else pred_id
-            cam_calss = unique_code[cam_class_id]
+            cam_class = unique_code[cam_class_id]
             targets = [ClassifierOutputTarget(cam_class_id)]
 
             mask = gradcam(input_tensor=t, targets=targets)[0]
@@ -300,18 +298,18 @@ class CLI(BaseMLCLI):
             vis = Image.fromarray(vis)
             d = J(a.model_dir, 'cam')
             os.makedirs(d, exist_ok=True)
-            name = os.path.splitext(os.path.basename(a.src))[0]
-            vis.save(with_wrote(J(d, f'{name}_{cam_calss}.jpg')))
-            viss.append(vis)
+            name = os.path.splitext(os.path.basename(path))[0]
+            # vis.save(with_wrote(J(d, f'{name}_{cam_class}.jpg')))
+            vis.save(J(d, f'{name}_{cam_class}.jpg'))
 
-        if a.show and a.cam:
-            fig, axes = plt.subplots(1, len(viss), figsize=(8, len(viss)*4))
-            if len(viss) == 1:
-                axes = [axes]
-            for vis, ax in zip(viss, axes):
-                ax.imshow(vis)
-            plt.show()
+            if not a.show:
+                continue
+            ax = fig.add_subplot(rows, a.cols, i+1)
+            ax.imshow(vis)
+            ax.set_title(f'{name} {pred} (CAM: {cam_class})')
+            ax.set(xlabel=None, ylabel=None)
 
+        plt.show()
 
 
 
