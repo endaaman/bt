@@ -16,6 +16,7 @@ from matplotlib import pyplot as plt
 from sklearn.model_selection import StratifiedKFold
 from pydantic import Field
 from torchvision import transforms
+from sklearn import metrics as skmetrics
 import umap
 
 from matplotlib.offsetbox import OffsetImage, AnnotationBbox
@@ -306,6 +307,7 @@ class CLI(BaseMLCLI):
             preds = items[unique_code]
 
             preds_sum = np.sum(preds, axis=0)
+            preds_sum = preds_sum / np.sum(preds_sum)
             pred_sum = unique_code[np.argmax(preds_sum)]
 
             preds_label = np.argmax(preds, axis=1)
@@ -313,22 +315,23 @@ class CLI(BaseMLCLI):
             unique_values, counts = np.unique(preds_label, return_counts=True)
             pred_vote = unique_code[unique_values[np.argmax(counts)]]
 
-            data_by_case.append({
+            d = {
                 'name': name,
                 'diag_org': diag_org,
                 'gt': diag,
                 'pred(vote)': pred_vote,
                 'pred(sum)': pred_sum,
                 'correct': int(diag == pred_sum),
-            })
-
+            }
+            for p, code in zip(preds_sum, unique_code):
+                d[code] = p
+            data_by_case.append(d)
 
         data_by_image = []
         for image_name, items in tqdm(df.groupby('image_name')):
             diag_org, diag = items.iloc[0][['diag_org', 'diag']]
 
             preds = items[unique_code]
-
             preds_sum = np.sum(preds, axis=0)
             pred_sum = unique_code[np.argmax(preds_sum)]
 
@@ -337,7 +340,7 @@ class CLI(BaseMLCLI):
             unique_values, counts = np.unique(preds_label, return_counts=True)
             pred_vote = unique_code[unique_values[np.argmax(counts)]]
 
-            data_by_image.append({
+            d = {
                 'name': name,
                 'image_name': image_name,
                 'diag_org': diag_org,
@@ -345,16 +348,30 @@ class CLI(BaseMLCLI):
                 'pred(vote)': pred_vote,
                 'pred(sum)': pred_sum,
                 'correct': int(diag == pred_sum),
-            })
+            }
+            for p, code in zip(preds_sum, unique_code):
+                d[code] = p
+            data_by_image.append(d)
 
         df_by_case = pd.DataFrame(data_by_case).sort_values(['diag_org'])
         df_by_image = pd.DataFrame(data_by_image).sort_values(['diag_org', 'image_name'])
 
         print('Acc by case')
         print(df_by_case['correct'].mean())
-
         print('Acc by image')
         print(df_by_image['correct'].mean())
+
+        for df, t in ((df_by_case, 'case'), (df_by_image, 'image')):
+            for code in unique_code:
+                p = df_by_case[code]
+                gt = df_by_case['gt'] == code
+                fpr, tpr, __t = skmetrics.roc_curve(gt, p)
+                auc = skmetrics.auc(fpr, tpr)
+                plt.plot(fpr, tpr, label=f'{code}: AUC={auc:.3f}')
+                plt.savefig(J(dest_dir, f'{t}_{code}.png'))
+                plt.legend()
+                plt.close()
+                print(t, code, auc)
 
         with pd.ExcelWriter(with_wrote(J(dest_dir, 'report.xlsx')), engine='xlsxwriter') as writer:
             df_by_case.to_excel(writer, sheet_name='cases', index=False)
@@ -375,8 +392,14 @@ class CLI(BaseMLCLI):
         unique_code = config.unique_code()
 
         df = pd.read_excel(J(a.model_dir, f'{a.target}.xlsx'), index_col=0)
-
         features = dict(torch.load(J(a.model_dir, f'{a.target}_features.pt')))
+
+        # df = pd.read_excel('cache/enda3_512/tiles.xlsx')
+        # df['diag_org'] = df['diag']
+        # features = {}
+        # for f in range(5):
+        #     f = dict(torch.load(f'out/enda3_512/LMGGGB/fold5_{f}/resnet18/test_features.pt'))
+        #     features.update(f)
 
         target_features = []
         diags = []
@@ -391,7 +414,6 @@ class CLI(BaseMLCLI):
                 features['_'.join(str(s) for s in [name, row['order'], row['x'], row['y']])]
                 for i, row in selected_rows.iterrows()
             ]
-
 
             # print(selected_rows)
             # print(selected_features[0].shape)
@@ -486,8 +508,11 @@ class CLI(BaseMLCLI):
         for fold in range(5):
             for model_dir in glob(f'out/enda3_512/LMGGGB/fold5_{fold}/*'):
                 name = os.path.split(model_dir)[-1]
-                df_case = pd.read_excel(J(model_dir, 'test/report.xlsx'), sheet_name='cases')
-                df_image = pd.read_excel(J(model_dir, 'test/report.xlsx'), sheet_name='images')
+                fp = J(model_dir, 'test/report.xlsx')
+                if not os.path.exists(fp):
+                    continue
+                df_case = pd.read_excel(fp, sheet_name='cases')
+                df_image = pd.read_excel(fp, sheet_name='images')
                 df.append({
                     'name': name,
                     'fold': fold,
