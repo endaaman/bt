@@ -154,7 +154,6 @@ class CLI(BaseMLCLI):
             pred,
         )
 
-
     class CamArgs(CommonArgs):
         src: str
         dest: str = 'cam'

@@ -21,7 +21,7 @@ import umap
 
 from matplotlib.offsetbox import OffsetImage, AnnotationBbox
 
-from endaaman import load_images_from_dir_or_file, with_wrote, grid_split
+from endaaman import load_images_from_dir_or_file, with_wrote, grid_split, with_mkdir
 from endaaman.ml import BaseMLCLI
 
 from datasets.utils import show_fold_diag
@@ -268,7 +268,6 @@ class CLI(BaseMLCLI):
                     )
                     row_image_list.append(np.array(i))
 
-
                 row_image = cv2.hconcat(row_image_list)
                 row_images.append(row_image)
 
@@ -394,12 +393,12 @@ class CLI(BaseMLCLI):
         df = pd.read_excel(J(a.model_dir, f'{a.target}.xlsx'), index_col=0)
         features = dict(torch.load(J(a.model_dir, f'{a.target}_features.pt')))
 
-        # df = pd.read_excel('cache/enda3_512/tiles.xlsx')
-        # df['diag_org'] = df['diag']
-        # features = {}
-        # for f in range(5):
-        #     f = dict(torch.load(f'out/enda3_512/LMGGGB/fold5_{f}/resnet18/test_features.pt'))
-        #     features.update(f)
+        df = pd.read_excel('cache/enda3_512/tiles.xlsx')
+        df['diag_org'] = df['diag']
+        features = {}
+        for f in range(5):
+            f = dict(torch.load(f'out/enda3_512/LMGGGB/fold5_{f}/resnetrs50/test_features.pt'))
+            features.update(f)
 
         target_features = []
         diags = []
@@ -438,7 +437,7 @@ class CLI(BaseMLCLI):
         embedding_y = embedding[:, 1]
 
         ##* Plot
-        fig, ax = plt.subplots(1, 1, figsize=(8, 6))
+        fig, ax = plt.subplots(1, 1, figsize=(14, 10))
 
         target_features = np.array(target_features)
         scs = []
@@ -502,8 +501,7 @@ class CLI(BaseMLCLI):
         if a.show:
             plt.show()
 
-
-    def run_gather_reports(self, a):
+    def run_list_reports(self, a):
         df = []
         for fold in range(5):
             for model_dir in glob(f'out/enda3_512/LMGGGB/fold5_{fold}/*'):
@@ -520,7 +518,96 @@ class CLI(BaseMLCLI):
                     'image': np.mean(df_image['correct'])
                 })
         df = pd.DataFrame(df)
-        df.to_excel('out/enda3_512/LMGGGB/acc.xlsx')
+        df.to_excel(with_wrote('out/enda3_512/LMGGGB/acc.xlsx'))
+
+
+    class GatherReportsArgs(CommonArgs):
+        model:str
+        target:str = 'test'
+
+    def run_gather_reports(self, a):
+        df_cases = []
+        df_images = []
+        for fold in range(5):
+            for model_dir in glob(f'out/enda3_512/LMGGGB/fold5_{fold}/{a.model}'):
+                fp = J(model_dir, a.target, 'report.xlsx')
+                if not os.path.exists(fp):
+                    continue
+                df_case = pd.read_excel(fp, sheet_name='cases')
+                df_image = pd.read_excel(fp, sheet_name='images')
+                df_case['fold'] = fold
+                df_image['fold'] = fold
+                df_cases.append(df_case)
+                df_images.append(df_image)
+        # df.to_excel('out/enda3_512/LMGGGB/acc.xlsx')
+
+        dest_dir = with_mkdir(f'out/enda3_512/LMGGGB/report_{a.model}')
+
+        df_cases = pd.concat(df_cases)
+        df_images = pd.concat(df_images)
+        with pd.ExcelWriter(with_wrote(J(dest_dir, 'report.xlsx')), engine='xlsxwriter') as writer:
+            df_cases.to_excel(writer, sheet_name='cases')
+            df_images.to_excel(writer, sheet_name='images')
+
+        unique_code = [c for c in df_cases.columns if c in 'LMGAOB']
+
+        for code in unique_code:
+            p = df_cases[code]
+            gt = df_cases['gt'] == code
+            fpr, tpr, __t = skmetrics.roc_curve(gt, p)
+            auc = skmetrics.auc(fpr, tpr)
+            print(code, len(p), auc)
+            plt.plot(fpr, tpr, label=f'{code}: AUC={auc:.3f}')
+            plt.legend(loc='lower right')
+            plt.savefig(J(dest_dir, f'roc_all_{code}.png'))
+            plt.close()
+
+        data = {code: [] for code in unique_code}
+
+
+        for code in unique_code:
+            fprs = []
+            tprs = []
+            for fold in range(5):
+                df = df_cases[df_cases['fold'] == fold]
+                p = df[code]
+                gt = df['gt'] == code
+                fpr, tpr, __t = skmetrics.roc_curve(gt, p)
+                fprs.append(fpr)
+                tprs.append(tpr)
+
+            self.draw_curve_with_ci(fprs, tprs)
+            plt.legend(loc='lower right')
+            plt.savefig(J(dest_dir, f'roc_ci_{code}.png'))
+            plt.close()
+
+        plt.show()
+
+
+    def draw_curve_with_ci(self, xx, yy, fill=True, label='{}', color=['blue', 'lightblue'], std_scale=2):
+        l = []
+        mean_x = np.linspace(0, 1, 1000)
+        aucs = []
+        for (x, y) in zip(xx, yy):
+            l.append(np.interp(mean_x, x, y))
+            aucs.append(skmetrics.auc(x, y))
+
+        yy = np.array(l)
+        mean_y = yy.mean(axis=0)
+        std_y = yy.std(axis=0)
+
+        mean_auc = np.mean(aucs)
+        std_auc = np.std(aucs)
+        auc_label = f'AUC:{mean_auc:0.3f} ± {std_auc:0.3f}'
+        plt.plot(mean_x, mean_y, label=label.format(auc_label), color=color[0])
+
+        if fill:
+            plt.fill_between(
+                mean_x,
+                (mean_y - std_scale * std_y).clip(.0, 1.0),
+                (mean_y + std_scale * std_y).clip(.0, 1.0),
+                color=color[1], alpha=0.2, label='± 1.0 s.d.')
+
 
 
 if __name__ == '__main__':

@@ -188,7 +188,7 @@ class CLI(BaseMLCLI):
         transform = transforms.Compose([
             transforms.CenterCrop(config.size),
             transforms.ToTensor(),
-            transforms.Normalize(mean=0.7, std=0.1),
+            transforms.Normalize(mean=0.7, std=0.2),
         ])
 
         ds = FoldDataset(
@@ -278,14 +278,16 @@ class CLI(BaseMLCLI):
 
         transform = transforms.Compose([v for v in [
             transforms.ToTensor(),
-            transforms.Normalize(mean=0.7, std=0.1),
+            transforms.Normalize(mean=0.7, std=0.2),
         ] if v])
 
         images, paths  = load_images_from_dir_or_file(a.src, with_path=True)
         images = [image_transform(i) for i in images]
 
         rows = math.ceil(len(images) / a.cols)
-        fig = plt.figure(figsize=(a.cols*4, rows*3))
+        cols = min(a.cols, len(images))
+
+        fig = plt.figure(figsize=(cols*4, rows*3))
 
         for i, (path, image) in enumerate(zip(paths, images)):
             t = transform(image)[None, ...].to(a.device())
@@ -318,7 +320,7 @@ class CLI(BaseMLCLI):
 
             if not a.show:
                 continue
-            ax = fig.add_subplot(rows, a.cols, i+1)
+            ax = fig.add_subplot(rows, cols, i+1)
             ax.imshow(vis)
             ax.set_title(f'{name} {pred} (CAM: {cam_class})')
             ax.set(xlabel=None, ylabel=None)
