@@ -543,27 +543,71 @@ class CLI(BaseMLCLI):
 
         dest_dir = with_mkdir(f'out/enda3_512/LMGGGB/report_{a.model}')
 
-        df_cases = pd.concat(df_cases)
-        df_images = pd.concat(df_images)
-        with pd.ExcelWriter(with_wrote(J(dest_dir, 'report.xlsx')), engine='xlsxwriter') as writer:
-            df_cases.to_excel(writer, sheet_name='cases')
-            df_images.to_excel(writer, sheet_name='images')
+        df_cases = pd.concat(df_cases, ignore_index=True)
+        df_images = pd.concat(df_images, ignore_index=True)
+
+        df_images = df_images[['fold', *df_images.columns[df_images.columns!='fold']]]
+        df_cases = df_cases[['fold', *df_cases.columns[df_cases.columns!='fold']]]
 
         unique_code = [c for c in df_cases.columns if c in 'LMGAOB']
 
-        for code in unique_code:
-            p = df_cases[code]
-            gt = df_cases['gt'] == code
-            fpr, tpr, __t = skmetrics.roc_curve(gt, p)
-            auc = skmetrics.auc(fpr, tpr)
-            print(code, len(p), auc)
-            plt.plot(fpr, tpr, label=f'{code}: AUC={auc:.3f}')
-            plt.legend(loc='lower right')
-            plt.savefig(J(dest_dir, f'roc_all_{code}.png'))
-            plt.close()
+        df_metrics = []
+        for fold in range(-1, 5):
+            if fold < 0:
+                df = df_cases
+            else:
+                df = df_cases[df_cases['fold'] == fold]
+
+            acc = np.mean(df['correct'])
+
+            d = {
+                'fold': fold,
+                'acc': acc,
+            }
+
+            # precision
+            gt = df['gt'].map(lambda x: unique_code.index(x))
+            p = df['pred(sum)'].map(lambda x: unique_code.index(x))
+            precisions = skmetrics.precision_score(gt, p, average=None)
+
+            for code in unique_code:
+                p = df[code]
+                gt = df['gt'] == code
+                fpr, tpr, __t = skmetrics.roc_curve(gt, p)
+                auc = skmetrics.auc(fpr, tpr)
+                if fold < 0:
+                    plt.plot(fpr, tpr, label=f'{code}: AUC={auc:.3f}')
+                    plt.legend(loc='lower right')
+                    plt.savefig(J(dest_dir, f'roc_all_{code}.png'))
+                    plt.close()
+                d[f'auroc_{code}'] = auc
+
+            # ROCs
+            for code in unique_code:
+                p = df[code]
+                gt = df['gt'] == code
+                fpr, tpr, __t = skmetrics.roc_curve(gt, p)
+                auc = skmetrics.auc(fpr, tpr)
+                plt.plot(fpr, tpr, label=f'{code}: AUC={auc:.3f}')
+                plt.legend(loc='lower right')
+                plt.savefig(J(dest_dir, f'roc_all_{code}.png'))
+                plt.close()
+
+
+            d['precision'] = np.mean(precisions)
+            for code, precision in zip(unique_code, precisions):
+                d[f'precision_{code}'] = precision
+            df_metrics.append(d)
+
+        df_metrics = pd.DataFrame(df_metrics)
+
+        with pd.ExcelWriter(with_wrote(J(dest_dir, 'report.xlsx')), engine='xlsxwriter') as writer:
+            df_metrics.to_excel(writer, sheet_name='metrics', index=False)
+            df_cases.to_excel(writer, sheet_name='cases')
+            df_images.to_excel(writer, sheet_name='images')
+
 
         data = {code: [] for code in unique_code}
-
 
         for code in unique_code:
             fprs = []

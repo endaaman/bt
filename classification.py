@@ -3,6 +3,7 @@ import math
 import json
 import re
 from glob import glob
+import itertools
 
 import cv2
 import numpy as np
@@ -23,7 +24,7 @@ import pytorch_grad_cam as CAM
 from pytorch_grad_cam.utils.image import show_cam_on_image
 from pytorch_grad_cam.utils.model_targets import BinaryClassifierOutputTarget, ClassifierOutputTarget
 
-from endaaman import with_wrote, load_images_from_dir_or_file
+from endaaman import with_wrote, load_images_from_dir_or_file, grid_split
 from endaaman.ml import BaseTrainerConfig, BaseTrainer, Checkpoint, pil_to_tensor
 from endaaman.ml.metrics import MultiAccuracy
 from endaaman.ml.cli import BaseMLCLI, BaseDLArgs, BaseTrainArgs
@@ -258,7 +259,8 @@ class CLI(BaseMLCLI):
         cam: bool = Field(False, cli=('--cam', '-c'))
         cam_label: str = Field('', cli=('--cam-label', ))
         show: bool = Field(False, cli=('--show', ))
-        crop: int = -1
+        size: int = -1
+        grid: int = -1
         cols: int = 3
 
     def run_predict(self, a:PredictArgs):
@@ -274,7 +276,6 @@ class CLI(BaseMLCLI):
             target_layers=model.get_cam_layers(),
             use_cuda=not a.cpu) if a.cam else None
 
-        image_transform = transforms.CenterCrop(a.crop) if a.crop > 0 else lambda x:x
 
         transform = transforms.Compose([v for v in [
             transforms.ToTensor(),
@@ -282,47 +283,127 @@ class CLI(BaseMLCLI):
         ] if v])
 
         images, paths  = load_images_from_dir_or_file(a.src, with_path=True)
-        images = [image_transform(i) for i in images]
+        imagess = []
+        col_counts = []
+        row_counts = []
+        if a.grid > 0:
+            for image in images:
+                ggg = grid_split(image, size=a.grid,  overwrap=False, flattern=False)
+                ii = []
+                for gg in ggg:
+                    for g in gg:
+                        ii.append(g)
+                col_counts.append(len(ggg[0]))
+                row_counts.append(len(ggg))
+                imagess.append(ii)
+        else:
+            if a.size > 0:
+                crop = transforms.CenterCrop(a.size)
+                for image in images:
+                    imagess.append([crop(image)])
+            else:
+                for image in images:
+                    imagess.append([image])
 
         rows = math.ceil(len(images) / a.cols)
         cols = min(a.cols, len(images))
 
         fig = plt.figure(figsize=(cols*4, rows*3))
 
-        for i, (path, image) in enumerate(zip(paths, images)):
-            t = transform(image)[None, ...].to(a.device())
-            with torch.set_grad_enabled(False):
-                o = model(t, activate=True)
-                o = o.detach().cpu().numpy()[0]
+        unique_code = config.unique_code()
 
-            unique_code = config.unique_code()
+        colors = {
+            'L': 'green',
+            'M': 'blue',
+            'G': 'red',
+            'A': 'yellow',
+            'O': 'purple',
+            'B': 'black',
+        }
+
+        font = ImageFont.truetype('/usr/share/fonts/ubuntu/Ubuntu-R.ttf', size=16)
+
+        print(imagess)
+
+        for idx, (path, images, col_count, row_count) in enumerate(zip(paths, imagess, col_counts, row_counts)):
+            oo = []
+            drews = [[None]*col_count]*row_count
+
+            for i, image in enumerate(images):
+                t = transform(image)[None, ...].to(a.device())
+                with torch.set_grad_enabled(False):
+                    o = model(t, activate=True)
+                    o = o.detach().cpu().numpy()[0]
+                oo.append(o)
+
+                pred = unique_code[np.argmax(o)]
+
+                # image = image.copy()
+                if a.cam:
+                    cam_class_id = unique_code.index(a.cam_label) if a.cam_label  else pred_id
+                    cam_class = unique_code[cam_class_id]
+                    targets = [ClassifierOutputTarget(cam_class_id)]
+
+                    mask = gradcam(input_tensor=t, targets=targets)[0]
+                    vis = show_cam_on_image(np.array(image)/255, mask, use_rgb=True)
+                    # overwrite variable
+                    image = Image.fromarray(vis)
+
+                draw = ImageDraw.Draw(image)
+                draw.rectangle(
+                    xy=((0, 0), (image.width, image.height)),
+                    outline=colors[pred],
+                )
+                text = ' '.join([f'{k}:{v:.2f}' for v, k in zip(o, unique_code)])
+                bb = draw.textbbox(xy=(0, 0), text=text, font=font, spacing=8)
+                draw.rectangle(
+                    xy=bb,
+                    fill=colors[pred],
+                )
+                draw.text(
+                    xy=(0, 0),
+                    text=text,
+                    font=font,
+                    fill='white'
+                )
+                print(i, i // col_count, i % col_count, image)
+                drews[i // col_count][i % col_count] = image
+
+            print(drews[0])
+            print(drews[1])
+            # merged_image =Image.fromarray(cv2.vconcat(cv2.hconcat(drews[0]), cv2.hconcat(drews[1])))
+
+            merged_image = image
+
+            # row_images = []
+            # for y, row in enumerate(drews):
+            #     print(y, row)
+            #     row_image_list = []
+            #     for x, d in enumerate(row):
+            #         print(d)
+            #         row_image_list.append(np.array(d))
+            #     h = cv2.hconcat(row_image_list)
+            #     row_images.append(h)
+            # merged_image = Image.fromarray(cv2.vconcat(row_images))
+
+            o = np.stack(oo).mean(axis=0)
+
             pred_id = np.argmax(o)
             pred = unique_code[pred_id]
             label = ' '.join([f'{c}:{int(v*100):3d}' for c, v in zip(unique_code, o)])
             h, w = t.shape[2], t.shape[3]
             print(f'{path}: ({w}x{h}) {pred} ({label})')
 
-            if not a.cam:
-                continue
-
-            cam_class_id = unique_code.index(a.cam_label) if a.cam_label  else pred_id
-            cam_class = unique_code[cam_class_id]
-            targets = [ClassifierOutputTarget(cam_class_id)]
-
-            mask = gradcam(input_tensor=t, targets=targets)[0]
-            vis = show_cam_on_image(np.array(image)/255, mask, use_rgb=True)
-            vis = Image.fromarray(vis)
-            d = J(a.model_dir, 'cam')
-            os.makedirs(d, exist_ok=True)
-            name = os.path.splitext(os.path.basename(path))[0]
-            # vis.save(with_wrote(J(d, f'{name}_{cam_class}.jpg')))
-            vis.save(J(d, f'{name}_{cam_class}.jpg'))
-
             if not a.show:
                 continue
-            ax = fig.add_subplot(rows, cols, i+1)
-            ax.imshow(vis)
-            ax.set_title(f'{name} {pred} (CAM: {cam_class})')
+
+            name = os.path.splitext(os.path.basename(path))[0]
+            ax = fig.add_subplot(rows, cols, idx+1)
+            ax.imshow(merged_image)
+            title = f'{name} {pred}'
+            if a.cam:
+                title += f'(CAM: {cam_class})'
+            ax.set_title(title)
             ax.set(xlabel=None, ylabel=None)
 
         if a.show:

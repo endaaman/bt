@@ -17,9 +17,9 @@ import seaborn as sns
 from endaaman import with_wrote, grid_split
 from endaaman.ml import BaseMLCLI
 
-from datasets.utils import show_fold_diag
-from utils import calc_white_area
+from utils import calc_white_area, show_fold_diag
 from .fold import FoldDataset
+
 
 
 Image.MAX_IMAGE_PIXELS = None
