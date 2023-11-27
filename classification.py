@@ -371,9 +371,9 @@ class CLI(BaseMLCLI):
 
             print(drews[0])
             print(drews[1])
-            # merged_image =Image.fromarray(cv2.vconcat(cv2.hconcat(drews[0]), cv2.hconcat(drews[1])))
-
             merged_image = image
+            merged_image =Image.fromarray(cv2.vconcat(cv2.hconcat(drews[0]), cv2.hconcat(drews[1])))
+
 
             # row_images = []
             # for y, row in enumerate(drews):

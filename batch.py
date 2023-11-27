@@ -393,12 +393,12 @@ class CLI(BaseMLCLI):
         df = pd.read_excel(J(a.model_dir, f'{a.target}.xlsx'), index_col=0)
         features = dict(torch.load(J(a.model_dir, f'{a.target}_features.pt')))
 
-        df = pd.read_excel('cache/enda3_512/tiles.xlsx')
-        df['diag_org'] = df['diag']
-        features = {}
-        for f in range(5):
-            f = dict(torch.load(f'out/enda3_512/LMGGGB/fold5_{f}/resnetrs50/test_features.pt'))
-            features.update(f)
+        # df = pd.read_excel('cache/enda3_512/tiles.xlsx')
+        # df['diag_org'] = df['diag']
+        # features = {}
+        # for f in range(5):
+        #     f = dict(torch.load(f'out/enda3_512/LMGGGB/fold5_{f}/resnetrs50/test_features.pt'))
+        #     features.update(f)
 
         target_features = []
         diags = []
@@ -551,58 +551,62 @@ class CLI(BaseMLCLI):
 
         unique_code = [c for c in df_cases.columns if c in 'LMGAOB']
 
-        df_metrics = []
-        for fold in range(-1, 5):
-            if fold < 0:
-                df = df_cases
-            else:
-                df = df_cases[df_cases['fold'] == fold]
-
-            acc = np.mean(df['correct'])
-
-            d = {
-                'fold': fold,
-                'acc': acc,
-            }
-
-            # precision
-            gt = df['gt'].map(lambda x: unique_code.index(x))
-            p = df['pred(sum)'].map(lambda x: unique_code.index(x))
-            precisions = skmetrics.precision_score(gt, p, average=None)
-
-            for code in unique_code:
-                p = df[code]
-                gt = df['gt'] == code
-                fpr, tpr, __t = skmetrics.roc_curve(gt, p)
-                auc = skmetrics.auc(fpr, tpr)
+        df_case_metrics = []
+        df_image_metrics = []
+        for df_base, df_out in [[df_cases, df_case_metrics], [df_images, df_image_metrics]]:
+            for fold in range(-1, 5):
                 if fold < 0:
+                    df = df_base
+                else:
+                    df = df_base[df_base['fold'] == fold]
+
+                acc = np.mean(df['correct'])
+
+                d = {
+                    'fold': fold,
+                    'acc': acc,
+                }
+
+                # precision
+                gt = df['gt'].map(lambda x: unique_code.index(x))
+                p = df['pred(sum)'].map(lambda x: unique_code.index(x))
+                precisions = skmetrics.precision_score(gt, p, average=None)
+
+                for code in unique_code:
+                    p = df[code]
+                    gt = df['gt'] == code
+                    fpr, tpr, __t = skmetrics.roc_curve(gt, p)
+                    auc = skmetrics.auc(fpr, tpr)
+                    if fold < 0:
+                        plt.plot(fpr, tpr, label=f'{code}: AUC={auc:.3f}')
+                        plt.legend(loc='lower right')
+                        plt.savefig(J(dest_dir, f'roc_all_{code}.png'))
+                        plt.close()
+                    d[f'auroc_{code}'] = auc
+
+                # ROCs
+                for code in unique_code:
+                    p = df[code]
+                    gt = df['gt'] == code
+                    fpr, tpr, __t = skmetrics.roc_curve(gt, p)
+                    auc = skmetrics.auc(fpr, tpr)
                     plt.plot(fpr, tpr, label=f'{code}: AUC={auc:.3f}')
                     plt.legend(loc='lower right')
                     plt.savefig(J(dest_dir, f'roc_all_{code}.png'))
                     plt.close()
-                d[f'auroc_{code}'] = auc
-
-            # ROCs
-            for code in unique_code:
-                p = df[code]
-                gt = df['gt'] == code
-                fpr, tpr, __t = skmetrics.roc_curve(gt, p)
-                auc = skmetrics.auc(fpr, tpr)
-                plt.plot(fpr, tpr, label=f'{code}: AUC={auc:.3f}')
-                plt.legend(loc='lower right')
-                plt.savefig(J(dest_dir, f'roc_all_{code}.png'))
-                plt.close()
 
 
-            d['precision'] = np.mean(precisions)
-            for code, precision in zip(unique_code, precisions):
-                d[f'precision_{code}'] = precision
-            df_metrics.append(d)
+                d['precision'] = np.mean(precisions)
+                for code, precision in zip(unique_code, precisions):
+                    d[f'precision_{code}'] = precision
+                df_out.append(d)
 
-        df_metrics = pd.DataFrame(df_metrics)
+        df_case_metrics = pd.DataFrame(df_case_metrics)
+        df_image_metrics = pd.DataFrame(df_image_metrics)
 
         with pd.ExcelWriter(with_wrote(J(dest_dir, 'report.xlsx')), engine='xlsxwriter') as writer:
-            df_metrics.to_excel(writer, sheet_name='metrics', index=False)
+            df_case_metrics.to_excel(writer, sheet_name='case_metric', index=False)
+            df_image_metrics.to_excel(writer, sheet_name='image_metric', index=False)
             df_cases.to_excel(writer, sheet_name='cases')
             df_images.to_excel(writer, sheet_name='images')
 
