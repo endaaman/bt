@@ -24,7 +24,7 @@ import pytorch_grad_cam as CAM
 from pytorch_grad_cam.utils.image import show_cam_on_image
 from pytorch_grad_cam.utils.model_targets import BinaryClassifierOutputTarget, ClassifierOutputTarget
 
-from endaaman import with_wrote, load_images_from_dir_or_file, grid_split
+from endaaman import with_wrote, load_images_from_dir_or_file, grid_split, with_mkdir
 from endaaman.ml import BaseTrainerConfig, BaseTrainer, Checkpoint, pil_to_tensor
 from endaaman.ml.metrics import MultiAccuracy
 from endaaman.ml.cli import BaseMLCLI, BaseDLArgs, BaseTrainArgs
@@ -297,18 +297,16 @@ class CLI(BaseMLCLI):
                 row_counts.append(len(ggg))
                 imagess.append(ii)
         else:
-            if a.size > 0:
-                crop = transforms.CenterCrop(a.size)
-                for image in images:
-                    imagess.append([crop(image)])
-            else:
-                for image in images:
-                    imagess.append([image])
+            crop = transforms.CenterCrop(a.size) if a.size > 0 else lambda x: x
+            for image in images:
+                imagess.append([crop(image)])
+                col_counts.append(1)
+                row_counts.append(1)
 
         rows = math.ceil(len(images) / a.cols)
         cols = min(a.cols, len(images))
 
-        fig = plt.figure(figsize=(cols*4, rows*3))
+        fig = plt.figure(figsize=(cols*6, rows*4))
 
         unique_code = config.unique_code()
 
@@ -321,13 +319,15 @@ class CLI(BaseMLCLI):
             'B': 'black',
         }
 
-        font = ImageFont.truetype('/usr/share/fonts/ubuntu/Ubuntu-R.ttf', size=16)
+        font = ImageFont.truetype('/usr/share/fonts/ubuntu/Ubuntu-R.ttf', size=24)
 
-        print(imagess)
+        for idx, (
+            path, images, col_count, row_count
+        ) in enumerate(zip(paths, imagess, col_counts, row_counts)):
 
-        for idx, (path, images, col_count, row_count) in enumerate(zip(paths, imagess, col_counts, row_counts)):
             oo = []
-            drews = [[None]*col_count]*row_count
+            # drews = [[None]*col_count]*row_count
+            drews = [[None for _ in range(col_count)] for __ in range(row_count)]
 
             for i, image in enumerate(images):
                 t = transform(image)[None, ...].to(a.device())
@@ -336,11 +336,11 @@ class CLI(BaseMLCLI):
                     o = o.detach().cpu().numpy()[0]
                 oo.append(o)
 
-                pred = unique_code[np.argmax(o)]
+                pred_id = np.argmax(o)
+                pred = unique_code[pred_id]
 
-                # image = image.copy()
                 if a.cam:
-                    cam_class_id = unique_code.index(a.cam_label) if a.cam_label  else pred_id
+                    cam_class_id = unique_code.index(a.cam_label) if a.cam_label else pred_id
                     cam_class = unique_code[cam_class_id]
                     targets = [ClassifierOutputTarget(cam_class_id)]
 
@@ -353,6 +353,7 @@ class CLI(BaseMLCLI):
                 draw.rectangle(
                     xy=((0, 0), (image.width, image.height)),
                     outline=colors[pred],
+                    width=max(image.width//100, 1),
                 )
                 text = ' '.join([f'{k}:{v:.2f}' for v, k in zip(o, unique_code)])
                 bb = draw.textbbox(xy=(0, 0), text=text, font=font, spacing=8)
@@ -366,25 +367,16 @@ class CLI(BaseMLCLI):
                     font=font,
                     fill='white'
                 )
-                print(i, i // col_count, i % col_count, image)
                 drews[i // col_count][i % col_count] = image
 
-            print(drews[0])
-            print(drews[1])
-            merged_image = image
-            merged_image =Image.fromarray(cv2.vconcat(cv2.hconcat(drews[0]), cv2.hconcat(drews[1])))
-
-
-            # row_images = []
-            # for y, row in enumerate(drews):
-            #     print(y, row)
-            #     row_image_list = []
-            #     for x, d in enumerate(row):
-            #         print(d)
-            #         row_image_list.append(np.array(d))
-            #     h = cv2.hconcat(row_image_list)
-            #     row_images.append(h)
-            # merged_image = Image.fromarray(cv2.vconcat(row_images))
+            row_images = []
+            for y, row in enumerate(drews):
+                row_image_list = []
+                for x, d in enumerate(row):
+                    row_image_list.append(np.array(d))
+                h = cv2.hconcat(row_image_list)
+                row_images.append(h)
+            merged_image = Image.fromarray(cv2.vconcat(row_images))
 
             o = np.stack(oo).mean(axis=0)
 
@@ -394,15 +386,17 @@ class CLI(BaseMLCLI):
             h, w = t.shape[2], t.shape[3]
             print(f'{path}: ({w}x{h}) {pred} ({label})')
 
+            name = os.path.splitext(os.path.basename(path))[0]
+            d = 'cam' if a.cam else 'pred'
+            merged_image.save(J(with_mkdir(a.model_dir, d), f'{name}.jpg'))
+
             if not a.show:
                 continue
-
-            name = os.path.splitext(os.path.basename(path))[0]
             ax = fig.add_subplot(rows, cols, idx+1)
             ax.imshow(merged_image)
-            title = f'{name} {pred}'
-            if a.cam:
-                title += f'(CAM: {cam_class})'
+            title = f'{name} {pred} ({label})'
+            if a.cam_label:
+                title += f' CAM: {cam_class}'
             ax.set_title(title)
             ax.set(xlabel=None, ylabel=None)
 

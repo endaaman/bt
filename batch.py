@@ -656,6 +656,46 @@ class CLI(BaseMLCLI):
                 (mean_y + std_scale * std_y).clip(.0, 1.0),
                 color=color[1], alpha=0.2, label='± 1.0 s.d.')
 
+    def grid_arrange(self, ggg, col_count=-1):
+        if col_count > 0:
+            # re-arrange into 2d-list
+            assert (len(ggg) % col_count) == 0
+            row_count = len(ggg) // col_count
+            gg = ggg
+            ggg = [gg[y*col_count:y*col_count+col_count] for y in range(row_count)]
+
+        row_images = []
+        for y, gg in enumerate(ggg):
+            row_image_list = []
+            for x, g in enumerate(gg):
+                row_image_list.append(np.array(g))
+            h = cv2.hconcat(row_image_list)
+            row_images.append(h)
+        merged_image = Image.fromarray(cv2.vconcat(row_images))
+        return merged_image
+
+    class GridArrangeArgs(CommonArgs):
+        dir: str
+        dest: str
+        col: int
+        scale: int = 1
+
+    def run_grid_arrange(self, a):
+        # for p in glob(J(a.dir, '*')):
+        #     name = os.path.splitext(os.path.basename(p))[0]
+        #     m = re.match(r'^' + a.name + r'_(\d+)_(\d+)$', name)
+        #     y = m[1]
+        #     x = m[2]
+        #     print(a.name, x, y)
+
+        images = []
+        for p in tqdm(sorted(glob(J(a.dir, '*')))):
+            i = Image.open(p)
+            r = i.resize((i.width//a.scale, i.height//a.scale))
+            i.close()
+            images.append(r)
+        m = self.grid_arrange(images, col_count=a.col)
+        m.save(a.dest)
 
 
 if __name__ == '__main__':
