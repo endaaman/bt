@@ -259,7 +259,7 @@ class CLI(BaseMLCLI):
         cam: bool = Field(False, cli=('--cam', '-c'))
         cam_label: str = Field('', cli=('--cam-label', ))
         show: bool = Field(False, cli=('--show', ))
-        size: int = -1
+        center: int = -1
         grid: int = -1
         cols: int = 3
 
@@ -297,7 +297,7 @@ class CLI(BaseMLCLI):
                 row_counts.append(len(ggg))
                 imagess.append(ii)
         else:
-            crop = transforms.CenterCrop(a.size) if a.size > 0 else lambda x: x
+            crop = transforms.CenterCrop(a.center) if a.center > 0 else lambda x: x
             for image in images:
                 imagess.append([crop(image)])
                 col_counts.append(1)
