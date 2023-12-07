@@ -52,6 +52,42 @@ class TimmModel(nn.Module):
         return x
 
 
+class IICModel(nn.Module):
+    def __init__(self, name, num_classes, num_classes_over, pretrained=True):
+        super().__init__()
+        self.name = name
+        self.num_classes = num_classes
+        self.num_classes_over = num_classes_over
+        self.base = timm.create_model(name, pretrained=pretrained, num_classes=num_classes)
+
+        self.num_features = self.base.num_features
+
+        self.fc = nn.Linear(self.num_features, self.num_classes)
+        self.fc_over = nn.Linear(self.num_features, self.num_classes_over)
+
+    def get_cam_layers(self):
+        return get_cam_layers(self.base, self.name)
+
+    def forward(self, x, activate=False, with_feautres=False):
+        features = self.base.forward_features(x)
+        features = self.base.global_pool(features)
+
+        x = self.fc(features)
+        x_over = self.fc_over(features)
+
+        if activate:
+            if self.num_classes > 1:
+                x = torch.softmax(x, dim=1)
+                x_over = torch.softmax(x_over, dim=1)
+            else:
+                x = torch.sigmoid(x)
+                x_over = torch.sigmoid(x_over)
+
+        if with_feautres:
+            return x, x_over, features
+        return x, x_over
+
+
 class BaseAttentionModel(nn.Module):
     def __init__(self, name, num_classes, activation='softmax', params_count=512, pretrained=True):
         super().__init__()
@@ -131,7 +167,7 @@ class MILModel(BaseAttentionModel):
         return aa
 
 
-class ResMILModel(BaseMILModel):
+class ResMILModel(BaseAttentionModel):
     def __init__(self, params_count=512, *args, **kwargs):
         super().__init__(*args, **kwargs)
 

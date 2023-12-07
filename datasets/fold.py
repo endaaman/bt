@@ -255,6 +255,23 @@ class FoldDataset(BaseFoldDataset):
         return x, y
 
 
+class IICFoldDataset(BaseFoldDataset):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def __len__(self):
+        return len(self.df)
+
+    def __getitem__(self, idx):
+        row = self.df.iloc[idx]
+        image = Image.open(J(self.source_dir, row['diag_org'], row['name'], row['filename']))
+        arr = np.array(image)
+        image.close()
+
+        x0 = self.aug(image=arr)['image']
+        x1 = self.aug(image=arr)['image']
+        return x0, x1
+
 class MILFoldDataset(BaseFoldDataset):
     def __init__(self, batch_size=16, *args, **kwargs):
         super().__init__(*args, **kwargs)
