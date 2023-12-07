@@ -266,10 +266,11 @@ class IICFoldDataset(BaseFoldDataset):
         row = self.df.iloc[idx]
         image = Image.open(J(self.source_dir, row['diag_org'], row['name'], row['filename']))
         arr = np.array(image)
-        image.close()
 
         x0 = self.aug(image=arr)['image']
         x1 = self.aug(image=arr)['image']
+        arr = None
+        image.close()
         return x0, x1
 
 class MILFoldDataset(BaseFoldDataset):

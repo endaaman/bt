@@ -56,10 +56,12 @@ def iic_loss(x_out, x_tf_out, EPS=sys.float_info.epsilon):
     p_i = p_i_j.sum(dim=1).view(k, 1).expand(k, k)
     p_j = p_i_j.sum(dim=0).view(1, k).expand(k, k)
 
-    p_i_j = torch.where(p_i_j < EPS, torch.tensor(
-        [EPS], device=p_i_j.device), p_i_j)
-    p_j = torch.where(p_j < EPS, torch.tensor([EPS], device=p_j.device), p_j)
-    p_i = torch.where(p_i < EPS, torch.tensor([EPS], device=p_i.device), p_i)
+    p_i = torch.clip(p_i, min=EPS)
+    p_j = torch.clip(p_j, min=EPS)
+    p_i_j = torch.clip(p_i_j, min=EPS)
+    # p_i_j = torch.where(p_i_j < EPS, torch.tensor([EPS], device=p_i_j.device), p_i_j)
+    # p_j = torch.where(p_j < EPS, torch.tensor([EPS], device=p_j.device), p_j)
+    # p_i = torch.where(p_i < EPS, torch.tensor([EPS], device=p_i.device), p_i)
 
     alpha = 2.0
 
@@ -101,7 +103,7 @@ class Trainer(BaseTrainer):
         loss_over = iic_loss(p0_over, p1_over)
         total_loss = loss + loss_over
 
-        total_loss = 1/-total_loss
+        # total_loss = 1/-total_loss
         return total_loss, None
 
     def create_scheduler(self):
