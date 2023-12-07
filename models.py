@@ -12,6 +12,20 @@ from pydantic import Field
 from endaaman.ml import BaseMLCLI
 
 
+def get_cam_layers(m, name=None):
+    name = name or m.default_cfg['architecture']
+
+    if re.match(r'.*efficientnet.*', name):
+        return [m.conv_head]
+    if re.match(r'^resnetrs.*', name):
+        return [m.layer4[-1].act3]
+    if re.match(r'^resnet\d+', name):
+        return [m.layer4[-1].act2]
+
+    raise RuntimeError('CAM layers are not determined.')
+    return []
+
+
 class TimmModel(nn.Module):
     def __init__(self, name, num_classes, pretrained=True):
         super().__init__()
@@ -20,15 +34,7 @@ class TimmModel(nn.Module):
         self.base = timm.create_model(name, pretrained=pretrained, num_classes=num_classes)
 
     def get_cam_layers(self):
-        if re.match(r'.*efficientnet.*', self.name):
-            return [self.base.conv_head]
-        if re.match(r'^resnetrs.*', self.name):
-            return [self.base.layer4[-1].act3]
-        if re.match(r'^resnet\d+', self.name):
-            return [self.base.layer4[-1].act2]
-
-        raise RuntimeError('CAM layers are not determined.')
-        return []
+        return get_cam_layers(self.base, self.name)
 
     def forward(self, x, activate=False, with_feautres=False):
         features = self.base.forward_features(x)
@@ -46,68 +52,111 @@ class TimmModel(nn.Module):
         return x
 
 
-class AttentionModel(nn.Module):
-    def __init__(self, name, num_classes, activation='softmax', params_count=128, pretrained=True):
+class BaseAttentionModel(nn.Module):
+    def __init__(self, name, num_classes, activation='softmax', params_count=512, pretrained=True):
         super().__init__()
         self.name = name
         self.num_classes = num_classes
         self.activation = activation
+        self.params_count = params_count
+
         self.base = timm.create_model(name, pretrained=pretrained, num_classes=num_classes)
         self.num_features = self.base.num_features
-        self.params_count = params_count
         self.classifier = nn.Linear(self.num_features, self.num_classes)
+
+    def set_freeze_base_model_weights(self, flag):
+        for param in base.parameters():
+            param.requires_grad = flag
+
+    def get_cam_layers(self):
+        return get_cam_layers(self.base, self.name)
+
+    def compute_attentions(self, features):
+        raise NotImplementedError('DO IMPLEMENT')
+
+    def compute_attentions_and_activate(self, features):
+        aa = self.compute_attentions(features)
+
+        if self.activation == 'softmax':
+            aa = torch.softmax(aa, dim=-1)
+        elif self.activation == 'sigmoid':
+            aa = torch.sigmoid(aa)
+        elif self.activation == 'raw':
+            pass
+        else:
+            raise RuntimeError('Invalid activation:', self.activation)
+        return aa
+
+    def forward(self, x, activate=False, with_attentions=False):
+        x = self.convs(x)
+        x = self.pool(x)
+        features = torch.flatten(x, 1)
+
+        aa = self.compute_attentions_and_activate(features)
+        feature = (features * aa[:, None]).sum(dim=0)
+        y = self.fc(feature)
+
+        if activate:
+            if self.num_classes > 1:
+                y = torch.softmax(y, dim=-1)
+            else:
+                y = torch.sigmoid(y)
+
+        if with_attentions:
+            return y, aa.detach()
+        return y
+
+
+
+class MILModel(BaseAttentionModel):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
         self.u = nn.Linear(self.num_features, self.params_count, bias=False)
         self.v = nn.Linear(self.num_features, self.params_count, bias=False)
         self.w = nn.Linear(self.params_count, 1, bias=False)
 
-    def get_cam_layers(self):
-        return [self.base.layer4[-1].act3]
-        # if re.match(r'.*efficientnet.*', self.name):
-        #     return [self.base.conv_head]
-        # if re.match(r'^resnetrs.*', self.name):
-        #     return [self.base.layer4[-1].act3]
-        # return []
+    def compute_attention_scores(self, x):
+        xu = self.u(x)
+        xv = torch.sigmoid(self.v(x))
+        alpha = self.w(xu * xv)
+        return alpha
+
+    def compute_attentions(self, features):
+        raise RuntimeError('Do implement')
+        aa = []
+        for feature in features:
+            aa.append(self.compute_attention_scores(feature))
+        aa = torch.stack(aa).flatten()
+        return aa
+
+
+class ResMILModel(BaseMILModel):
+    def __init__(self, params_count=512, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.pre = nn.Linear(self.num_features, self.num_features)
+
+        self.u = nn.Linear(self.num_features * 2, self.params_count, bias=False)
+        self.v = nn.Linear(self.num_features * 2, self.params_count, bias=False)
+        self.w = nn.Linear(self.params_count, 1, bias=False)
 
     def compute_attention_scores(self, x):
-        xu = torch.tanh(self.u(x))
+        xu = self.u(x)
         xv = torch.sigmoid(self.v(x))
         alpha = self.w(xu * xv)
         return alpha
 
     def compute_attentions(self, features):
         aa = []
-        for feature in features:
-            aa.append(self.compute_attention_scores(feature))
+        pre_ww = self.pre(features)
+
+        for feature, pre_w in zip(features, pre_ww):
+            m = features * torch.softmax(pre_w, dim=-1)
+            m = m.sum(dim=-2)
+            aa.append(self.compute_attention_scores(torch.concat(feature, m)))
         aa = torch.stack(aa).flatten()
-        if self.activation == 'softmax':
-            aa = torch.softmax(aa, dim=-1)
-        elif self.activation == 'sigmoid':
-            aa = torch.sigmoid(aa)
-        else:
-            raise RuntimeError('Invalid activation:', self.activation)
         return aa
-
-    def forward(self, x, activate=False, with_attentions=False):
-        x = self.base.forward_features(x)
-        x = self.base.forward_head(x, pre_logits=True)
-        features = torch.flatten(x, 1)
-
-        aa = self.compute_attentions(features)
-        feature = (features * aa[:, None]).sum(dim=0)
-        y = self.classifier(feature)
-        yy = self.classifier(features)
-
-        y = torch.cat([y[None], yy])
-        if activate:
-            if self.num_classes > 1:
-                y = torch.softmax(y, dim=-1)
-            else:
-                y = torch.sigmoid(y)
-        if with_attentions:
-            return y, aa.detach()
-        return y
-
 
 
 class CrossEntropyLoss(nn.Module):

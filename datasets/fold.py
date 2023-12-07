@@ -87,7 +87,7 @@ def get_augs(train, size, image_aug, normalize):
     return A.Compose(aa)
 
 
-class FoldDataset(Dataset):
+class BaseFoldDataset(Dataset):
     def __init__(self,
                  total_fold,
                  fold,
@@ -241,6 +241,8 @@ class FoldDataset(Dataset):
             sns.countplot(x=f['diag'], ax=axes[i, 2])
         return fig
 
+
+class FoldDataset(BaseFoldDataset):
     def __len__(self):
         return len(self.df)
 
@@ -251,3 +253,15 @@ class FoldDataset(Dataset):
         x = self.aug(image=np.array(image))['image']
         y = torch.tensor(self.unique_code.index(row['diag']))
         return x, y
+
+
+class MILFoldDataset(BaseFoldDataset):
+    def __init__(self, batch_size=16, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.batch_size = batch_size
+
+    def __len__(self):
+        pass
+
+    def __getitem__(self, idx):
+        pass
