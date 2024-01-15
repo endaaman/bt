@@ -22,7 +22,7 @@ import umap
 from matplotlib.offsetbox import OffsetImage, AnnotationBbox
 
 from endaaman import load_images_from_dir_or_file, with_wrote, grid_split, with_mkdir
-from endaaman.ml import BaseMLCLI
+from endaaman.ml.cli2 import BaseMLCLI
 
 from datasets.utils import show_fold_diag
 from utils import calc_white_area
@@ -378,11 +378,11 @@ class CLI(BaseMLCLI):
 
 
     class ClusterArgs(CommonArgs):
-        model_dir: str = Field(..., cli=('--model-dir', '-d'))
+        model_dir: str = Field(..., s='-d')
         target: str = 'test'
         count: int = 10
-        show: bool = Field(False, cli=('--show', ))
-        mode: str = Field('all', regex=r'uniq|all')
+        show: bool = False
+        mode: str = Field('all', choices=['uniq', 'all'])
         notrained: bool = Field(False, cli=('--notrained', ))
 
     def run_cluster(self, a):
