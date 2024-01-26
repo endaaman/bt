@@ -276,7 +276,6 @@ class CLI(BaseMLCLI):
             target_layers=model.get_cam_layers(),
             use_cuda=not a.cpu) if a.cam else None
 
-
         transform = transforms.Compose([v for v in [
             transforms.ToTensor(),
             transforms.Normalize(mean=0.7, std=0.2),
