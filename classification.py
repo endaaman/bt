@@ -27,7 +27,7 @@ from pytorch_grad_cam.utils.model_targets import BinaryClassifierOutputTarget, C
 from endaaman import with_wrote, load_images_from_dir_or_file, grid_split, with_mkdir
 from endaaman.ml import BaseTrainerConfig, BaseTrainer, Checkpoint, pil_to_tensor
 from endaaman.ml.metrics import MultiAccuracy
-from endaaman.ml.cli import BaseMLCLI, BaseDLArgs, BaseTrainArgs
+from endaaman.ml.cli2 import BaseMLCLI, BaseDLArgs, BaseTrainArgs
 
 from models import TimmModel, CrossEntropyLoss
 from datasets.fold import FoldDataset
@@ -98,22 +98,22 @@ class CLI(BaseMLCLI):
 
     class TrainArgs(BaseTrainArgs):
         lr: float = 0.01
-        batch_size: int = Field(16, cli=('--batch-size', '-B', ))
+        batch_size: int = Field(16, s='-B')
         num_workers: int = 4
         minimum_area: float = 0.7
         limit: int = -1
-        upsample: bool = Field(False, cli=('--upsample', ))
-        noaug: bool = Field(False, cli=('--noaug', ))
-        epoch: int = Field(100, cli=('--epoch', '-E'))
-        total_fold: int = Field(..., cli=('--total-fold', ))
+        upsample: bool = False
+        noaug: bool = False
+        epoch: int = Field(100, s='-E')
+        total_fold: int
         fold: int
-        model_name: str = Field('tf_efficientnet_b0', cli=('--model', '-m'))
-        source: str = Field('enda3_512', cli=('--source', ))
+        model_name: str = Field('tf_efficientnet_b0', l='--model', s='-m')
+        source: str = 'enda3_512'
         suffix: str = ''
         prefix: str = ''
-        size: int = Field(512, cli=('--size', '-s'))
+        size: int = Field(512, s='-s')
         code: str = 'LMGGGB'
-        overwrite: bool = Field(False, cli=('--overwrite', '-o'))
+        overwrite: bool = Field(False, s='-O')
 
     def run_train(self, a:TrainArgs):
         num_classes = len(set([*a.code]) - {'_'})
@@ -171,11 +171,11 @@ class CLI(BaseMLCLI):
         trainer.start(a.epoch)
 
     class ValidateArgs(BaseDLArgs):
-        model_dir: str = Field(..., cli=('--model-dir', '-d'))
+        model_dir: str = Field(..., s='-d')
         target: str = 'test'
-        batch_size: int = Field(16, cli=('--batch-size', '-B', ))
-        default: bool = Field(False, cli=('--default', ))
-        features: bool = Field(False, cli=('--features', '-F'))
+        batch_size: int = Field(16, s='-B')
+        default: bool = False
+        features: bool = Field(False, s='-F')
 
     def run_validate(self, a:ValidateArgs):
         checkpoint:Checkpoint = torch.load(J(a.model_dir, 'checkpoint_last.pt'), map_location='cpu')
@@ -254,11 +254,11 @@ class CLI(BaseMLCLI):
 
 
     class PredictArgs(BaseDLArgs):
-        model_dir: str = Field(..., cli=('--model-dir', '-d'))
+        model_dir: str = Field(..., s='-d')
         src: str
-        cam: bool = Field(False, cli=('--cam', '-c'))
-        cam_label: str = Field('', cli=('--cam-label', ))
-        show: bool = Field(False, cli=('--show', ))
+        cam: bool = Field(False, s='-c')
+        cam_label: str = ''
+        show: bool = False
         center: int = -1
         grid: int = -1
         cols: int = 3
