@@ -13,16 +13,16 @@ import cv2
 from tqdm import tqdm
 import imagesize
 from matplotlib import pyplot as plt
+from matplotlib.offsetbox import OffsetImage, AnnotationBbox
 from sklearn.model_selection import StratifiedKFold
+from sklearn import metrics as skmetrics
 from pydantic import Field
 from torchvision import transforms
-from sklearn import metrics as skmetrics
 import umap
-
-from matplotlib.offsetbox import OffsetImage, AnnotationBbox
 
 from endaaman import load_images_from_dir_or_file, with_wrote, grid_split, with_mkdir
 from endaaman.ml.cli2 import BaseMLCLI
+import imagesize
 
 from datasets.utils import show_fold_diag
 from utils import calc_white_area
@@ -92,7 +92,6 @@ class CLI(BaseMLCLI):
     def run_print_checkpoint(self, a):
         self.c = torch.load(a.src)
         # print(self.c)
-
 
     class DetailArgs(CommonArgs):
         source:str = 'enda2'
@@ -696,6 +695,19 @@ class CLI(BaseMLCLI):
             images.append(r)
         m = self.grid_arrange(images, col_count=a.col)
         m.save(a.dest)
+
+    class ConvertToLandscapeArgs(CommonArgs):
+        src: str
+
+    def run_convert_to_landscape(self, a):
+        pp = sorted(glob(J(a.src, '*/*.jpg'), recursive=True))
+        print(len(pp))
+        for p in tqdm(pp):
+            w, h = imagesize.get(p)
+            if (h < w):
+                img = Image.open(p)
+                img.rotate(90).save(p)
+                img.close()
 
 
 if __name__ == '__main__':

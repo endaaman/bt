@@ -78,6 +78,8 @@ class Trainer(BaseTrainer):
         self._visualize_confusion(ax, 'train', train_preds, train_gts)
 
     def visualize_val_confusion(self, ax, train_preds, train_gts, val_preds, val_gts):
+        if val_preds is None or val_gts is None:
+            return
         self._visualize_confusion(ax, 'val', val_preds, val_gts)
 
     def create_scheduler(self):
@@ -107,7 +109,7 @@ class CLI(BaseMLCLI):
         epoch: int = Field(100, s='-E')
         total_fold: int
         fold: int
-        model_name: str = Field('tf_efficientnet_b0', l='--model', s='-m')
+        model: str = Field('tf_efficientnet_b0', s='-m')
         source: str = 'enda3_512'
         suffix: str = ''
         prefix: str = ''
@@ -119,7 +121,7 @@ class CLI(BaseMLCLI):
         num_classes = len(set([*a.code]) - {'_'})
 
         config = TrainerConfig(
-            model_name = a.model_name,
+            model_name = a.model,
             batch_size = a.batch_size,
             lr = a.lr,
             source = a.source,
@@ -134,12 +136,12 @@ class CLI(BaseMLCLI):
             image_aug = not a.noaug,
         )
 
-        dss = [
-            FoldDataset(
+        if a.fold < 0:
+            dss = [FoldDataset(
                  total_fold=a.total_fold,
-                 fold=a.fold,
+                 fold=-1,
                  source_dir=J('cache', a.source),
-                 target=t,
+                 target='all',
                  code=a.code,
                  size=a.size,
                  minimum_area=a.minimum_area,
@@ -148,8 +150,24 @@ class CLI(BaseMLCLI):
                  image_aug=not a.noaug,
                  aug_mode='same',
                  normalize=True,
-            ) for t in ('train', 'test')
-        ]
+            ), None]
+        else:
+            dss = [
+                FoldDataset(
+                     total_fold=a.total_fold,
+                     fold=a.fold,
+                     source_dir=J('cache', a.source),
+                     target=t,
+                     code=a.code,
+                     size=a.size,
+                     minimum_area=a.minimum_area,
+                     limit=a.limit,
+                     upsample = a.upsample,
+                     image_aug=not a.noaug,
+                     aug_mode='same',
+                     normalize=True,
+                ) for t in ('train', 'test')
+            ]
 
         out_dir = J(
             'out', a.source, config.code,

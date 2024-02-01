@@ -52,7 +52,7 @@ DEFAULT_SIZE = 512
 
 J = os.path.join
 
-def get_augs(train, size, image_aug, normalize):
+def get_augs(train, size, image_aug, normalize, mean, std):
     if train:
         aa = [
             A.RandomCrop(width=size, height=size),
@@ -100,6 +100,8 @@ class BaseFoldDataset(Dataset):
                  upsample=False,
                  aug_mode='same',
                  image_aug=False,
+                 mean=0.7,
+                 std=0.7,
                  normalize=True,
                  ):
         if len(code) == 5:
@@ -119,7 +121,7 @@ class BaseFoldDataset(Dataset):
 
         self.unique_code = [c for c in dict.fromkeys(self.code) if c in 'LMGAOB']
 
-        df_tiles = pd.read_excel(J(source_dir, f'tiles.xlsx'), index_col=0)
+        df_tiles = pd.read_excel(J(source_dir, 'tiles.xlsx'), index_col=0)
         df_cases = pd.read_excel(J(source_dir, f'folds{total_fold}.xlsx'), index_col=0)
         df_merge = pd.merge(df_tiles, df_cases.drop(columns='diag'), on='name')
         self.df = df_merge.copy()
@@ -129,8 +131,8 @@ class BaseFoldDataset(Dataset):
         assert self.fold < self.total_fold
 
         augs = {}
-        augs['train'] = self.aug_train = get_augs(True, self.size, image_aug, normalize)
-        augs['test'] = self.aug_test = get_augs(False, self.size, False, normalize)
+        augs['train'] = self.aug_train = get_augs(True, self.size, image_aug, normalize, mean, std)
+        augs['test'] = self.aug_test = get_augs(False, self.size, False, normalize, mean, std)
         augs['all'] = augs['test']
 
         if aug_mode == 'same':
@@ -163,7 +165,7 @@ class BaseFoldDataset(Dataset):
         if minimum_area > 0:
             # self.df.loc[self.df['white_area'] > minimum_area, 'flag_area'] = False
             # self.df = self.df[self.df['white_area'] < minimum_area].copy()
-            self.df = self.df[(self.df['white_area'] < 0.7) | (self.df['diag'] == 'B')].copy()
+            self.df = self.df[(self.df['white_area'] < 0.8) | (self.df['diag'] == 'B')].copy()
 
         ##* Filter by area
         if limit > 0:
@@ -178,7 +180,7 @@ class BaseFoldDataset(Dataset):
                 # print(np.random.choice(rows.index, size=len(rows)-limit, replace=False))
 
                 # drop more white
-                rows = rows.sort_values('white_area', ascending=False)
+                rows = rows.sort_values('white_area', ascending=True)
                 drop_idxs.append(rows.index[limit:])
             self.df = self.df.drop(np.concatenate(drop_idxs))
 
@@ -194,8 +196,8 @@ class BaseFoldDataset(Dataset):
                 if len(rows) >= limit:
                     continue
                 scale, res = divmod(limit, len(rows))
-                # rows_to_concat += [rows] * (scale-1) + [rows[:res]]
-                rows_to_concat += [rows] * (scale-1)
+                rows_to_concat += [rows] * (scale-1) + [rows[:res]]
+                # rows_to_concat += [rows] * (scale-1)
 
             self.df = pd.concat([self.df] + rows_to_concat, ignore_index=True).copy()
 

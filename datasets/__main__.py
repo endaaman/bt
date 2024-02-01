@@ -31,7 +31,7 @@ class CLI(BaseMLCLI):
         pass
 
     class BuildDatasetArgs(CommonArgs):
-        source: str = 'enda2'
+        source: str = 'enda3'
         size: int = 512
 
     def run_build_dataset(self, a):
