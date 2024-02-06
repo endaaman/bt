@@ -190,13 +190,14 @@ class CLI(BaseMLCLI):
 
     class ValidateArgs(BaseDLArgs):
         model_dir: str = Field(..., s='-d')
-        target: str = 'test'
+        target: str = Field('test', choices=['train', 'test', 'all'])
         batch_size: int = Field(16, s='-B')
         default: bool = False
-        features: bool = Field(False, s='-F')
+        generate_features: bool = Field(False, s='-F', l='--features')
+        limit: int = -1
 
     def run_validate(self, a:ValidateArgs):
-        checkpoint:Checkpoint = torch.load(J(a.model_dir, 'checkpoint_last.pt'), map_location='cpu')
+        checkpoint = Checkpoint.from_file(J(a.model_dir, 'checkpoint_best.pt'))
         config = TrainerConfig.from_file(J(a.model_dir, 'config.json'))
         model = TimmModel(name=config.model_name, num_classes=config.num_classes)
         if not a.default:
@@ -220,6 +221,7 @@ class CLI(BaseMLCLI):
              minimum_area=-1,
              aug_mode='same',
              normalize=True,
+             limit=a.limit,
         )
 
         target = 'un' + a.target if a.default else a.target
@@ -231,7 +233,7 @@ class CLI(BaseMLCLI):
         num_chunks = math.ceil(len(df) / a.batch_size)
         tq = tqdm(range(num_chunks))
 
-        ff = []
+        featuress = []
         for chunk in tq:
             i0 = chunk*a.batch_size
             i1 = (chunk+1)*a.batch_size
@@ -246,10 +248,10 @@ class CLI(BaseMLCLI):
             tt = torch.stack(tt)
             with torch.set_grad_enabled(False):
                 i = tt.to(a.device())
-                if a.features:
+                if a.generate_features:
                     o, f = model(i, activate=True, with_feautres=True)
-                    f = f.detach().cpu().numpy()
-                    ff.append(f)
+                    features = f.detach().cpu().numpy()
+                    featuress.append(features)
                 else:
                     o = model(i, activate=True, with_feautres=False)
                 o = o.detach().cpu().numpy()
@@ -259,16 +261,29 @@ class CLI(BaseMLCLI):
 
             diags = df.loc[df.index[i0:i1], 'diag']
             acc = np.mean(diags == preds)
+
+            diags = df.loc[df.index[i0:i1], 'correct'] = (diags == preds).astype(int)
             tq.set_description(f'{i0} - {i1}: Acc: {acc:.3f}')
             tq.refresh()
 
-        df.to_excel(with_wrote(J(a.model_dir, f'{target}.xlsx')))
+        df.to_excel(with_wrote(J(a.model_dir, f'validate_{target}.xlsx')))
 
-        if a.features:
-            features = np.concatenate(ff)
-            names = list(df['name'] + '_' + df['order'].astype(str) + '_' + df['x'].astype(str) + '_' + df['y'].astype(str))
-            feature_list = list(zip(names, features))
-            torch.save(feature_list, J(a.model_dir, f'{target}_features.pt'))
+        if a.generate_features:
+            features = np.concatenate(featuress)
+            features = features.reshape(features.shape[0], features.shape[1])
+
+            data = [
+                dict(zip(['name', 'filename', 'diag', 'diag_org', 'pred', 'feature'], values))
+                for values in zip(
+                    df['name'],
+                    df['filename'],
+                    df['diag'],
+                    df['diag_org'],
+                    df['pred'],
+                    features
+                )
+            ]
+            torch.save(data, J(a.model_dir, f'features_{target}.pt'))
 
 
     class PredictArgs(BaseDLArgs):

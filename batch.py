@@ -381,7 +381,7 @@ class CLI(BaseMLCLI):
         target: str = 'test'
         count: int = 10
         show: bool = False
-        mode: str = Field('all', choices=['uniq', 'all'])
+        mode: str = Field('all', choices=['uniq', 'all', 'pred'])
         notrained: bool = Field(False, cli=('--notrained', ))
 
     def run_cluster(self, a):
@@ -389,8 +389,7 @@ class CLI(BaseMLCLI):
 
         unique_code = config.unique_code()
 
-        df = pd.read_excel(J(a.model_dir, f'{a.target}.xlsx'), index_col=0)
-        features = dict(torch.load(J(a.model_dir, f'{a.target}_features.pt')))
+        df = pd.DataFrame(torch.load(J(a.model_dir, f'features_{a.target}.pt')))
 
         # df = pd.read_excel('cache/enda3_512/tiles.xlsx')
         # df['diag_org'] = df['diag']
@@ -400,34 +399,35 @@ class CLI(BaseMLCLI):
         #     features.update(f)
 
         target_features = []
-        diags = []
+        labels = []
         images = []
 
         center_crop = transforms.CenterCrop((512, 512))
 
         for name, rows in df.groupby('name'):
             selected_rows = df.loc[np.random.choice(rows.index, a.count)]
-            # 19-3046_1_0_0
-            selected_features = [
-                features['_'.join(str(s) for s in [name, row['order'], row['x'], row['y']])]
-                for i, row in selected_rows.iterrows()
-            ]
+            selected_features = list(selected_rows['feature'])
 
             # print(selected_rows)
             # print(selected_features[0].shape)
             # break
             target_features += selected_features
             if a.mode == 'uniq':
-                diags += [unique_code.index(d) for d in selected_rows['diag']]
-            else:
-                diags += ['LMGAOB'.index(d) for d in selected_rows['diag_org']]
+                labels += [unique_code.index(d) for d in selected_rows['diag']]
+            elif a.mode == 'all':
+                labels += ['LMGAOB'.index(d) for d in selected_rows['diag_org']]
+            elif a.mode == 'pred':
+                labels += [unique_code.index(d) for d in selected_rows['pred']]
 
             images += [
                 np.array(center_crop(Image.open(f'cache/{config.source}/{diag}/{name}/{fn}')))
                 for _, (diag, name, fn) in selected_rows[['diag_org', 'name', 'filename']].iterrows()
             ]
 
-        diags = np.array(diags)
+        labels = np.array(labels)
+        target_features = np.stack(target_features)
+        print(target_features.shape)
+
         print('Loaded samples.')
 
         ##* UMAP
@@ -442,11 +442,11 @@ class CLI(BaseMLCLI):
         scs = []
         dds = []
         iis = []
-        for n in np.unique(diags):
-            label = 'LMGAOB'[n] if a.mode == 'uniq' else 'LMGAOB'[n]
-            scs.append(plt.scatter(embedding_x[diags == n], embedding_y[diags == n], label=label, s=24))
-            dds.append(diags[diags == n])
-            iis.append([i for (i, d) in zip(images, diags) if d == n])
+        for n in np.unique(labels):
+            label = unique_code[n] if a.mode == 'pred' else 'LMGAOB'[n]
+            scs.append(plt.scatter(embedding_x[labels == n], embedding_y[labels == n], label=label, s=24))
+            dds.append(labels[labels == n])
+            iis.append([i for (i, d) in zip(images, labels) if d == n])
 
         # annot = ax.annotate("", xy=(0,0), xytext=(20,20),textcoords="offset points",
         #                 bbox=dict(boxstyle="round", fc="w"),

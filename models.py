@@ -47,7 +47,11 @@ class TimmModel(nn.Module):
                 x = torch.sigmoid(x)
 
         if with_feautres:
-            features = self.base.global_pool(features)
+            if hasattr(self.base, 'global_pool'):
+                pool = self.base.global_pool
+            else:
+                pool = self.base.head.global_pool
+            features = pool(features)
             return x, features
         return x
 
