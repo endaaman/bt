@@ -17,7 +17,7 @@ from sklearn import metrics as skmetrics
 from tqdm import tqdm
 import pandas as pd
 from PIL import Image, ImageDraw, ImageFont
-from pydantic import Field
+from pydantic import Field, Extra
 # from timm.scheduler.cosine_lr import CosineLRScheduler
 
 import pytorch_grad_cam as CAM
@@ -30,7 +30,7 @@ from endaaman.ml.metrics import MultiAccuracy
 from endaaman.ml.cli2 import BaseMLCLI, BaseDLArgs, BaseTrainArgs
 
 from models import TimmModel, CrossEntropyLoss
-from datasets.fold import FoldDataset
+from datasets.fold import FoldDataset, MEAN, STD
 
 
 np.set_printoptions(suppress=True, floatmode='fixed')
@@ -47,7 +47,11 @@ class TrainerConfig(BaseTrainerConfig):
     minimum_area: float
     limit: int = -1
     upsample: bool = False
-    image_aug: bool = False
+    mean: float = MEAN
+    std: float = STD
+
+    # NOT USED
+    image_aug: bool =True
 
     def unique_code(self):
         return [c for c in dict.fromkeys(self.code) if c in 'LMGAOB']
@@ -134,7 +138,6 @@ class CLI(BaseMLCLI):
             minimum_area = a.minimum_area,
             limit = a.limit,
             upsample = a.upsample,
-            image_aug = not a.noaug,
         )
 
         if a.fold < 0:
@@ -148,7 +151,6 @@ class CLI(BaseMLCLI):
                  minimum_area=a.minimum_area,
                  limit=a.limit,
                  upsample=a.upsample,
-                 image_aug=not a.noaug,
                  aug_mode='train',
                  normalize=True,
             ), None]
@@ -164,7 +166,6 @@ class CLI(BaseMLCLI):
                      minimum_area=a.minimum_area,
                      limit=a.limit,
                      upsample = a.upsample,
-                     image_aug=not a.noaug,
                      aug_mode='same',
                      normalize=True,
                 ) for t in ('train', 'test')
@@ -209,7 +210,7 @@ class CLI(BaseMLCLI):
         transform = transforms.Compose([
             transforms.CenterCrop(config.size),
             transforms.ToTensor(),
-            transforms.Normalize(mean=0.7, std=0.2),
+            transforms.Normalize(mean=MEAN, std=STD),
         ])
 
         ds = FoldDataset(
@@ -312,7 +313,7 @@ class CLI(BaseMLCLI):
 
         transform = transforms.Compose([v for v in [
             transforms.ToTensor(),
-            transforms.Normalize(mean=0.7, std=0.2),
+            transforms.Normalize(mean=MEAN, std=STD),
         ] if v])
 
         images, paths  = load_images_from_dir_or_file(a.src, with_path=True)

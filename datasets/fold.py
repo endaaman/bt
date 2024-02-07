@@ -52,7 +52,7 @@ DEFAULT_SIZE = 512
 
 J = os.path.join
 
-def get_augs(train, size, image_aug, normalize, mean, std):
+def get_augs(train, size, normalize, mean, std):
     blur_limit = (3, 5)
 
     if train:
@@ -61,47 +61,46 @@ def get_augs(train, size, image_aug, normalize, mean, std):
             A.RandomResizedCrop(width=size, height=size, scale=(0.666, 1.5), ratio=(0.95, 1.05), ),
             A.RandomRotate90(p=1),
             A.Flip(p=0.5),
+
+            # Blurs
+            A.OneOf([
+                A.MotionBlur(blur_limit=blur_limit),
+                A.MedianBlur(blur_limit=blur_limit),
+                A.GaussianBlur(blur_limit=blur_limit),
+                A.Blur(blur_limit=blur_limit),
+            ], p=1.0),
+            # A.ShiftScaleRotate(shift_limit=0.0625, scale_limit=0.2, rotate_limit=5, p=0.5),
+
+            # Brightness
+            A.OneOf([
+                A.CLAHE(clip_limit=2),
+                A.Emboss(),
+                # A.RandomBrightnessContrast(brightness_limit=0.1),
+                A.RandomToneCurve(),
+            ], p=1.0),
+
+            # Color
+            A.OneOf([
+                A.RGBShift(),
+                A.HueSaturationValue(sat_shift_limit=20),
+            ], p=1.0),
+
+            # Noise
+            A.OneOf([
+                A.ISONoise(),
+                A.GaussNoise(),
+                A.ImageCompression(quality_lower=50, quality_upper=100),
+            ], p=1.0),
+
+            # Transform
+            A.OneOf([
+                A.CoarseDropout(max_holes=16, min_holes=1,
+                                max_height=32, max_width=32,
+                                min_height=8, min_width=8, fill_value=0, p=1.0),
+                A.RandomGridShuffle(grid=(2, 2)),
+                A.RandomGridShuffle(grid=(3, 3)),
+            ], p=1.0),
         ]
-        if image_aug:
-            aa += [
-                # Blurs
-                A.OneOf([
-                    A.MotionBlur(blur_limit=blur_limit),
-                    A.MedianBlur(blur_limit=blur_limit),
-                    A.GaussianBlur(blur_limit=blur_limit),
-                    A.Blur(blur_limit=blur_limit),
-                ], p=1.0),
-                # A.ShiftScaleRotate(shift_limit=0.0625, scale_limit=0.2, rotate_limit=5, p=0.5),
-
-                # Brightness
-                A.OneOf([
-                    A.CLAHE(clip_limit=2),
-                    A.Emboss(),
-                    # A.RandomBrightnessContrast(brightness_limit=0.1),
-                    A.RandomToneCurve(),
-                ], p=1.0),
-
-                # Color
-                A.OneOf([
-                    A.RGBShift(),
-                    A.HueSaturationValue(sat_shift_limit=20),
-                ], p=1.0),
-
-                # Noise
-                A.OneOf([
-                    A.ISONoise(),
-                    A.GaussNoise(),
-                    A.ImageCompression(quality_lower=50, quality_upper=100),
-                ], p=1.0),
-
-                # Transform
-                A.OneOf([
-                    A.CoarseDropout(),
-                    A.RandomGridShuffle(grid=(3, 3)),
-                    A.RandomGridShuffle(grid=(4, 4)),
-                ], p=1.0),
-
-            ]
     else:
         aa = [
             A.CenterCrop(width=size, height=size),
@@ -109,7 +108,7 @@ def get_augs(train, size, image_aug, normalize, mean, std):
         ]
 
     if normalize:
-        aa += [A.Normalize(mean=MEAN, std=STD)]
+        aa += [A.Normalize(mean=mean, std=std)]
     aa += [ToTensorV2()]
     return A.Compose(aa)
 
@@ -126,9 +125,8 @@ class BaseFoldDataset(Dataset):
                  limit=-1,
                  upsample=False,
                  aug_mode='same',
-                 image_aug=False,
-                 mean=0.7,
-                 std=0.7,
+                 mean=MEAN,
+                 std=STD,
                  normalize=True,
                  ):
         if len(code) == 5:
@@ -143,7 +141,6 @@ class BaseFoldDataset(Dataset):
         self.minimum_area = minimum_area
         self.limit = limit
         self.aug_mode = aug_mode
-        self.image_aug = image_aug
         self.normalize = normalize
 
         self.unique_code = [c for c in dict.fromkeys(self.code) if c in 'LMGAOB']
@@ -158,8 +155,8 @@ class BaseFoldDataset(Dataset):
         assert self.fold < self.total_fold
 
         augs = {}
-        augs['train'] = self.aug_train = get_augs(True, self.size, image_aug, normalize, mean, std)
-        augs['test'] = self.aug_test = get_augs(False, self.size, False, normalize, mean, std)
+        augs['train'] = self.aug_train = get_augs(True, self.size, normalize, mean, std)
+        augs['test'] = self.aug_test = get_augs(False, self.size, normalize, mean, std)
         augs['all'] = augs['test']
 
         if aug_mode == 'same':
