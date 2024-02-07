@@ -381,7 +381,7 @@ class CLI(BaseMLCLI):
         target: str = 'test'
         count: int = 10
         show: bool = False
-        mode: str = Field('all', choices=['uniq', 'all', 'pred'])
+        mode: str = Field('original', choices=['original', 'gt', 'pred'])
         notrained: bool = Field(False, cli=('--notrained', ))
 
     def run_cluster(self, a):
@@ -389,7 +389,9 @@ class CLI(BaseMLCLI):
 
         unique_code = config.unique_code()
 
-        df = pd.DataFrame(torch.load(J(a.model_dir, f'features_{a.target}.pt')))
+        features_path = J(a.model_dir, f'features_{a.target}.pt')
+        df = pd.DataFrame(torch.load(features_path))
+        print('loaded', features_path)
 
         # df = pd.read_excel('cache/enda3_512/tiles.xlsx')
         # df['diag_org'] = df['diag']
@@ -412,12 +414,14 @@ class CLI(BaseMLCLI):
             # print(selected_features[0].shape)
             # break
             target_features += selected_features
-            if a.mode == 'uniq':
-                labels += [unique_code.index(d) for d in selected_rows['diag']]
-            elif a.mode == 'all':
+            if a.mode == 'original':
                 labels += ['LMGAOB'.index(d) for d in selected_rows['diag_org']]
+            elif a.mode == 'gt':
+                labels += [unique_code.index(d) for d in selected_rows['diag']]
             elif a.mode == 'pred':
                 labels += [unique_code.index(d) for d in selected_rows['pred']]
+            else:
+                raise RuntimeError('Invalid mode', a.mode)
 
             images += [
                 np.array(center_crop(Image.open(f'cache/{config.source}/{diag}/{name}/{fn}')))

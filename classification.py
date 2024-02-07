@@ -84,6 +84,7 @@ class Trainer(BaseTrainer):
 
     def create_scheduler(self):
         return optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, patience=5)
+        # return torch.optim.lr_scheduler.ExponentialLR(self.optimizer, gamma=0.1)
 
     def continues(self):
         lr = self.get_current_lr()
@@ -99,7 +100,7 @@ class CLI(BaseMLCLI):
         pass
 
     class TrainArgs(BaseTrainArgs):
-        lr: float = 0.01
+        lr: float = 0.001
         batch_size: int = Field(16, s='-B')
         num_workers: int = 4
         minimum_area: float = 0.7
@@ -146,9 +147,9 @@ class CLI(BaseMLCLI):
                  size=a.size,
                  minimum_area=a.minimum_area,
                  limit=a.limit,
-                 upsample = a.upsample,
+                 upsample=a.upsample,
                  image_aug=not a.noaug,
-                 aug_mode='same',
+                 aug_mode='train',
                  normalize=True,
             ), None]
         else:

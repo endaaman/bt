@@ -15,7 +15,7 @@ from pydantic import Field
 import seaborn as sns
 
 from endaaman import with_wrote, grid_split
-from endaaman.ml import BaseMLCLI
+from endaaman.ml import BaseMLCLI, tensor_to_pil
 
 from utils import calc_white_area, show_fold_diag
 from .fold import FoldDataset
@@ -228,6 +228,38 @@ class CLI(BaseMLCLI):
         )
         plt.xticks(rotation=90)
         plt.show()
+
+    class ExampleArgs(BaseDatasetArgs):
+        count:int = 10
+
+    def run_example(self, a):
+        ds = FoldDataset(
+            fold=a.fold,
+            total_fold=a.total_fold,
+            code=a.code,
+            source_dir=a.source,
+            limit=a.limit,
+            upsample=a.upsample,
+            image_aug=True,
+            target='train',
+            normalize=False,
+        )
+
+        d = 'tmp/example/'
+        os.makedirs(d, exist_ok=True)
+
+        idxs = np.random.choice(np.arange(len(ds)), a.count)
+
+        print(idxs)
+        for i, idx in enumerate(tqdm(idxs)):
+            x, img = ds[idx]
+            row = ds.df.iloc[idx]
+            img = Image.open(J(ds.source_dir, row['diag_org'], row['name'], row['filename']))
+
+            aug = tensor_to_pil(x)
+            aug.save(J(d, f'{i}_b.jpg'))
+            img.save(J(d, f'{i}_a.jpg'))
+
 
 if __name__ == '__main__':
     cli = CLI()

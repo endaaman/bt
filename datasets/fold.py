@@ -53,27 +53,54 @@ DEFAULT_SIZE = 512
 J = os.path.join
 
 def get_augs(train, size, image_aug, normalize, mean, std):
+    blur_limit = (3, 5)
+
     if train:
         aa = [
-            A.RandomCrop(width=size, height=size),
+            # A.RandomCrop(width=size, height=size),
+            A.RandomResizedCrop(width=size, height=size, scale=(0.666, 1.5), ratio=(0.95, 1.05), ),
             A.RandomRotate90(p=1),
             A.Flip(p=0.5),
         ]
         if image_aug:
             aa += [
-                A.GaussNoise(p=0.2),
+                # Blurs
                 A.OneOf([
-                    A.MotionBlur(p=0.2),
-                    A.MedianBlur(blur_limit=3, p=0.1),
-                    A.Blur(blur_limit=3, p=0.1),
-                ], p=0.2),
-                A.ShiftScaleRotate(shift_limit=0.0625, scale_limit=0.2, rotate_limit=5, p=0.5),
+                    A.MotionBlur(blur_limit=blur_limit),
+                    A.MedianBlur(blur_limit=blur_limit),
+                    A.GaussianBlur(blur_limit=blur_limit),
+                    A.Blur(blur_limit=blur_limit),
+                ], p=1.0),
+                # A.ShiftScaleRotate(shift_limit=0.0625, scale_limit=0.2, rotate_limit=5, p=0.5),
+
+                # Brightness
                 A.OneOf([
                     A.CLAHE(clip_limit=2),
                     A.Emboss(),
-                    A.RandomBrightnessContrast(),
-                ], p=0.3),
-                A.HueSaturationValue(p=0.3),
+                    # A.RandomBrightnessContrast(brightness_limit=0.1),
+                    A.RandomToneCurve(),
+                ], p=1.0),
+
+                # Color
+                A.OneOf([
+                    A.RGBShift(),
+                    A.HueSaturationValue(sat_shift_limit=20),
+                ], p=1.0),
+
+                # Noise
+                A.OneOf([
+                    A.ISONoise(),
+                    A.GaussNoise(),
+                    A.ImageCompression(quality_lower=50, quality_upper=100),
+                ], p=1.0),
+
+                # Transform
+                A.OneOf([
+                    A.CoarseDropout(),
+                    A.RandomGridShuffle(grid=(3, 3)),
+                    A.RandomGridShuffle(grid=(4, 4)),
+                ], p=1.0),
+
             ]
     else:
         aa = [
