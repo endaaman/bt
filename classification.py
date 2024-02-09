@@ -290,21 +290,28 @@ class CLI(BaseMLCLI):
 
     class PredictArgs(BaseDLArgs):
         model_dir: str = Field(..., s='-d')
-        src: str
+        src: str = Field(..., s='-s')
+        dest: str = ''
         cam: bool = Field(False, s='-c')
         cam_label: str = ''
-        show: bool = False
         center: int = -1
-        grid: int = -1
+        size: int = -1
         cols: int = 3
+        use_last: bool = False
+
+        plot: bool = False
+        show: bool = False
 
     def run_predict(self, a:PredictArgs):
-        checkpoint:Checkpoint = torch.load(J(a.model_dir, 'checkpoint_last.pt'), map_location='cpu')
+        checkpoint = Checkpoint.from_file(J(a.model_dir, 'checkpoint_last.pt'))
         config = TrainerConfig.from_file(J(a.model_dir, 'config.json'))
         model = TimmModel(name=config.model_name, num_classes=config.num_classes)
         model.load_state_dict(checkpoint.model_state)
-        model.to(a.device())
-        model = model.eval()
+        model = model.to(a.device()).eval()
+
+        d = a.dest or ('cam' if a.cam else 'pred')
+        dest_dir = J(with_mkdir(a.model_dir, d))
+        print('dest:', dest_dir)
 
         gradcam = CAM.GradCAM(
             model=model,
@@ -320,9 +327,9 @@ class CLI(BaseMLCLI):
         imagess = []
         col_counts = []
         row_counts = []
-        if a.grid > 0:
+        if a.size > 0:
             for image in images:
-                ggg = grid_split(image, size=a.grid,  overwrap=False, flattern=False)
+                ggg = grid_split(image, size=a.size,  overwrap=False, flattern=False)
                 ii = []
                 for gg in ggg:
                     for g in gg:
@@ -345,12 +352,12 @@ class CLI(BaseMLCLI):
         unique_code = config.unique_code()
 
         colors = {
-            'L': 'green',
-            'M': 'blue',
-            'G': 'red',
-            'A': 'yellow',
-            'O': 'purple',
-            'B': 'black',
+            'L': '#1f77b4',
+            'M': '#ff7f0e',
+            'G': '#2ca02c',
+            'A': 'red',
+            'O': 'blue',
+            'B': '#AC64AD',
         }
 
         font = ImageFont.truetype('/usr/share/fonts/ubuntu/Ubuntu-R.ttf', size=24)
@@ -421,10 +428,11 @@ class CLI(BaseMLCLI):
             print(f'{path}: ({w}x{h}) {pred} ({label})')
 
             name = os.path.splitext(os.path.basename(path))[0]
-            d = 'cam' if a.cam else 'pred'
-            merged_image.save(J(with_mkdir(a.model_dir, d), f'{name}.jpg'))
+            merged_image.save(J(dest_dir, f'{name}.jpg'))
 
-            if not a.show:
+            merged_image.close()
+
+            if not a.plot:
                 continue
             ax = fig.add_subplot(rows, cols, idx+1)
             ax.imshow(merged_image)
@@ -434,9 +442,10 @@ class CLI(BaseMLCLI):
             ax.set_title(title)
             ax.set(xlabel=None, ylabel=None)
 
-        if a.show:
-            plt.show()
-
+        if a.plot:
+            plt.savefig()
+            if a.show:
+                plt.show()
 
 
 if __name__ == '__main__':
