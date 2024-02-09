@@ -14,14 +14,21 @@ from endaaman.ml import BaseMLCLI
 
 def get_cam_layers(m, name=None):
     name = name or m.default_cfg['architecture']
-
     if re.match(r'.*efficientnet.*', name):
         return [m.conv_head]
     if re.match(r'^resnetrs.*', name):
-        return [m.layer4[-1].act3]
+        return [m.layer4[-1]]
+    if re.match(r'^resnetv2.*', name):
+        return [m.stages[-1].blocks[-1]]
     if re.match(r'^resnet\d+', name):
         return [m.layer4[-1].act2]
-
+    if re.match(r'^caformer_.*', name):
+        return [m.stages[-1].blocks[-1].res_scale2]
+    if re.match(r'^convnext.*', name):
+        # return [m.stages[-1].blocks[-1].conv_dw]
+        return [m.stages[-1].blocks[-1].norm]
+    if name == 'swin_base_patch4_window7_224':
+        return [m.layers[-1].blocks[-1].norm1]
     raise RuntimeError('CAM layers are not determined.')
     return []
 
