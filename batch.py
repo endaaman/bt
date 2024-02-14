@@ -287,7 +287,7 @@ class CLI(BaseMLCLI):
 
 
     class CalcResultArgs(CommonArgs):
-        model_dir: str = Field(..., cli=('--model-dir', '-d'))
+        model_dir: str = Field(..., l='--model-dir', s='-d')
         target: str = 'test'
 
     def run_calc_result(self, a):
@@ -295,7 +295,7 @@ class CLI(BaseMLCLI):
         os.makedirs(dest_dir, exist_ok=True)
         config = TrainerConfig.from_file(J(a.model_dir, 'config.json'))
         unique_code = config.unique_code()
-        df = pd.read_excel(J(a.model_dir, f'{a.target}.xlsx'))
+        df = pd.read_excel(J(a.model_dir, f'validate_{a.target}.xlsx'))
 
         df['image_name'] = df['name'].str.cat(df['order'].astype(str), sep='_')
 

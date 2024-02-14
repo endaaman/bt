@@ -151,8 +151,8 @@ class CLI(BaseMLCLI):
                  minimum_area=a.minimum_area,
                  limit=a.limit,
                  upsample=a.upsample,
-                 aug_mode='train',
-                 normalize=True,
+                 augmentation=True,
+                 normalization=True,
             ), None]
         else:
             dss = [
@@ -166,8 +166,8 @@ class CLI(BaseMLCLI):
                      minimum_area=a.minimum_area,
                      limit=a.limit,
                      upsample = a.upsample,
-                     aug_mode='same',
-                     normalize=True,
+                     augmentation=t == 'train',
+                     normalization=True,
                 ) for t in ('train', 'test')
             ]
 
@@ -195,7 +195,7 @@ class CLI(BaseMLCLI):
         target: str = Field('test', choices=['train', 'test', 'all'])
         batch_size: int = Field(16, s='-B')
         default: bool = False
-        generate_features: bool = Field(False, s='-F', l='--features')
+        no_features: bool = False
         limit: int = -1
 
     def run_validate(self, a:ValidateArgs):
@@ -221,8 +221,8 @@ class CLI(BaseMLCLI):
              code=config.code,
              size=config.size,
              minimum_area=-1,
-             aug_mode='same',
-             normalize=True,
+             augmentation=False,
+             normalization=True,
              limit=a.limit,
         )
 
@@ -250,12 +250,12 @@ class CLI(BaseMLCLI):
             tt = torch.stack(tt)
             with torch.set_grad_enabled(False):
                 i = tt.to(a.device())
-                if a.generate_features:
+                if a.no_features:
+                    o = model(i, activate=True, with_feautres=False)
+                else:
                     o, f = model(i, activate=True, with_feautres=True)
                     features = f.detach().cpu().numpy()
                     featuress.append(features)
-                else:
-                    o = model(i, activate=True, with_feautres=False)
                 o = o.detach().cpu().numpy()
             df.loc[df.index[i0:i1], ds.unique_code] = o
             preds = [ds.unique_code[i] for i in np.argmax(o, axis=1)]
@@ -270,7 +270,7 @@ class CLI(BaseMLCLI):
 
         df.to_excel(with_wrote(J(a.model_dir, f'validate_{target}.xlsx')))
 
-        if a.generate_features:
+        if not a.no_features:
             features = np.concatenate(featuress)
             features = features.reshape(features.shape[0], features.shape[1])
 
