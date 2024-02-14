@@ -15,7 +15,8 @@ from pydantic import Field
 import seaborn as sns
 
 from endaaman import with_wrote, grid_split
-from endaaman.ml import BaseMLCLI, tensor_to_pil
+from endaaman.ml import tensor_to_pil
+from endaaman.ml.cli2 import BaseMLCLI
 
 from utils import calc_white_area, show_fold_diag
 from .fold import FoldDataset
@@ -260,6 +261,45 @@ class CLI(BaseMLCLI):
             aug.save(J(d, f'{i}_b.jpg'))
             img.save(J(d, f'{i}_a.jpg'))
 
+    class RotateAndGridArgs(CommonArgs):
+        src: str
+        dest: str
+
+    def run_rotate_and_grid(self, a):
+        diags = list('LMGAO')
+
+        os.makedirs(a.dest, exist_ok=True)
+
+        for diag in diags:
+            print(diag)
+            base_dir = J(a.src, diag)
+            dest_dir = J(a.dest, diag)
+            os.makedirs(dest_dir, exist_ok=True)
+            filenames = os.listdir(base_dir)
+            filenames_by_case = {}
+            for fn in sorted(filenames):
+                m = re.match(r'^(N?\d\d-\d\d\d\d?)_.*\.jpg$', fn)
+                if not m:
+                    raise RuntimeError('Invalid name', fn)
+                case = m[1]
+                if case in filenames_by_case:
+                    filenames_by_case[case].append(fn)
+                else:
+                    filenames_by_case[case] = [fn]
+            t = tqdm(filenames_by_case.items())
+            for case, fns in t:
+                gg =[]
+                for fn in fns:
+                    img = Image.open(J(base_dir, fn))
+                    gg += grid_split(img, size=3000, overwrap=False, flattern=True)
+
+                for i, g in enumerate(gg):
+                    if g.height > g.width:
+                        g = g.rotate(90, expand=True)
+                        # g = g.transpose(Image.ROTATE_90)
+                        # g = ImageOps.exif_transpose(g)
+                    g.save(J(dest_dir, f'{case}_{i+1:02}.jpg'))
+                t.set_description(case)
 
 if __name__ == '__main__':
     cli = CLI()

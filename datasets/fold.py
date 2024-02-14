@@ -52,10 +52,10 @@ DEFAULT_SIZE = 512
 
 J = os.path.join
 
-def get_augs(train, size, normalize, mean, std):
+def get_augs(image_aug, size, normalization, mean, std):
     blur_limit = (3, 5)
 
-    if train:
+    if image_aug:
         aa = [
             # A.RandomCrop(width=size, height=size),
             A.RandomResizedCrop(width=size, height=size, scale=(0.666, 1.5), ratio=(0.95, 1.05), ),
@@ -107,7 +107,7 @@ def get_augs(train, size, normalize, mean, std):
             # A.Resize(width=size, height=size),
         ]
 
-    if normalize:
+    if normalization:
         aa += [A.Normalize(mean=mean, std=std)]
     aa += [ToTensorV2()]
     return A.Compose(aa)
@@ -124,10 +124,10 @@ class BaseFoldDataset(Dataset):
                  minimum_area=-1,
                  limit=-1,
                  upsample=False,
-                 aug_mode='same',
+                 augmentation=True,
+                 normalization=True,
                  mean=MEAN,
                  std=STD,
-                 normalize=True,
                  ):
         if len(code) == 5:
             code += '_'
@@ -140,8 +140,8 @@ class BaseFoldDataset(Dataset):
         self.size = size
         self.minimum_area = minimum_area
         self.limit = limit
-        self.aug_mode = aug_mode
-        self.normalize = normalize
+        self.augmentation = augmentation
+        self.normalization = normalization
 
         self.unique_code = [c for c in dict.fromkeys(self.code) if c in 'LMGAOB']
 
@@ -154,15 +154,7 @@ class BaseFoldDataset(Dataset):
 
         assert self.fold < self.total_fold
 
-        augs = {}
-        augs['train'] = self.aug_train = get_augs(True, self.size, normalize, mean, std)
-        augs['test'] = self.aug_test = get_augs(False, self.size, normalize, mean, std)
-        augs['all'] = augs['test']
-
-        if aug_mode == 'same':
-            self.aug = augs[target]
-        else:
-            self.aug = augs[aug_mode]
+        self.aug = get_augs(augmentation, self.size, normalization, mean, std)
 
         # process like converting LMGAO to LMGGG
         replacer = []
