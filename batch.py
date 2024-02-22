@@ -18,9 +18,11 @@ from sklearn.model_selection import StratifiedKFold
 from sklearn import metrics as skmetrics
 from pydantic import Field
 from torchvision import transforms
+from torchvision.transforms.functional import adjust_gamma
 import umap
+from openslide import OpenSlide
 
-from endaaman import load_images_from_dir_or_file, with_wrote, grid_split, with_mkdir
+from endaaman import load_images_from_dir_or_file, with_wrote, grid_split, with_mkdir, n_split
 from endaaman.ml.cli2 import BaseMLCLI
 import imagesize
 
@@ -41,7 +43,7 @@ class CLI(BaseMLCLI):
         src: str = 'data/images'
 
     def run_mean_std(self, a):
-        pp = sorted(glob(os.path.join(self.a.src, '*/*.jpg')))
+        pp = glob(os.path.join(self.a.src, '*/*.jpg'))
         mm = []
         ss = []
         scale = 0
@@ -212,8 +214,8 @@ class CLI(BaseMLCLI):
 
 
     class DrawResultArgs(CommonArgs):
-        model_dir: str = Field(..., cli=('--model-dir', '-d'))
-        target: str = 'test'
+        model_dir: str = Field(..., s='-d')
+        target: str = Field('test', s='-t')
 
     def run_draw_result(self, a):
         dest_dir= J(a.model_dir, a.target)
@@ -221,7 +223,7 @@ class CLI(BaseMLCLI):
         config = TrainerConfig.from_file(J(a.model_dir, 'config.json'))
         unique_code = config.unique_code()
 
-        df = pd.read_excel(J(a.model_dir, f'{a.target}.xlsx'))
+        df = pd.read_excel(J(a.model_dir, f'validate_{a.target}.xlsx'))
         df['image_name'] = df['name'].str.cat(df['order'].astype(str), sep='_')
 
         colors = {
@@ -281,7 +283,7 @@ class CLI(BaseMLCLI):
             merged_image.save(J(d, f'{image_name}.jpg'))
             merged_image.close()
 
-            tq.set_description(f'Drew {image_name}')
+            tq.set_description(f'Drew {diag} {image_name}')
             tq.refresh()
 
 
@@ -712,6 +714,41 @@ class CLI(BaseMLCLI):
                 img = Image.open(p)
                 img.rotate(90).save(p)
                 img.close()
+
+    class GridWsiArgs(CommonArgs):
+        src: str
+
+    def run_grid_wsi(self, a):
+        files = sorted(glob(J(a.src, '*.ndpi')))
+        for file in files:
+            wsi = OpenSlide(file)
+            name = os.path.splitext(os.path.basename(file))[0]
+            dest_dir = with_mkdir(f'tmp/B/{name}')
+            print(name)
+            W, H = wsi.dimensions
+            ww = np.array(n_split(W, W//3000))
+            hh = np.array(n_split(H, H//3000))
+            x = 0
+            y = 0
+            i = 0
+            id = 1
+            total = len(ww)*len(hh)
+            t = tqdm(total=total)
+            for _y, h in enumerate(hh):
+                x = 0
+                for _x, w in enumerate(ww):
+                    tile = wsi.read_region((x, y), 0, (w, h)).convert('RGB')
+                    white_area = calc_white_area(tile, min=210, max=255)
+                    t.set_description(f'{i}/{total} {_x} {_y} {w} {h} w:{white_area:.3f}')
+                    if white_area < 0.5:
+                        tile = adjust_gamma(tile, gamma=1/1.8)
+                        tile.save(J(dest_dir, f'{name}_{id:03d}.jpg'))
+                        id += 1
+                    t.update(1)
+                    x += w
+                    i += 1
+                y += h
+            t.close()
 
 
 if __name__ == '__main__':

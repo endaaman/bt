@@ -2,6 +2,7 @@ import os
 import re
 from glob import glob
 import hashlib
+import shutil
 
 import pandas as pd
 import torch
@@ -13,6 +14,7 @@ from matplotlib import pyplot as plt
 from sklearn.model_selection import StratifiedKFold
 from pydantic import Field
 import seaborn as sns
+import imagesize
 
 from endaaman import with_wrote, grid_split
 from endaaman.ml import tensor_to_pil
@@ -286,20 +288,34 @@ class CLI(BaseMLCLI):
                     filenames_by_case[case].append(fn)
                 else:
                     filenames_by_case[case] = [fn]
+                size = getattr
             t = tqdm(filenames_by_case.items())
-            for case, fns in t:
-                gg =[]
-                for fn in fns:
-                    img = Image.open(J(base_dir, fn))
-                    gg += grid_split(img, size=3000, overwrap=False, flattern=True)
 
-                for i, g in enumerate(gg):
-                    if g.height > g.width:
-                        g = g.rotate(90, expand=True)
-                        # g = g.transpose(Image.ROTATE_90)
-                        # g = ImageOps.exif_transpose(g)
-                    g.save(J(dest_dir, f'{case}_{i+1:02}.jpg'))
+            for case, fns in t:
+                new_index = 1
+                for fn in fns:
+
+                    img = Image.open(J(base_dir, fn))
+                    gg = grid_split(img, size=3000, overwrap=False, flattern=True)
+                    if len(gg) == 1:
+                        shutil.copyfile(
+                            J(base_dir, fn),
+                            J(dest_dir, f'{case}_{new_index:02}.jpg')
+                        )
+                        new_index += 1
+                        continue
+
+                    for i, g in enumerate(gg):
+                        if g.height > g.width:
+                            # g = g.rotate(90, expand=True)
+                            g = g.transpose(Image.ROTATE_90)
+                            g = ImageOps.exif_transpose(g)
+                        g.save(J(dest_dir, f'{case}_{new_index:02}.jpg'), quality=100)
+                        new_index += 1
                 t.set_description(case)
+
+
+            return
 
 if __name__ == '__main__':
     cli = CLI()

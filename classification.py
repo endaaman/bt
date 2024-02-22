@@ -157,17 +157,17 @@ class CLI(BaseMLCLI):
         else:
             dss = [
                 FoldDataset(
-                     total_fold=a.total_fold,
-                     fold=a.fold,
-                     source_dir=J('cache', a.source),
-                     target=t,
-                     code=a.code,
-                     size=a.size,
-                     minimum_area=a.minimum_area,
-                     limit=a.limit,
-                     upsample = a.upsample,
-                     augmentation=t == 'train',
-                     normalization=True,
+                    total_fold=a.total_fold,
+                    fold=a.fold,
+                    source_dir=J('cache', a.source),
+                    target = t,
+                    code = a.code,
+                    size = a.size,
+                    minimum_area = a.minimum_area,
+                    limit = a.limit,
+                    upsample = t=='train',
+                    augmentation= t=='train',
+                    normalization = True,
                 ) for t in ('train', 'test')
             ]
 
