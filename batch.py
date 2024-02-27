@@ -500,6 +500,7 @@ class CLI(BaseMLCLI):
         fig.canvas.mpl_connect('motion_notify_event', hover)
 
         plt.legend()
+        plt.subplots_adjust(right=0.75, top=0.75)
         d = J(a.model_dir, 'umap')
         os.makedirs(d, exist_ok=True)
         plt.savefig(with_wrote(J(d, f'{a.target}_{a.mode}_{a.count}.png')))
