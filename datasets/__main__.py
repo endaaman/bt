@@ -18,7 +18,7 @@ import imagesize
 
 from endaaman import with_wrote, grid_split
 from endaaman.ml import tensor_to_pil
-from endaaman.ml.cli2 import BaseMLCLI
+from endaaman.ml.cli import BaseMLCLI
 
 from utils import calc_white_area, show_fold_diag
 from .fold import FoldDataset
@@ -35,10 +35,11 @@ class CLI(BaseMLCLI):
 
     class BuildDatasetArgs(CommonArgs):
         source: str = 'enda3'
+        dest: str = 'cache'
         size: int = 512
 
     def run_build_dataset(self, a):
-        dst_dir = f'cache/{a.source}_{a.size}'
+        dst_dir = J(a.dest, f'{a.source}_{a.size}')
         src_dir = f'data/images/{a.source}'
         ee = []
         for diag in 'LMGAOB':
@@ -313,9 +314,6 @@ class CLI(BaseMLCLI):
                         g.save(J(dest_dir, f'{case}_{new_index:02}.jpg'), quality=100)
                         new_index += 1
                 t.set_description(case)
-
-
-            return
 
 if __name__ == '__main__':
     cli = CLI()

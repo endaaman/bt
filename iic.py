@@ -38,56 +38,56 @@ np.set_printoptions(suppress=True, floatmode='fixed')
 J = os.path.join
 
 
-def compute_joint(x_out, x_tf_out):
-    p_i_j = x_out.unsqueeze(2) * x_tf_out.unsqueeze(1)
-    p_i_j = p_i_j.sum(dim=0)
+class IICLoss(nn.Module):
+    def __init__(self, alpha):
+        super().__init__()
+        self.alpha = alpha
 
-    p_i_j = (p_i_j + p_i_j.t()) / 2.
+    def forward(self, i, j):
+        EPS = sys.float_info.epsilon
+        bs, k = i.size()
+        p_i_j = i.unsqueeze(2) * j.unsqueeze(1)
+        p_i_j = p_i_j.sum(dim=0)
+        p_i_j = (p_i_j + p_i_j.t()) / 2.0
+        p_i_j = p_i_j / p_i_j.sum()
 
-    p_i_j = p_i_j / p_i_j.sum()
+        p_i_j = torch.clamp(p_i_j, min=EPS)
 
-    return p_i_j
+        p_i = p_i_j.sum(dim=1).view(k, 1).expand(k, k)
+        p_j = p_i_j.sum(dim=0).view(1, k).expand(k, k)
 
+        loss = p_i_j * (self.alpha*torch.log(p_j) + self.alpha*torch.log(p_i) - torch.log(p_i_j))
+        loss = loss.sum()
+        return loss
 
-def iic_loss(x_out, x_tf_out, EPS=sys.float_info.epsilon):
-    bs, k = x_out.size()
-    p_i_j = compute_joint(x_out, x_tf_out)
+def to_unique_code(code):
+    return [c for c in dict.fromkeys(code) if c in 'LMGAOB']
 
-    p_i = p_i_j.sum(dim=1).view(k, 1).expand(k, k)
-    p_j = p_i_j.sum(dim=0).view(1, k).expand(k, k)
-
-    p_i = torch.clip(p_i, min=EPS)
-    p_j = torch.clip(p_j, min=EPS)
-    p_i_j = torch.clip(p_i_j, min=EPS)
-    # p_i_j = torch.where(p_i_j < EPS, torch.tensor([EPS], device=p_i_j.device), p_i_j)
-    # p_j = torch.where(p_j < EPS, torch.tensor([EPS], device=p_j.device), p_j)
-    # p_i = torch.where(p_i < EPS, torch.tensor([EPS], device=p_i.device), p_i)
-
-    alpha = 2.0
-
-    loss = torch.log(p_i_j) - alpha * torch.log(p_j) - alpha * torch.log(p_i)
-    loss = -1 * (p_i_j * loss).sum()
-
-    return loss
 
 class TrainerConfig(BaseTrainerConfig):
     model_name:str
     source: str
     fold: int
     total_fold: int
+    code: str
     num_classes: int
+    num_classes_over: int
     size: int
     minimum_area: float
-    limit: int = -1
-    upsample: bool = False
+    limit: int
+    upsample: bool
 
-    num_classes: int = 10
-    num_classes_over: int = 100
+    alpha: float
+    mean: float = 0.7
+    std: float = 0.2
+
+    def unique_code(self):
+        return to_unique_code(self.code)
 
 
 class Trainer(BaseTrainer):
     def prepare(self):
-        self.criterion = CrossEntropyLoss(input_logits=True)
+        self.criterion = IICLoss(alpha=self.config.alpha)
         self.fig_col_count = 2
         return IICModel(
             name=self.config.model_name,
@@ -95,23 +95,20 @@ class Trainer(BaseTrainer):
             num_classes_over=self.config.num_classes_over
         )
 
-    def eval(self, i0, i1):
-        p0, p0_over = self.model(i0.to(self.device), activate=True)
-        p1, p1_over = self.model(i1.to(self.device), activate=True)
-
-        loss = iic_loss(p0, p1)
-        loss_over = iic_loss(p0_over, p1_over)
+    def eval(self, x, y, gt):
+        x, x_over = self.model(x.to(self.device), activate=True)
+        y, y_over = self.model(y.to(self.device), activate=True)
+        loss = self.criterion(x, y)
+        loss_over = self.criterion(x_over, y_over)
         total_loss = loss + loss_over
-
-        # total_loss = 1/-total_loss
         return total_loss, None
 
-    def create_scheduler(self):
-        return optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, patience=5)
+    # def create_scheduler(self):
+    #     return optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, patience=5)
 
-    def continues(self):
-        lr = self.get_current_lr()
-        return lr > 1e-6
+#     def continues(self):
+#         lr = self.get_current_lr()
+#         return lr > 1e-6
 
     def get_metrics(self):
         return {
@@ -124,27 +121,29 @@ class CLI(BaseMLCLI):
 
     class TrainArgs(BaseTrainArgs):
         lr: float = 0.01
-        batch_size: int = Field(16, cli=('--batch-size', '-B', ))
-        num_workers: int = Field(10, cli=('--num-workers', '-N' ))
-        num_classes: int = Field(10, cli=('--num-classes', ))
-        num_classes_over: int = Field(100, cli=('--num-classes-over', ))
+        batch_size: int = Field(128, s='-B')
+        num_workers: int = Field(10, s='-N' )
+        code: str = 'LMGGGB'
+        num_classes_over: int = 10
         minimum_area: float = 0.7
-        limit: int = -1
-        upsample: bool = Field(False, cli=('--upsample', ))
-        epoch: int = Field(100, cli=('--epoch', '-E'))
+        limit: int = 500
+        upsample: bool = False
+        epoch: int = Field(50, cli=('--epoch', '-E'))
         total_fold: int = Field(5, cli=('--total-fold', ))
         fold: int = 0
-        model_name: str = Field('efficientnet_b0', cli=('--model', '-m'))
-        source: str = Field('enda3_512', cli=('--source', ))
+        model_name: str = Field('resnet34', l='--model', s='-m')
+        source: str = 'enda4_256'
         suffix: str = ''
         prefix: str = ''
-        size: int = Field(512, cli=('--size', '-s'))
-        overwrite: bool = Field(False, cli=('--overwrite', '-o'))
+        alpha: float = 2.0
+        size: int = Field(256, cli=('--size', '-s'))
+        overwrite: bool = Field(False, cli=('--overwrite', '-O'))
 
     def run_train(self, a:TrainArgs):
         config = TrainerConfig(
             model_name = a.model_name,
             batch_size = a.batch_size,
+            code = a.code,
             lr = a.lr,
             source = 'enda3_512',
             size = a.size,
@@ -153,27 +152,27 @@ class CLI(BaseMLCLI):
             minimum_area = a.minimum_area,
             limit = a.limit,
             upsample = a.upsample,
+            alpha = a.alpha,
 
-            num_classes = a.num_classes,
+            num_classes = len(to_unique_code(a.code)),
             num_classes_over = a.num_classes_over,
         )
 
-        dss = [
-            IICFoldDataset(
-                 total_fold=a.total_fold,
-                 fold=a.fold,
-                 source_dir=J('cache', a.source),
-                 target=t,
-                 code='LMGAOB',
-                 size=a.size,
-                 minimum_area=a.minimum_area,
-                 limit=a.limit,
-                 upsample = a.upsample,
-                 image_aug=True,
-                 aug_mode='same',
-                 normalize=True,
-            ) for t in ('train', 'test')
-        ]
+        dss = [IICFoldDataset(
+            total_fold=a.total_fold,
+            fold=a.fold,
+            source_dir=J('data/tiles', a.source),
+            target=t,
+            code=config.code,
+            size=a.size,
+            minimum_area=a.minimum_area,
+            limit=a.limit,
+            upsample = a.upsample,
+            augmentation=True,
+            normalization=True,
+            mean=config.mean,
+            std=config.std,
+        ) for t in ('train', 'test')]
 
         out_dir = J(
             'out', 'iic',

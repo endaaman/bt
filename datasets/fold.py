@@ -142,6 +142,8 @@ class BaseFoldDataset(Dataset):
         self.limit = limit
         self.augmentation = augmentation
         self.normalization = normalization
+        self.mean = mean
+        self.std = std
 
         self.unique_code = [c for c in dict.fromkeys(self.code) if c in 'LMGAOB']
 
@@ -276,6 +278,7 @@ class FoldDataset(BaseFoldDataset):
 class IICFoldDataset(BaseFoldDataset):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.aug = get_augs(True, self.size, self.normalization, self.mean, self.std)
 
     def __len__(self):
         return len(self.df)
@@ -283,13 +286,12 @@ class IICFoldDataset(BaseFoldDataset):
     def __getitem__(self, idx):
         row = self.df.iloc[idx]
         image = Image.open(J(self.source_dir, row['diag_org'], row['name'], row['filename']))
-        arr = np.array(image)
+        image = np.array(image)
+        gt = torch.tensor(self.unique_code.index(row['diag']))
 
-        x0 = self.aug(image=arr)['image']
-        x1 = self.aug(image=arr)['image']
-        arr = None
-        image.close()
-        return x0, x1
+        x = self.aug(image=image)['image']
+        y = self.aug(image=image)['image']
+        return x, y, gt
 
 class MILFoldDataset(BaseFoldDataset):
     def __init__(self, batch_size=16, *args, **kwargs):
