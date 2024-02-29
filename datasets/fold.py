@@ -278,7 +278,15 @@ class FoldDataset(BaseFoldDataset):
 class IICFoldDataset(BaseFoldDataset):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.aug = get_augs(True, self.size, self.normalization, self.mean, self.std)
+        # self.aug = get_augs(True, self.size, self.normalization, self.mean, self.std)
+
+        self.aug = A.Compose([
+            A.RandomResizedCrop(width=self.size, height=self.size, scale=(0.666, 1.5), ratio=(0.95, 1.05), ),
+            A.RandomRotate90(p=1),
+            A.Flip(p=0.5),
+            A.Normalize(mean=self.mean, std=self.std),
+            ToTensorV2(),
+        ])
 
     def __len__(self):
         return len(self.df)
@@ -286,11 +294,14 @@ class IICFoldDataset(BaseFoldDataset):
     def __getitem__(self, idx):
         row = self.df.iloc[idx]
         image = Image.open(J(self.source_dir, row['diag_org'], row['name'], row['filename']))
-        image = np.array(image)
+        arr = np.array(image)
+        image.close()
+        image = None
         gt = torch.tensor(self.unique_code.index(row['diag']))
 
-        x = self.aug(image=image)['image']
-        y = self.aug(image=image)['image']
+        x = self.aug(image=arr)['image']
+        y = self.aug(image=arr)['image']
+        arr = None
         return x, y, gt
 
 class MILFoldDataset(BaseFoldDataset):
