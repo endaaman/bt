@@ -27,7 +27,7 @@ from pytorch_grad_cam.utils.model_targets import BinaryClassifierOutputTarget, C
 from endaaman import with_wrote, load_images_from_dir_or_file, grid_split, with_mkdir
 from endaaman.ml import BaseTrainerConfig, BaseTrainer, Checkpoint, pil_to_tensor
 from endaaman.ml.metrics import MultiAccuracy
-from endaaman.ml.cli2 import BaseMLCLI, BaseDLArgs, BaseTrainArgs
+from endaaman.ml.cli import BaseMLCLI, BaseDLArgs, BaseTrainArgs
 
 from models import TimmModel, CrossEntropyLoss
 from datasets.fold import FoldDataset, MEAN, STD
@@ -144,7 +144,7 @@ class CLI(BaseMLCLI):
             dss = [FoldDataset(
                  total_fold=a.total_fold,
                  fold=-1,
-                 source_dir=J('cache', a.source),
+                 source_dir=J('data/tiles', a.source),
                  target='all',
                  code=a.code,
                  size=a.size,
@@ -159,13 +159,13 @@ class CLI(BaseMLCLI):
                 FoldDataset(
                     total_fold=a.total_fold,
                     fold=a.fold,
-                    source_dir=J('cache', a.source),
+                    source_dir=J('data/tiles', a.source),
                     target = t,
                     code = a.code,
                     size = a.size,
                     minimum_area = a.minimum_area,
                     limit = a.limit,
-                    upsample = t=='train',
+                    upsample =  a.upsample and t=='train',
                     augmentation= t=='train',
                     normalization = True,
                 ) for t in ('train', 'test')
