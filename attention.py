@@ -29,8 +29,8 @@ from endaaman.ml import BaseTrainerConfig, BaseTrainer, Checkpoint, pil_to_tenso
 from endaaman.ml.metrics import MultiAccuracy
 from endaaman.ml.cli import BaseMLCLI, BaseDLArgs, BaseTrainArgs
 
-from models import TimmModel, CrossEntropyLoss
-from datasets.fold import FoldDataset, MEAN, STD
+from models import MILModel, CrossEntropyLoss
+from datasets.fold import QuadAttentionFoldDataset, MEAN, STD
 
 
 np.set_printoptions(suppress=True, floatmode='fixed')
@@ -50,8 +50,7 @@ class TrainerConfig(BaseTrainerConfig):
     mean: float = MEAN
     std: float = STD
 
-    # NOT USED
-    image_aug: bool =True
+    activation: str = 'softmax'
 
     def unique_code(self):
         return [c for c in dict.fromkeys(self.code) if c in 'LMGAOB']
@@ -61,10 +60,15 @@ class Trainer(BaseTrainer):
     def prepare(self):
         self.criterion = CrossEntropyLoss(input_logits=True)
         self.fig_col_count = 2
-        return TimmModel(name=self.config.model_name, num_classes=self.config.num_classes)
+        return MILModel(name=self.config.model_name, num_classes=self.config.num_classes)
 
     def eval(self, inputs, gts):
-        preds = self.model(inputs.to(self.device), activate=False)
+        inputs = inputs[0]
+        result = self.model(inputs.to(self.device), activate=False)
+        pred = result['y']
+        preds = pred[None, ...]
+        # print(preds, gts)
+        # print(preds.shape, gts.shape)
         loss = self.criterion(preds, gts.to(self.device))
         return loss, preds.detach().cpu()
 
@@ -105,8 +109,6 @@ class CLI(BaseMLCLI):
 
     class TrainArgs(BaseTrainArgs):
         lr: float = 0.001
-        batch_size: int = Field(16, s='-B')
-        num_workers: int = 4
         minimum_area: float = 0.6
         limit: int = -1
         upsample: bool = False
@@ -122,12 +124,15 @@ class CLI(BaseMLCLI):
         code: str = 'LMGGGB'
         overwrite: bool = Field(False, s='-O')
 
+        activation: str = 'softmax'
+
     def run_train(self, a:TrainArgs):
         num_classes = len(set([*a.code]) - {'_'})
 
         config = TrainerConfig(
+            num_workers = a.num_workers,
             model_name = a.model,
-            batch_size = a.batch_size,
+            batch_size = 1,
             lr = a.lr,
             source = a.source,
             size = a.size,
@@ -138,10 +143,11 @@ class CLI(BaseMLCLI):
             minimum_area = a.minimum_area,
             limit = a.limit,
             upsample = a.upsample,
+            activation = a.activation,
         )
 
         if a.fold < 0:
-            dss = [FoldDataset(
+            dss = [QuadAttentionFoldDataset(
                  total_fold=a.total_fold,
                  fold=-1,
                  source_dir=J('data/tiles', a.source),
@@ -156,7 +162,7 @@ class CLI(BaseMLCLI):
             ), None]
         else:
             dss = [
-                FoldDataset(
+                QuadAttentionFoldDataset(
                     total_fold=a.total_fold,
                     fold=a.fold,
                     source_dir=J('data/tiles', a.source),
@@ -165,14 +171,14 @@ class CLI(BaseMLCLI):
                     size = a.size,
                     minimum_area = a.minimum_area,
                     limit = a.limit,
-                    upsample =  a.upsample and t=='train',
-                    augmentation= t=='train',
+                    upsample = a.upsample and t=='train',
+                    augmentation = t=='train',
                     normalization = True,
                 ) for t in ('train', 'test')
             ]
 
         out_dir = J(
-            'out', a.source, config.code,
+            'out', f'{a.source}_mil', config.code,
             f'fold{a.total_fold}_{a.fold}', a.prefix, config.model_name
         )
         if a.suffix:

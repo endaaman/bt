@@ -115,12 +115,13 @@ def get_augs(image_aug, size, normalization, mean, std):
 
 class BaseFoldDataset(Dataset):
     def __init__(self,
-                 total_fold,
-                 fold,
                  source_dir,
+                 total_fold=5,
+                 fold=0,
                  target='train',
                  code='LMGAO_',
                  size=512,
+                 crop_size=-1,
                  minimum_area=-1,
                  limit=-1,
                  upsample=False,
@@ -138,6 +139,7 @@ class BaseFoldDataset(Dataset):
         self.target = target
         self.code = [*code]
         self.size = size
+        self.crop_size = crop_size if crop_size > 0 else size
         self.minimum_area = minimum_area
         self.limit = limit
         self.augmentation = augmentation
@@ -156,7 +158,7 @@ class BaseFoldDataset(Dataset):
 
         assert self.fold < self.total_fold
 
-        self.aug = get_augs(augmentation, self.size, normalization, mean, std)
+        self.aug = get_augs(augmentation, self.crop_size, normalization, mean, std)
 
         # process like converting LMGAO to LMGGG
         replacer = []
@@ -304,13 +306,35 @@ class IICFoldDataset(BaseFoldDataset):
         arr = None
         return x, y, gt
 
-class MILFoldDataset(BaseFoldDataset):
-    def __init__(self, batch_size=16, *args, **kwargs):
+class QuadAttentionFoldDataset(BaseFoldDataset):
+    def __init__(self, *args, **kwargs):
+        kwargs['crop_size'] = kwargs.get('size', 512)//2
         super().__init__(*args, **kwargs)
-        self.batch_size = batch_size
 
     def __len__(self):
-        pass
+        return len(self.df)
 
     def __getitem__(self, idx):
-        pass
+        row = self.df.iloc[idx]
+        image = Image.open(J(self.source_dir, row['diag_org'], row['name'], row['filename']))
+        arr = np.array(image)
+
+        ts = self.crop_size
+        w = image.width
+        h = image.height
+        x = np.random.randint(w - ts*2) if w - ts*2 > 0 else 0
+        y = np.random.randint(h - ts*2) if h - ts*2 > 0 else 0
+
+        tiles = [
+            arr[:ts+y, :ts+x, :],
+            arr[:ts+y, ts+x:, :],
+            arr[ts+y:, :ts+x, :],
+            arr[ts+y:, ts+x:, :],
+        ]
+
+        image.close()
+        image = None
+        gt = torch.tensor(self.unique_code.index(row['diag']))
+        xx = [self.aug(image=t)['image'] for t in tiles]
+        xx = torch.stack(xx)
+        return xx, gt

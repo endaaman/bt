@@ -99,7 +99,7 @@ class IICModel(nn.Module):
         return x, x_over
 
 
-class BaseAttentionModel(nn.Module):
+class MILModel(nn.Module):
     def __init__(self, name, num_classes, activation='softmax', params_count=512, pretrained=True):
         super().__init__()
         self.name = name
@@ -111,6 +111,10 @@ class BaseAttentionModel(nn.Module):
         self.num_features = self.base.num_features
         self.classifier = nn.Linear(self.num_features, self.num_classes)
 
+        self.u = nn.Linear(self.num_features, self.params_count, bias=False)
+        self.v = nn.Linear(self.num_features, self.params_count, bias=False)
+        self.w = nn.Linear(self.params_count, 1, bias=False)
+
     def set_freeze_base_model_weights(self, flag):
         for param in base.parameters():
             param.requires_grad = flag
@@ -119,7 +123,15 @@ class BaseAttentionModel(nn.Module):
         return get_cam_layers(self.base, self.name)
 
     def compute_attentions(self, features):
-        raise NotImplementedError('DO IMPLEMENT')
+        # raise NotImplementedError('DO IMPLEMENT')
+        aa = []
+        for feature in features:
+            xu = self.u(feature)
+            xv = torch.sigmoid(self.v(feature))
+            alpha = self.w(xu * xv)
+            aa.append(alpha)
+        aa = torch.stack(aa).flatten()
+        return aa
 
     def compute_attentions_and_activate(self, features):
         aa = self.compute_attentions(features)
@@ -134,76 +146,38 @@ class BaseAttentionModel(nn.Module):
             raise RuntimeError('Invalid activation:', self.activation)
         return aa
 
-    def forward(self, x, activate=False, with_attentions=False):
-        x = self.convs(x)
-        x = self.pool(x)
-        features = torch.flatten(x, 1)
+    def forward(self, x, activate=False):
+        features = self.base.forward_features(x)
+
+        if hasattr(self.base, 'global_pool'):
+            pool = self.base.global_pool
+        else:
+            pool = self.base.head.global_pool
+
+        features = pool(features)
 
         aa = self.compute_attentions_and_activate(features)
+
         feature = (features * aa[:, None]).sum(dim=0)
-        y = self.fc(feature)
+        y = self.classifier(feature)
+        yy = self.classifier(features)
 
         if activate:
             if self.num_classes > 1:
                 y = torch.softmax(y, dim=-1)
+                yy = torch.softmax(yy, dim=-1)
             else:
                 y = torch.sigmoid(y)
+                yy = torch.sigmoid(yy)
 
-        if with_attentions:
-            return y, aa.detach()
-        return y
+        return {
+            'y': y,
+            'yy': yy,
+            'feature': feature,
+            'features': features,
+            'attentions': aa,
+        }
 
-
-
-class MILModel(BaseAttentionModel):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-        self.u = nn.Linear(self.num_features, self.params_count, bias=False)
-        self.v = nn.Linear(self.num_features, self.params_count, bias=False)
-        self.w = nn.Linear(self.params_count, 1, bias=False)
-
-    def compute_attention_scores(self, x):
-        xu = self.u(x)
-        xv = torch.sigmoid(self.v(x))
-        alpha = self.w(xu * xv)
-        return alpha
-
-    def compute_attentions(self, features):
-        raise RuntimeError('Do implement')
-        aa = []
-        for feature in features:
-            aa.append(self.compute_attention_scores(feature))
-        aa = torch.stack(aa).flatten()
-        return aa
-
-
-class ResMILModel(BaseAttentionModel):
-    def __init__(self, params_count=512, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-        self.pre = nn.Linear(self.num_features, self.num_features)
-
-        self.u = nn.Linear(self.num_features * 2, self.params_count, bias=False)
-        self.v = nn.Linear(self.num_features * 2, self.params_count, bias=False)
-        self.w = nn.Linear(self.params_count, 1, bias=False)
-
-    def compute_attention_scores(self, x):
-        xu = self.u(x)
-        xv = torch.sigmoid(self.v(x))
-        alpha = self.w(xu * xv)
-        return alpha
-
-    def compute_attentions(self, features):
-        aa = []
-        pre_ww = self.pre(features)
-
-        for feature, pre_w in zip(features, pre_ww):
-            m = features * torch.softmax(pre_w, dim=-1)
-            m = m.sum(dim=-2)
-            aa.append(self.compute_attention_scores(torch.concat(feature, m)))
-        aa = torch.stack(aa).flatten()
-        return aa
 
 
 class CrossEntropyLoss(nn.Module):
