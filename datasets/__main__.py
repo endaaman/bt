@@ -6,6 +6,7 @@ import shutil
 
 import pandas as pd
 import torch
+from torch.utils.data import DataLoader
 from PIL import Image, ImageOps, ImageFile, ImageDraw, ImageFont
 import numpy as np
 import cv2
@@ -21,7 +22,7 @@ from endaaman.ml import tensor_to_pil
 from endaaman.ml.cli import BaseMLCLI
 
 from utils import calc_white_area, show_fold_diag
-from .fold import FoldDataset
+from .fold import FoldDataset, QuadAttentionFoldDataset
 
 
 
@@ -263,6 +264,39 @@ class CLI(BaseMLCLI):
             aug = tensor_to_pil(x)
             aug.save(J(d, f'{i}_b.jpg'))
             img.save(J(d, f'{i}_a.jpg'))
+
+    def run_quad_attention(self, a):
+        ds = QuadAttentionFoldDataset(source_dir='data/tiles/enda4_512')
+        l = DataLoader(
+            dataset=ds,
+            batch_size=1,
+            num_workers=4,
+            shuffle=True
+        )
+
+        for x, gt in l:
+            print('s', x.shape)
+            print('gt', gt)
+            break
+
+    class PickWhiteArgs(CommonArgs):
+        min: float = 0.6
+        max: float = 0.7
+        source_dir: str = Field('data/tiles/enda4_512', l='--source', s='-s')
+
+    def run_pick_white(self, a):
+        df = pd.read_excel(J(a.source_dir, 'tiles.xlsx'), index_col=0)
+
+        df = df[df['white_area'] > a.min]
+        df = df[df['white_area'] < a.max]
+        print(df)
+        d = f'tmp/pick_{a.min}_{a.max}'
+        os.makedirs(d, exist_ok=True)
+        for idx, row in df.iterrows():
+            image = Image.open(J(a.source_dir, row['diag'], row['name'], row['filename']))
+            image.save(f'{d}/{row["diag"]}_{row["name"]}_{row["order"]}_{row["white_area"]:.2f}.png')
+
+
 
     class RotateAndGridArgs(CommonArgs):
         src: str
