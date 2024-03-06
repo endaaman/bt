@@ -25,7 +25,8 @@ import pytorch_grad_cam as CAM
 from pytorch_grad_cam.utils.image import show_cam_on_image
 from pytorch_grad_cam.utils.model_targets import BinaryClassifierOutputTarget, ClassifierOutputTarget
 
-from endaaman import with_wrote, load_images_from_dir_or_file, grid_split, with_mkdir
+from endaaman import with_wrote,  with_mkdir
+from endaaman.image import load_images_from_dir_or_file, grid_split
 from endaaman.ml import BaseTrainerConfig, BaseTrainer, Checkpoint, pil_to_tensor
 from endaaman.ml.metrics import MultiAccuracy
 from endaaman.ml.cli import BaseMLCLI, BaseDLArgs, BaseTrainArgs
