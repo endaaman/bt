@@ -24,7 +24,8 @@ import pytorch_grad_cam as CAM
 from pytorch_grad_cam.utils.image import show_cam_on_image
 from pytorch_grad_cam.utils.model_targets import BinaryClassifierOutputTarget, ClassifierOutputTarget
 
-from endaaman import with_wrote, load_images_from_dir_or_file, grid_split, with_mkdir
+from endaaman import with_wrote, with_mkdir, set_file_descriptor_limit
+from endaaman.image import load_images_from_dir_or_file, grid_split
 from endaaman.ml import BaseTrainerConfig, BaseTrainer, Checkpoint, pil_to_tensor
 from endaaman.ml.metrics import MultiAccuracy
 from endaaman.ml.cli import BaseMLCLI, BaseDLArgs, BaseTrainArgs
@@ -32,6 +33,10 @@ from endaaman.ml.cli import BaseMLCLI, BaseDLArgs, BaseTrainArgs
 from models import MILModel, CrossEntropyLoss
 from datasets.fold import QuadAttentionFoldDataset, MEAN, STD
 
+
+torch.multiprocessing.set_sharing_strategy('file_system')
+# torch.multiprocessing.set_sharing_strategy('file_descriptor')
+# set_file_descriptor_limit(50000)
 
 np.set_printoptions(suppress=True, floatmode='fixed')
 J = os.path.join
@@ -51,6 +56,7 @@ class TrainerConfig(BaseTrainerConfig):
     std: float = STD
 
     activation: str = 'softmax'
+    ratio:float = 1
 
     def unique_code(self):
         return [c for c in dict.fromkeys(self.code) if c in 'LMGAOB']
@@ -65,12 +71,16 @@ class Trainer(BaseTrainer):
     def eval(self, inputs, gts):
         inputs = inputs[0]
         result = self.model(inputs.to(self.device), activate=False)
-        pred = result['y']
-        preds = pred[None, ...]
-        # print(preds, gts)
-        # print(preds.shape, gts.shape)
-        loss = self.criterion(preds, gts.to(self.device))
-        return loss, preds.detach().cpu()
+
+        attention_preds = result['y'][None, ...]
+        each_preds = result['yy']
+
+        attention_loss = self.criterion(attention_preds, gts.to(self.device))
+        each_loss = self.criterion(each_preds, gts.repeat(each_preds.shape[0]).to(self.device))
+
+        r = self.config.ratio
+        loss = r * attention_loss + (1-r) * each_loss
+        return loss, attention_preds.detach().cpu()
 
     def _visualize_confusion(self, ax, label, preds, gts):
         preds = torch.argmax(preds, dim=-1)
@@ -124,6 +134,7 @@ class CLI(BaseMLCLI):
         code: str = 'LMGGGB'
         overwrite: bool = Field(False, s='-O')
 
+        ratio: float = 1
         activation: str = 'softmax'
 
     def run_train(self, a:TrainArgs):
@@ -144,6 +155,7 @@ class CLI(BaseMLCLI):
             limit = a.limit,
             upsample = a.upsample,
             activation = a.activation,
+            ratio = a.ratio,
         )
 
         if a.fold < 0:
@@ -452,6 +464,7 @@ class CLI(BaseMLCLI):
             plt.savefig()
             if a.show:
                 plt.show()
+
 
 
 if __name__ == '__main__':
