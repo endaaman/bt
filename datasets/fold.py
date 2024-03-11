@@ -4,6 +4,8 @@ import os.path
 import re
 import shutil
 import itertools
+import zipfile
+from io import BytesIO
 from enum import Enum
 from glob import glob
 from typing import NamedTuple, Callable
@@ -156,6 +158,14 @@ class BaseFoldDataset(Dataset):
         self.df_cases = df_cases.copy()
         self.total_fold = self.df['fold'].max() + 1
 
+        self.zipfile = None
+        zf = J(source_dir, 'tiles.zip')
+        if os.path.exists(zf):
+            # self.zipfile = zipfile.ZipFile(zf, 'r')
+            with open(zf, 'rb') as fh:
+                self.zipfile = zipfile.ZipFile(BytesIO(fh.read()))
+            print('using zipfile')
+
         assert self.fold < self.total_fold
 
         self.aug = get_augs(augmentation, self.crop_size, normalization, mean, std)
@@ -270,7 +280,15 @@ class FoldDataset(BaseFoldDataset):
 
     def __getitem__(self, idx):
         row = self.df.iloc[idx]
-        image = Image.open(J(self.source_dir, row['diag_org'], row['name'], row['filename']))
+        tile_path = J(row['diag_org'], row['name'], row['filename'])
+        if self.zipfile:
+            # with zipf.open(image_file_name) as image_file:
+            # image_data = BytesIO(self.zipfile.read(tile_path))
+            # image = Image.open(image_data)
+            with self.zipfile.open(tile_path) as image_file:
+                image = Image.open(BytesIO(image_file.read()))
+        else:
+            image = Image.open(J(self.source_dir, tile_path))
 
         x = self.aug(image=np.array(image))['image']
         y = torch.tensor(self.unique_code.index(row['diag']))

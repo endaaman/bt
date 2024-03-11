@@ -106,7 +106,7 @@ class CLI(BaseMLCLI):
     class TrainArgs(BaseTrainArgs):
         lr: float = 0.001
         batch_size: int = Field(16, s='-B')
-        num_workers: int = 4
+        num_workers: int = Field(4, s='-N')
         minimum_area: float = 0.6
         limit: int = -1
         upsample: bool = False
