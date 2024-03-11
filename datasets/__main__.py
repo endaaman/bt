@@ -3,6 +3,7 @@ import re
 from glob import glob
 import hashlib
 import shutil
+import zipfile
 
 import pandas as pd
 import torch
@@ -38,15 +39,17 @@ class CLI(BaseMLCLI):
         source: str = 'enda3'
         dest: str = 'cache'
         size: int = 512
+        zip: bool = False
 
-    def run_build_dataset(self, a):
-        dst_dir = J(a.dest, f'{a.source}_{a.size}')
+    def run_build_dataset(self, a:BuildDatasetArgs):
+        ds_name = f'{a.source}_{a.size}'
+        dest_dir = J(a.dest, ds_name)
         src_dir = f'data/images/{a.source}'
         ee = []
         for diag in 'LMGAOB':
             print(f'loading {diag}')
             paths = sorted(glob(J(src_dir, f'{diag}/*.jpg')))
-            diag_dir = J(dst_dir, diag)
+            diag_dir = J(dest_dir, diag)
             os.makedirs(diag_dir, exist_ok=True)
             data = {}
             for path in tqdm(paths):
@@ -82,7 +85,27 @@ class CLI(BaseMLCLI):
                             'white_area': area,
                         })
         df_tiles = pd.DataFrame(ee)
-        df_tiles.to_excel(with_wrote(J(dst_dir, 'tiles.xlsx')))
+        df_tiles.to_excel(with_wrote(J(dest_dir, 'tiles.xlsx')))
+
+
+    class ZipArgs(CommonArgs):
+        source: str = 'cache/enda3_512'
+
+    def run_zip(self, a):
+        name = a.source.split('/')[-1]
+        ff = glob(f'{a.source}/*/*/*.jpg', recursive=True)
+
+        os.makedirs(f'/tmp/{name}', exist_ok=True)
+        zf = f'/tmp/{name}/tiles.zip'
+        print('making', zf)
+        with zipfile.ZipFile(zf, 'w', zipfile.ZIP_STORED) as z:
+            for f in tqdm(ff):
+                name = os.path.relpath(f, a.source)
+                z.write(filename=f, arcname=name)
+
+        with open(zf, 'rb') as f:
+            sha256 = hashlib.sha256(f.read()).hexdigest()
+            print('sha256   : ' + sha256)
 
 
     class SplitDatasetArgs(CommonArgs):
@@ -182,10 +205,8 @@ class CLI(BaseMLCLI):
         df.to_excel(J(dst_dir, '_.xlsx'))
 
 
-
-
     class BaseDatasetArgs(BaseMLCLI.CommonArgs):
-        source: str = 'cache/enda2_512/'
+        source: str = 'data/tiles/enda3_512/'
         code: str = 'LMGGGB'
         fold: int = 0
         total_fold: int = 5
