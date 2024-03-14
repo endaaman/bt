@@ -9,6 +9,7 @@ from io import BytesIO
 from enum import Enum
 from glob import glob
 from typing import NamedTuple, Callable
+from functools import lru_cache
 from collections import OrderedDict
 from pydantic import Field
 from matplotlib import pyplot as plt
@@ -114,6 +115,12 @@ def get_augs(image_aug, size, normalization, mean, std):
     aa += [ToTensorV2()]
     return A.Compose(aa)
 
+@lru_cache
+def load_zipfile(path):
+    p = os.path.abspath(path)
+    with open(p, 'rb') as f:
+        return zipfile.ZipFile(BytesIO(f.read()))
+
 
 class BaseFoldDataset(Dataset):
     def __init__(self,
@@ -161,10 +168,9 @@ class BaseFoldDataset(Dataset):
         self.zipfile = None
         zf = J(source_dir, 'tiles.zip')
         if os.path.exists(zf):
-            # self.zipfile = zipfile.ZipFile(zf, 'r')
-            with open(zf, 'rb') as fh:
-                self.zipfile = zipfile.ZipFile(BytesIO(fh.read()))
-            print('using zipfile')
+            print(f'Loading zip archive {zf}')
+            self.zipfile = load_zipfile(zf)
+            print(f'Loaded {zf}')
 
         assert self.fold < self.total_fold
 
@@ -250,6 +256,18 @@ class BaseFoldDataset(Dataset):
         show_fold_diag(self.df)
 
 
+    def load_from_row(self, row):
+        tile_path = J(row['diag_org'], row['name'], row['filename'])
+        if self.zipfile:
+            # with zipf.open(image_file_name) as image_file:
+            # image_data = BytesIO(self.zipfile.read(tile_path))
+            # image = Image.open(image_data)
+            with self.zipfile.open(tile_path) as image_file:
+                image = Image.open(BytesIO(image_file.read()))
+        else:
+            image = Image.open(J(self.source_dir, tile_path))
+        return image
+
     def inspect(self):
         folds = self.df_cases['fold'].unique()
         total = len(folds)
@@ -280,16 +298,7 @@ class FoldDataset(BaseFoldDataset):
 
     def __getitem__(self, idx):
         row = self.df.iloc[idx]
-        tile_path = J(row['diag_org'], row['name'], row['filename'])
-        if self.zipfile:
-            # with zipf.open(image_file_name) as image_file:
-            # image_data = BytesIO(self.zipfile.read(tile_path))
-            # image = Image.open(image_data)
-            with self.zipfile.open(tile_path) as image_file:
-                image = Image.open(BytesIO(image_file.read()))
-        else:
-            image = Image.open(J(self.source_dir, tile_path))
-
+        image = self.load_from_row(row)
         x = self.aug(image=np.array(image))['image']
         y = torch.tensor(self.unique_code.index(row['diag']))
         return x, y
@@ -300,7 +309,8 @@ class IICFoldDataset(BaseFoldDataset):
         super().__init__(*args, **kwargs)
         # self.aug = get_augs(True, self.size, self.normalization, self.mean, self.std)
 
-        self.aug = A.Compose([
+        # self.aug = get_augs(augmentation, self.crop_size, normalization, mean, std)
+        self.aug_affine = A.Compose([
             A.RandomResizedCrop(width=self.size, height=self.size, scale=(0.666, 1.5), ratio=(0.95, 1.05), ),
             A.RandomRotate90(p=1),
             A.Flip(p=0.5),
@@ -313,15 +323,12 @@ class IICFoldDataset(BaseFoldDataset):
 
     def __getitem__(self, idx):
         row = self.df.iloc[idx]
-        image = Image.open(J(self.source_dir, row['diag_org'], row['name'], row['filename']))
+        image = self.load_from_row(row)
         arr = np.array(image)
-        image.close()
-        image = None
         gt = torch.tensor(self.unique_code.index(row['diag']))
 
-        x = self.aug(image=arr)['image']
+        x = self.aug_affine(image=arr)['image']
         y = self.aug(image=arr)['image']
-        arr = None
         return x, y, gt
 
 class QuadAttentionFoldDataset(BaseFoldDataset):

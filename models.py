@@ -70,6 +70,10 @@ class IICModel(nn.Module):
         self.num_classes = num_classes
         self.num_classes_over = num_classes_over
         self.base = timm.create_model(name, pretrained=pretrained, num_classes=num_classes)
+        if hasattr(self.base, 'global_pool'):
+            self.pool = self.base.global_pool
+        else:
+            self.pool = self.base.head.global_pool
 
         self.num_features = self.base.num_features
 
@@ -81,7 +85,7 @@ class IICModel(nn.Module):
 
     def forward(self, x, activate=False, with_feautres=False):
         features = self.base.forward_features(x)
-        features = self.base.global_pool(features)
+        features = self.pool(features).flatten(1)
 
         x = self.fc(features)
         x_over = self.fc_over(features)
@@ -300,16 +304,17 @@ class CLI(BaseMLCLI):
         print( c(x1, y1) )
 
     class ModelArgs(CommonArgs):
-        name : str = Field('tf_efficientnetv2_b0', cli=('--name', '-n'))
+        name : str = Field('tf_efficientnetv2_b0', s='-n')
 
     def run_model(self, a):
         # model = AttentionModel(name=a.model, num_classes=3)
         # y, aa = model(x, with_attentions=True)
 
-        model = TimmModel(name=a.name, num_classes=3)
+        model = IICModel(name=a.name, num_classes=3, num_classes_over=10)
         x = torch.rand([4, 3, 512, 512])
-        y, f = model(x, with_feautres=True)
+        y, y_over, f = model(x, with_feautres=True)
         print('y', y.shape)
+        print('y_over', y_over.shape)
         print('f', f.shape)
 
 

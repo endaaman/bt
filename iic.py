@@ -134,24 +134,23 @@ class CLI(BaseMLCLI):
         pass
 
     class TrainArgs(BaseTrainArgs):
-        lr: float = 0.01
+        lr: float = 0.001
         batch_size: int = Field(128, s='-B')
-        num_workers: int = Field(10, s='-N' )
         code: str = 'LMGGG_'
-        num_classes_over: int = 10
-        minimum_area: float = 0.7
+        num_classes_over: int = 30
+        minimum_area: float = 0.6
         limit: int = 1000
         upsample: bool = False
-        epoch: int = Field(50, cli=('--epoch', '-E'))
-        total_fold: int = Field(5, cli=('--total-fold', ))
+        epoch: int = Field(50, l='--epoch', s='-E')
+        total_fold: int = 5
         fold: int = 0
         model_name: str = Field('resnet34', l='--model', s='-m')
         source: str = 'enda4_256'
         suffix: str = ''
         prefix: str = ''
         alpha: float = 2.0
-        size: int = Field(256, cli=('--size', '-s'))
-        overwrite: bool = Field(False, cli=('--overwrite', '-O'))
+        size: int = Field(256, s='-s')
+        overwrite: bool = Field(False, s='-O')
 
     def run_train(self, a:TrainArgs):
         config = TrainerConfig(
@@ -159,7 +158,7 @@ class CLI(BaseMLCLI):
             batch_size = a.batch_size,
             code = a.code,
             lr = a.lr,
-            source = 'enda3_512',
+            source = a.source,
             size = a.size,
             total_fold = a.total_fold,
             fold = a.fold,
@@ -189,7 +188,7 @@ class CLI(BaseMLCLI):
         ) for t in ('train', 'test')]
 
         out_dir = J(
-            'out', 'iic',
+            'out', 'iic', a.source,
             f'fold{a.total_fold}_{a.fold}', a.prefix, config.model_name
         )
         if a.suffix:
