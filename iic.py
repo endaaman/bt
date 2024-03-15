@@ -35,9 +35,13 @@ from models import IICModel, CrossEntropyLoss
 from datasets.fold import IICFoldDataset
 
 
+
+torch.multiprocessing.set_sharing_strategy('file_system')
 np.set_printoptions(suppress=True, floatmode='fixed')
 J = os.path.join
 
+DS_BASE = 'data/tiles'
+# DS_BASE = 'cache'
 
 class IICLoss(nn.Module):
     def __init__(self, alpha):
@@ -105,16 +109,15 @@ class Trainer(BaseTrainer):
         )
 
     def select_inputs_and_gts(self, params):
-        return params[0], params[2]
+        return None, params[2]
 
     def eval(self, x, y, gt):
-        # torch.cuda.empty_cache()
-        x, x_over = self.model(x.to(self.device), activate=True)
-        y, y_over = self.model(y.to(self.device), activate=True)
-        loss = self.criterion(x, y)
-        loss_over = self.criterion(x_over, y_over)
+        p, p_over = self.model(x.to(self.device), activate=True)
+        q, q_over = self.model(y.to(self.device), activate=True)
+        loss = self.criterion(p, q)
+        loss_over = self.criterion(p_over, q_over)
         total_loss = loss + loss_over
-        return total_loss, torch.argmax(x, dim=1)
+        return total_loss, torch.argmax(p, dim=1)
 
     def metrics_precision(self, preds, gts, batch):
         preds = preds.detach().cpu()
@@ -137,10 +140,10 @@ class CLI(BaseMLCLI):
         lr: float = 0.001
         batch_size: int = Field(128, s='-B')
         code: str = 'LMGGG_'
-        num_classes_over: int = 30
+        num_classes_over: int = 10
         minimum_area: float = 0.6
-        limit: int = 1000
-        upsample: bool = False
+        limit: int = 800
+        upsample: bool = Field(False, s='-U')
         epoch: int = Field(50, l='--epoch', s='-E')
         total_fold: int = 5
         fold: int = 0
@@ -174,7 +177,7 @@ class CLI(BaseMLCLI):
         dss = [IICFoldDataset(
             total_fold=a.total_fold,
             fold=a.fold,
-            source_dir=J('data/tiles', a.source),
+            source_dir=J(DS_BASE, a.source),
             target=t,
             code=config.code,
             size=a.size,
