@@ -325,10 +325,13 @@ class IICFoldDataset(BaseFoldDataset):
         row = self.df.iloc[idx]
         image = self.load_from_row(row)
         arr = np.array(image)
+        image.close()
+        image = None
         gt = torch.tensor(self.unique_code.index(row['diag']))
 
         x = self.aug_affine(image=arr)['image']
         y = self.aug(image=arr)['image']
+        arr = None
         return x, y, gt
 
 class QuadAttentionFoldDataset(BaseFoldDataset):
