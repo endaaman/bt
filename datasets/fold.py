@@ -25,8 +25,8 @@ from PIL import Image, ImageOps, ImageFile
 from PIL.Image import Image as ImageType
 from sklearn.model_selection import train_test_split
 import albumentations as A
-import albumentations.augmentations.crops.functional as albuF
 from albumentations.pytorch.transforms import ToTensorV2
+import albumentations.augmentations.crops.functional as albuF
 from albumentations.core.transforms_interface import ImageOnlyTransform
 from albumentations.augmentations.crops.functional import center_crop
 
@@ -305,16 +305,22 @@ class FoldDataset(BaseFoldDataset):
 
 
 class DinoFoldDataset(BaseFoldDataset):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.target == 'train':
+            self.aug = A.RandomCrop(width=self.size, height=self.size)
+        else:
+            self.aug = A.CenterCrop(width=self.size, height=self.size)
+
     def __len__(self):
         return len(self.df)
 
     def __getitem__(self, idx):
         row = self.df.iloc[idx]
         image = self.load_from_row(row)
-        x1 = self.aug(image=np.array(image))['image']
-        x2 = self.aug(image=np.array(image))['image']
+        x = self.aug(image=np.array(image))['image']
         y = torch.tensor(self.unique_code.index(row['diag']))
-        return x1, x2, y
+        return x, y
 
 class IICFoldDataset(BaseFoldDataset):
     def __init__(self, *args, **kwargs):
