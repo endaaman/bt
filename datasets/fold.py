@@ -304,6 +304,18 @@ class FoldDataset(BaseFoldDataset):
         return x, y
 
 
+class DinoFoldDataset(BaseFoldDataset):
+    def __len__(self):
+        return len(self.df)
+
+    def __getitem__(self, idx):
+        row = self.df.iloc[idx]
+        image = self.load_from_row(row)
+        x1 = self.aug(image=np.array(image))['image']
+        x2 = self.aug(image=np.array(image))['image']
+        y = torch.tensor(self.unique_code.index(row['diag']))
+        return x1, x2, y
+
 class IICFoldDataset(BaseFoldDataset):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
