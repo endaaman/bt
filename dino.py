@@ -82,6 +82,9 @@ class Trainer(BaseTrainer):
             global_lower_crop_scale = 0.5,  # lower bound for global crop - 0.5 was recommended in the paper
             moving_average_decay = 0.9,     # moving average of encoder - paper showed anywhere from 0.9 to 0.999 was ok
             center_moving_average_decay = 0.9, # moving average of teacher centers - paper showed anywhere from 0.9 to 0.999 was ok
+
+            # augment_fn=lambda x:x,
+            # augment_fn2=lambda x:x,
         ).to(self.device)
         return model
 
@@ -104,7 +107,6 @@ class Trainer(BaseTrainer):
             self.optimizer.step()
             self.learner.update_moving_average()
         return loss, None
-
 
     # def _visualize_confusion(self, ax, label, preds, gts):
     #     preds = torch.argmax(preds, dim=-1)
@@ -132,11 +134,6 @@ class Trainer(BaseTrainer):
         lr = self.get_current_lr()
         return lr > 1e-7
 
-    def get_metrics(self):
-        return {
-            'acc': MultiAccuracy(),
-        }
-
 class CLI(BaseMLCLI):
     class CommonArgs(BaseMLCLI.CommonArgs):
         pass
@@ -163,7 +160,6 @@ class CLI(BaseMLCLI):
         m = re.match(r'^.*_(\d+)$', a.source)
         assert m
         size = int(m[1])
-        print(size)
 
         config = TrainerConfig(
             source = a.source,
@@ -211,7 +207,7 @@ class CLI(BaseMLCLI):
             ]
 
         out_dir = J(
-            'out', 'dino', a.source, config.code,
+            'out', f'{a.source}_dino', config.code,
             f'fold{a.total_fold}_{a.fold}', a.prefix, 'vit'
         )
         if a.suffix:
