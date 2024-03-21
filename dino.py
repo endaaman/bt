@@ -21,6 +21,8 @@ from PIL import Image, ImageDraw, ImageFont
 from pydantic import Field, Extra
 # from timm.scheduler.cosine_lr import CosineLRScheduler
 from vit_pytorch import ViT, Dino
+import albumentations as A
+from albumentations.pytorch.transforms import ToTensorV2
 
 import pytorch_grad_cam as CAM
 from pytorch_grad_cam.utils.image import show_cam_on_image
@@ -32,7 +34,7 @@ from endaaman.ml.metrics import MultiAccuracy
 from endaaman.ml.cli import BaseMLCLI, BaseDLArgs, BaseTrainArgs
 
 from models import TimmModel, CrossEntropyLoss
-from datasets.fold import FoldDataset, MEAN, STD
+from datasets.fold import DinoFoldDataset, FoldDataset, MEAN, STD
 
 
 np.set_printoptions(suppress=True, floatmode='fixed')
@@ -69,6 +71,53 @@ class Trainer(BaseTrainer):
             mlp_dim = 2048
         )
 
+        blur_limit = (3, 5)
+        aug = A.Compose([
+            A.RandomRotate90(p=1),
+            A.Flip(p=0.5),
+
+            # Blurs
+            A.OneOf([
+                A.MotionBlur(blur_limit=blur_limit),
+                A.MedianBlur(blur_limit=blur_limit),
+                A.GaussianBlur(blur_limit=blur_limit),
+                A.Blur(blur_limit=blur_limit),
+            ], p=1.0),
+            # A.ShiftScaleRotate(shift_limit=0.0625, scale_limit=0.2, rotate_limit=5, p=0.5),
+
+            # Brightness
+            A.OneOf([
+                A.CLAHE(clip_limit=2),
+                A.Emboss(),
+                # A.RandomBrightnessContrast(brightness_limit=0.1),
+                A.RandomToneCurve(),
+            ], p=1.0),
+
+            # Color
+            A.OneOf([
+                A.RGBShift(),
+                A.HueSaturationValue(sat_shift_limit=20),
+            ], p=1.0),
+
+            # Noise
+            A.OneOf([
+                A.ISONoise(),
+                A.GaussNoise(),
+                A.ImageCompression(quality_lower=50, quality_upper=100),
+            ], p=1.0),
+
+            # Transform
+            A.OneOf([
+                A.CoarseDropout(max_holes=16, min_holes=1,
+                                max_height=32, max_width=32,
+                                min_height=8, min_width=8, fill_value=0, p=1.0),
+                A.RandomGridShuffle(grid=(2, 2)),
+                A.RandomGridShuffle(grid=(3, 3)),
+            ], p=1.0),
+            A.Normalize(mean=self.config.mean, std=self.config.std),
+            ToTensorV2()
+        ])
+
         self.learner = Dino(
             model,
             image_size = 512,
@@ -83,8 +132,8 @@ class Trainer(BaseTrainer):
             moving_average_decay = 0.9,     # moving average of encoder - paper showed anywhere from 0.9 to 0.999 was ok
             center_moving_average_decay = 0.9, # moving average of teacher centers - paper showed anywhere from 0.9 to 0.999 was ok
 
-            # augment_fn=lambda x:x,
-            # augment_fn2=lambda x:x,
+            augment_fn=lambda xx: torch.stack([aug(image=x.numpy())['image'] for x in xx]),
+            augment_fn2=lambda xx: torch.stack([aug(image=x.numpy())['image'] for x in xx]),
         ).to(self.device)
         return model
 
@@ -176,7 +225,7 @@ class CLI(BaseMLCLI):
         )
 
         if a.fold < 0:
-            dss = [FoldDataset(
+            dss = [DinoFoldDataset(
                  source_dir = J('data/tiles', a.source),
                  total_fold = a.total_fold,
                  fold = -1,
@@ -191,7 +240,7 @@ class CLI(BaseMLCLI):
             ), None]
         else:
             dss = [
-                FoldDataset(
+                DinoFoldDataset(
                     source_dir = J('data/tiles', a.source),
                     total_fold = a.total_fold,
                     fold = a.fold,
