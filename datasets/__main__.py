@@ -8,6 +8,7 @@ import zipfile
 import pandas as pd
 import torch
 from torch.utils.data import DataLoader
+from torchvision import transforms as T
 from PIL import Image, ImageOps, ImageFile, ImageDraw, ImageFont
 import numpy as np
 import cv2
@@ -266,25 +267,28 @@ class CLI(BaseMLCLI):
             source_dir=a.source,
             limit=a.limit,
             upsample=a.upsample,
-            image_aug=True,
             target='train',
-            normalize=False,
+            augmentation=True,
+            normalization=False,
         )
 
         d = 'tmp/example/'
         os.makedirs(d, exist_ok=True)
 
         idxs = np.random.choice(np.arange(len(ds)), a.count)
-
         print(idxs)
-        for i, idx in enumerate(tqdm(idxs)):
-            x, img = ds[idx]
-            row = ds.df.iloc[idx]
-            img = Image.open(J(ds.source_dir, row['diag_org'], row['name'], row['filename']))
 
-            aug = tensor_to_pil(x)
-            aug.save(J(d, f'{i}_b.jpg'))
+        # local_crop = T.RandomResizedCrop((image_size, image_size), scale = (0.05, local_upper_crop_scale))
+        # global_crop = T.RandomResizedCrop((image_size, image_size), scale = (global_lower_crop_scale, 1.))
+
+        for i, idx in enumerate(tqdm(idxs)):
+            # x, img = ds[idx]
+            row = ds.df.iloc[idx]
+            img = ds.load_from_row(row)
+
             img.save(J(d, f'{i}_a.jpg'))
+            aug = ds.aug(x)
+            aug.save(J(d, f'{i}_b.jpg'))
 
     def run_quad_attention(self, a):
         ds = QuadAttentionFoldDataset(source_dir='data/tiles/enda4_512')

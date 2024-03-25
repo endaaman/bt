@@ -20,7 +20,8 @@ import pandas as pd
 from PIL import Image, ImageDraw, ImageFont
 from pydantic import Field, Extra
 # from timm.scheduler.cosine_lr import CosineLRScheduler
-from vit_pytorch import ViT, Dino
+from vit_pytorch import ViT
+# from vit_pytorch import Dino
 import albumentations as A
 from albumentations.pytorch.transforms import ToTensorV2
 
@@ -35,6 +36,7 @@ from endaaman.ml.cli import BaseMLCLI, BaseDLArgs, BaseTrainArgs
 
 from models import TimmModel, CrossEntropyLoss
 from datasets.fold import DinoFoldDataset, FoldDataset, MEAN, STD
+from utils.dino import Dino
 
 
 np.set_printoptions(suppress=True, floatmode='fixed')
