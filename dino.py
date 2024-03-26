@@ -149,6 +149,7 @@ class CLI(BaseMLCLI):
         minimum_area: float = 0.6
         limit: int = 500
         noupsample: bool = False
+        num_classes: int = Field(3, s='-C')
 
         num_workers: int = Field(4, s='-N')
         epoch: int = Field(100, s='-E')
@@ -157,7 +158,6 @@ class CLI(BaseMLCLI):
         overwrite: bool = Field(False, s='-O')
 
     def run_train(self, a:TrainArgs):
-        num_classes = len(set([*a.code]) - {'_'})
         m = re.match(r'^.*_(\d+)$', a.source)
         assert m
         size = int(m[1])
@@ -168,7 +168,7 @@ class CLI(BaseMLCLI):
             size = size,
             lr = a.lr,
             code = a.code,
-            num_classes = num_classes,
+            num_classes = a.num_classes,
             total_fold = a.total_fold,
             fold = a.fold,
             minimum_area = a.minimum_area,
