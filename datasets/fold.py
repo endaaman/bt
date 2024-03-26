@@ -307,10 +307,14 @@ class FoldDataset(BaseFoldDataset):
 class DinoFoldDataset(BaseFoldDataset):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        if self.target == 'train':
-            self.aug = A.RandomCrop(width=self.size, height=self.size)
-        else:
-            self.aug = A.CenterCrop(width=self.size, height=self.size)
+        if self.target == 'test':
+            aa = [
+                A.RandomCrop(width=self.crop_size, height=self.crop_size),
+            ]
+            if self.normalization:
+                aa += [A.Normalize(mean=self.mean, std=self.std)]
+            aa += [ToTensorV2()]
+            self.aug = A.Compose(aa)
 
     def __len__(self):
         return len(self.df)
@@ -318,9 +322,13 @@ class DinoFoldDataset(BaseFoldDataset):
     def __getitem__(self, idx):
         row = self.df.iloc[idx]
         image = self.load_from_row(row)
-        x = self.aug(image=np.array(image))['image']
+        a = np.array(image)
+        image.close()
+        x1 = self.aug(image=a)['image']
+        x2 = self.aug(image=a)['image']
+        a = None
         y = torch.tensor(self.unique_code.index(row['diag']))
-        return x, y
+        return x1, x2, y
 
 class IICFoldDataset(BaseFoldDataset):
     def __init__(self, *args, **kwargs):
