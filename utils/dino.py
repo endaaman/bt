@@ -186,7 +186,8 @@ class Dino(nn.Module):
     def __init__(
         self,
         net,
-        image_size,
+        global_image_size,
+        local_image_size,
         hidden_layer = -2,
         projection_hidden_size = 256,
         num_classes_K = 65336,
@@ -203,8 +204,17 @@ class Dino(nn.Module):
         super().__init__()
         self.net = net
 
-        self.local_crop = T.RandomResizedCrop((image_size, image_size), scale = (0.05, local_upper_crop_scale))
-        self.global_crop = T.RandomResizedCrop((image_size, image_size), scale = (global_lower_crop_scale, 1.))
+        self.local_crop = T.RandomResizedCrop(
+                (local_image_size, local_image_size),
+                scale = (0.05, local_upper_crop_scale),
+                antialias=True,
+            )
+        self.global_crop = lambda x: x
+        # self.global_crop = T.RandomResizedCrop(
+        #         (global_image_size, global_image_size),
+        #         scale = (global_lower_crop_scale, 1.),
+        #         antialias=True,
+        #     )
 
         self.student_encoder = NetWrapper(net, num_classes_K, projection_hidden_size, projection_layers, layer = hidden_layer)
 
@@ -224,7 +234,8 @@ class Dino(nn.Module):
         self.to(device)
 
         # send a mock image tensor to instantiate singleton parameters
-        self.forward(torch.randn(2, 3, image_size, image_size, device=device))
+        t = torch.randn(2, 3, global_image_size, global_image_size, device=device)
+        self.forward(t, t)
 
     @singleton('teacher_encoder')
     def _get_teacher_encoder(self):
@@ -277,105 +288,39 @@ class Dino(nn.Module):
         teacher_logits_avg = torch.cat((teacher_proj_one, teacher_proj_two)).mean(dim = 0)
         self.last_teacher_centers.copy_(teacher_logits_avg)
 
-        loss = (loss_fn_(teacher_proj_one, student_proj_two) + loss_fn_(teacher_proj_two, student_proj_one)) / 2
+        loss12 = loss_fn_(teacher_proj_one, student_proj_two)
+        loss21 = loss_fn_(teacher_proj_two, student_proj_one)
+        loss = (loss12 + loss21) / 2
         return loss
 
 
-# Additional
-class Dino(nn.Module):
-    def __init__(
-        self,
-        net,
-        image_size,
-        hidden_layer = -2,
-        projection_hidden_size = 256,
-        num_classes_K = 65336,
-        projection_layers = 4,
-        student_temp = 0.9,
-        teacher_temp = 0.04,
-        local_upper_crop_scale = 0.4,
-        global_lower_crop_scale = 0.5,
-        moving_average_decay = 0.9,
-        center_moving_average_decay = 0.9,
-        augment_fn = None,
-        augment_fn2 = None
-    ):
-        super().__init__()
-        self.net = net
 
-        self.local_crop = T.RandomResizedCrop((image_size, image_size), scale = (0.05, local_upper_crop_scale))
-        self.global_crop = T.RandomResizedCrop((image_size, image_size), scale = (global_lower_crop_scale, 1.))
+if __name__ == '__main__':
+    from vit_pytorch import ViT
 
-        self.student_encoder = NetWrapper(net, num_classes_K, projection_hidden_size, projection_layers, layer = hidden_layer)
+    model = ViT(
+        image_size = 512,
+        patch_size = 32,
+        num_classes = 3,
+        dim = 1024,
+        depth = 6,
+        heads = 8,
+        mlp_dim = 2048
+    )
+    dino = Dino(
+        model,
+        local_image_size=256,
+        global_image_size=512,
+        hidden_layer = 'to_latent',     # hidden layer name or index, from which to extract the embedding
+        projection_hidden_size = 256,   # projector network hidden dimension
+        projection_layers = 4,          # number of layers in projection network
+        num_classes_K = 3,          # output logits dimensions (referenced as K in paper)
+        student_temp = 0.9,             # student temperature
+        teacher_temp = 0.04,            # teacher temperature, needs to be annealed from 0.04 to 0.07 over 30 epochs
+        local_upper_crop_scale = 0.4,   # upper bound for local crop - 0.4 was recommended in the paper
+        global_lower_crop_scale = 0.5,  # lower bound for global crop - 0.5 was recommended in the paper
+        moving_average_decay = 0.9,     # moving average of encoder - paper showed anywhere from 0.9 to 0.999 was ok
+        center_moving_average_decay = 0.9, # moving average of teacher centers - paper showed anywhere from 0.9 to 0.999 was ok
 
-        self.teacher_encoder = None
-        self.teacher_ema_updater = EMA(moving_average_decay)
-
-        self.register_buffer('teacher_centers', torch.zeros(1, num_classes_K))
-        self.register_buffer('last_teacher_centers',  torch.zeros(1, num_classes_K))
-
-        self.teacher_centering_ema_updater = EMA(center_moving_average_decay)
-
-        self.student_temp = student_temp
-        self.teacher_temp = teacher_temp
-
-        # get device of network and make wrapper same device
-        device = get_module_device(net)
-        self.to(device)
-
-        # send a mock image tensor to instantiate singleton parameters
-        self.forward(torch.randn(2, 3, image_size, image_size, device=device))
-
-    @singleton('teacher_encoder')
-    def _get_teacher_encoder(self):
-        teacher_encoder = copy.deepcopy(self.student_encoder)
-        set_requires_grad(teacher_encoder, False)
-        return teacher_encoder
-
-    def reset_moving_average(self):
-        del self.teacher_encoder
-        self.teacher_encoder = None
-
-    def update_moving_average(self):
-        assert self.teacher_encoder is not None, 'target encoder has not been created yet'
-        update_moving_average(self.teacher_ema_updater, self.teacher_encoder, self.student_encoder)
-
-        new_teacher_centers = self.teacher_centering_ema_updater.update_average(self.teacher_centers, self.last_teacher_centers)
-        self.teacher_centers.copy_(new_teacher_centers)
-
-    def forward(
-        self,
-        x1, x2,
-        return_embedding = False,
-        return_projection = True,
-        student_temp = None,
-        teacher_temp = None
-    ):
-        if return_embedding:
-            return self.student_encoder(x, return_projection = return_projection)
-
-        image_one, image_two = x1, x2
-
-        local_image_one, local_image_two   = self.local_crop(image_one),  self.local_crop(image_two)
-        global_image_one, global_image_two = self.global_crop(image_one), self.global_crop(image_two)
-
-        student_proj_one, _ = self.student_encoder(local_image_one)
-        student_proj_two, _ = self.student_encoder(local_image_two)
-
-        with torch.no_grad():
-            teacher_encoder = self._get_teacher_encoder()
-            teacher_proj_one, _ = teacher_encoder(global_image_one)
-            teacher_proj_two, _ = teacher_encoder(global_image_two)
-
-        loss_fn_ = partial(
-            loss_fn,
-            student_temp = default(student_temp, self.student_temp),
-            teacher_temp = default(teacher_temp, self.teacher_temp),
-            centers = self.teacher_centers
-        )
-
-        teacher_logits_avg = torch.cat((teacher_proj_one, teacher_proj_two)).mean(dim = 0)
-        self.last_teacher_centers.copy_(teacher_logits_avg)
-
-        loss = (loss_fn_(teacher_proj_one, student_proj_two) + loss_fn_(teacher_proj_two, student_proj_one)) / 2
-        return loss
+    )
+    print()

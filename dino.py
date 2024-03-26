@@ -73,56 +73,10 @@ class Trainer(BaseTrainer):
             mlp_dim = 2048
         )
 
-        blur_limit = (3, 5)
-        aug = A.Compose([
-            A.RandomRotate90(p=1),
-            A.Flip(p=0.5),
-
-            # Blurs
-            A.OneOf([
-                A.MotionBlur(blur_limit=blur_limit),
-                A.MedianBlur(blur_limit=blur_limit),
-                A.GaussianBlur(blur_limit=blur_limit),
-                A.Blur(blur_limit=blur_limit),
-            ], p=1.0),
-            # A.ShiftScaleRotate(shift_limit=0.0625, scale_limit=0.2, rotate_limit=5, p=0.5),
-
-            # Brightness
-            A.OneOf([
-                A.CLAHE(clip_limit=2),
-                A.Emboss(),
-                # A.RandomBrightnessContrast(brightness_limit=0.1),
-                A.RandomToneCurve(),
-            ], p=1.0),
-
-            # Color
-            A.OneOf([
-                A.RGBShift(),
-                A.HueSaturationValue(sat_shift_limit=20),
-            ], p=1.0),
-
-            # Noise
-            A.OneOf([
-                A.ISONoise(),
-                A.GaussNoise(),
-                A.ImageCompression(quality_lower=50, quality_upper=100),
-            ], p=1.0),
-
-            # Transform
-            A.OneOf([
-                A.CoarseDropout(max_holes=16, min_holes=1,
-                                max_height=32, max_width=32,
-                                min_height=8, min_width=8, fill_value=0, p=1.0),
-                A.RandomGridShuffle(grid=(2, 2)),
-                A.RandomGridShuffle(grid=(3, 3)),
-            ], p=1.0),
-            A.Normalize(mean=self.config.mean, std=self.config.std),
-            ToTensorV2()
-        ])
-
         self.learner = Dino(
             model,
-            image_size = 512,
+            local_image_size = 256,
+            global_image_size = 512,
             hidden_layer = 'to_latent',     # hidden layer name or index, from which to extract the embedding
             projection_hidden_size = 256,   # projector network hidden dimension
             projection_layers = 4,          # number of layers in projection network
@@ -133,12 +87,8 @@ class Trainer(BaseTrainer):
             global_lower_crop_scale = 0.5,  # lower bound for global crop - 0.5 was recommended in the paper
             moving_average_decay = 0.9,     # moving average of encoder - paper showed anywhere from 0.9 to 0.999 was ok
             center_moving_average_decay = 0.9, # moving average of teacher centers - paper showed anywhere from 0.9 to 0.999 was ok
-
-            augment_fn=lambda xx: torch.stack([aug(image=x.numpy())['image'] for x in xx]),
-            augment_fn2=lambda xx: torch.stack([aug(image=x.numpy())['image'] for x in xx]),
         ).to(self.device)
         return model
-
 
     def select_inputs_and_gts(self, params):
         return params[0], None
@@ -150,8 +100,8 @@ class Trainer(BaseTrainer):
         self.model.to(self.device)
         with torch.set_grad_enabled(is_training):
             # loss, preds = self.eval(*params)
-            inputs, gts = params
-            loss = self.learner(inputs.to(self.device))
+            x1, x2, gts = params
+            loss = self.learner(x1.to(self.device), x2.to(self.device))
         if is_training:
             self.optimizer.zero_grad()
             loss.backward()
