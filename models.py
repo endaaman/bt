@@ -33,7 +33,7 @@ def get_cam_layers(m, name=None):
     return []
 
 def get_pool(m):
-    if hasattr(self.base, 'global_pool'):
+    if hasattr(m, 'global_pool'):
         return m.global_pool
     return m.head.global_pool
 
