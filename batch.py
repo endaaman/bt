@@ -724,8 +724,8 @@ class CLI(BaseMLCLI):
         files = glob(J(a.src, '*.ndpi'))
         name = os.path.split(a.src)[-1]
         for file in files:
-            wsi = OpenSlide(file)
             print(file)
+            wsi = OpenSlide(file)
             wsi_name = os.path.splitext(os.path.basename(file))[0]
             dest_dir = with_mkdir(f'tmp/B/{wsi_name}')
             W, H = wsi.level_dimensions[a.level]
@@ -751,6 +751,7 @@ class CLI(BaseMLCLI):
                     x += w
                     i += 1
                 y += h
+            wsi.close()
             t.close()
 
 
