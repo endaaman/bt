@@ -139,6 +139,8 @@ class NetWrapper(nn.Module):
         elif type(self.layer) == int:
             children = [*self.net.children()]
             return children[self.layer]
+        else:
+            return self.layer
         return None
 
     def _hook(self, _, input, output):
@@ -263,7 +265,7 @@ class Dino(nn.Module):
         teacher_temp = None
     ):
         if return_embedding:
-            return self.student_encoder(x, return_projection = return_projection)
+            return self.student_encoder(x1, return_projection = return_projection)
 
         image_one, image_two = x1, x2
 
