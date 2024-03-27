@@ -32,6 +32,10 @@ def get_cam_layers(m, name=None):
     raise RuntimeError('CAM layers are not determined.')
     return []
 
+def get_pool(m):
+    if hasattr(self.base, 'global_pool'):
+        return m.global_pool
+    return m.head.global_pool
 
 class TimmModel(nn.Module):
     def __init__(self, name, num_classes, pretrained=True):
@@ -39,6 +43,7 @@ class TimmModel(nn.Module):
         self.name = name
         self.num_classes = num_classes
         self.base = timm.create_model(name, pretrained=pretrained, num_classes=num_classes)
+        self.pool = get_pool(self.base)
 
     def get_cam_layers(self):
         return get_cam_layers(self.base, self.name)
@@ -54,10 +59,7 @@ class TimmModel(nn.Module):
                 x = torch.sigmoid(x)
 
         if with_feautres:
-            if hasattr(self.base, 'global_pool'):
-                pool = self.base.global_pool
-            else:
-                pool = self.base.head.global_pool
+            pool = get_pool(self.base)
             features = pool(features)
             return x, features
         return x

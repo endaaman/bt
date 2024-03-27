@@ -34,7 +34,7 @@ from endaaman.ml import BaseTrainerConfig, BaseTrainer, Checkpoint, pil_to_tenso
 from endaaman.ml.metrics import MultiAccuracy
 from endaaman.ml.cli import BaseMLCLI, BaseDLArgs, BaseTrainArgs
 
-from models import TimmModel, CrossEntropyLoss
+from models import TimmModel, CrossEntropyLoss, get_pool
 from datasets.fold import DinoFoldDataset, FoldDataset, MEAN, STD
 from utils.dino import Dino
 
@@ -44,6 +44,7 @@ J = os.path.join
 
 class TrainerConfig(BaseTrainerConfig):
     source: str
+    model_name: str
     fold: int
     total_fold: int
     code: str
@@ -63,21 +64,26 @@ class Trainer(BaseTrainer):
     def prepare(self):
         # self.criterion = CrossEntropyLoss(input_logits=True)
         # self.fig_col_count = 2
-        model = ViT(
-            image_size = 512,
-            patch_size = 32,
-            num_classes = self.config.num_classes,
-            dim = 1024,
-            depth = 6,
-            heads = 8,
-            mlp_dim = 2048
-        )
+
+        if self.config.model_name == 'vit':
+            model = ViT(
+                image_size = 512,
+                patch_size = 32,
+                num_classes = self.config.num_classes,
+                dim = 1024,
+                depth = 6,
+                heads = 8,
+                mlp_dim = 2048
+            )
+        else:
+            # model = TimmModel(name='resnext50d_32x4d', num_classes=self.config.num_classes)
+            model = TimmModel(name=self.config.model_name, num_classes=self.config.num_classes)
 
         self.learner = Dino(
             model,
             local_image_size = 256,
             global_image_size = 512,
-            hidden_layer = 'to_latent',     # hidden layer name or index, from which to extract the embedding
+            hidden_layer = get_pool(model.base),     # hidden layer name or index, from which to extract the embedding
             projection_hidden_size = 256,   # projector network hidden dimension
             projection_layers = 4,          # number of layers in projection network
             num_classes_K = self.config.num_classes,          # output logits dimensions (referenced as K in paper)
@@ -141,6 +147,7 @@ class CLI(BaseMLCLI):
 
     class TrainArgs(BaseTrainArgs):
         source: str = 'enda4_512'
+        model_name: str = Field('vit', l='--model', s='-m')
         batch_size: int = Field(16, s='-B')
         lr: float = 0.0001
         code: str = 'LMGGG_'
@@ -164,6 +171,7 @@ class CLI(BaseMLCLI):
 
         config = TrainerConfig(
             source = a.source,
+            model_name = a.model_name,
             batch_size = a.batch_size,
             size = size,
             lr = a.lr,
@@ -209,7 +217,7 @@ class CLI(BaseMLCLI):
 
         out_dir = J(
             'out', f'{a.source}_dino', config.code,
-            f'fold{a.total_fold}_{a.fold}', a.prefix, 'vit'
+            f'fold{a.total_fold}_{a.fold}', a.prefix, config.model_name,
         )
         if a.suffix:
             out_dir += f'_{a.suffix}'
