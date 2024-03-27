@@ -23,7 +23,7 @@ import umap
 from openslide import OpenSlide
 
 from endaaman import load_images_from_dir_or_file, with_wrote, grid_split, with_mkdir, n_split
-from endaaman.ml.cli2 import BaseMLCLI
+from endaaman.ml.cli import BaseMLCLI
 import imagesize
 
 from datasets.utils import show_fold_diag
@@ -718,15 +718,17 @@ class CLI(BaseMLCLI):
 
     class GridWsiArgs(CommonArgs):
         src: str
+        level: int
 
     def run_grid_wsi(self, a):
-        files = sorted(glob(J(a.src, '*.ndpi')))
+        files = glob(J(a.src, '*.ndpi'))
+        name = os.path.split(a.src)[-1]
         for file in files:
             wsi = OpenSlide(file)
-            name = os.path.splitext(os.path.basename(file))[0]
-            dest_dir = with_mkdir(f'tmp/B/{name}')
-            print(name)
-            W, H = wsi.dimensions
+            print(file)
+            wsi_name = os.path.splitext(os.path.basename(file))[0]
+            dest_dir = with_mkdir(f'tmp/B/{wsi_name}')
+            W, H = wsi.level_dimensions[a.level]
             ww = np.array(n_split(W, W//3000))
             hh = np.array(n_split(H, H//3000))
             x = 0
@@ -738,12 +740,12 @@ class CLI(BaseMLCLI):
             for _y, h in enumerate(hh):
                 x = 0
                 for _x, w in enumerate(ww):
-                    tile = wsi.read_region((x, y), 0, (w, h)).convert('RGB')
+                    tile = wsi.read_region((x, y), a.level, (w, h)).convert('RGB')
                     white_area = calc_white_area(tile, min=210, max=255)
                     t.set_description(f'{i}/{total} {_x} {_y} {w} {h} w:{white_area:.3f}')
                     if white_area < 0.5:
                         tile = adjust_gamma(tile, gamma=1/1.8)
-                        tile.save(J(dest_dir, f'{name}_{id:03d}.jpg'))
+                        tile.save(J(dest_dir, f'{wsi_name}_{id:03d}.jpg'))
                         id += 1
                     t.update(1)
                     x += w
