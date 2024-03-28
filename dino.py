@@ -81,8 +81,8 @@ class Trainer(BaseTrainer):
 
         self.learner = Dino(
             model,
-            local_image_size = 256,
-            global_image_size = 512,
+            local_image_size = self.config.size//2,
+            global_image_size = self.config.size,
             hidden_layer = get_pool(model.base),     # hidden layer name or index, from which to extract the embedding
             projection_hidden_size = 256,   # projector network hidden dimension
             projection_layers = 4,          # number of layers in projection network
@@ -233,6 +233,108 @@ class CLI(BaseMLCLI):
         )
 
         trainer.start(a.epoch)
+
+
+    class ValidateArgs(BaseDLArgs):
+        model_dir: str = Field(..., s='-d')
+        target: str = Field('test', choices=['train', 'test', 'all'])
+        batch_size: int = Field(16, s='-B')
+        last: bool = False
+        no_features: bool = False
+
+    def run_validate(self, a:ValidateArgs):
+        checkpoint = Checkpoint.from_file(J(a.model_dir, 'checkpoint_best.pt'))
+        config = TrainerConfig.from_file(J(a.model_dir, 'config.json'))
+        model = TimmModel(name=config.model_name, num_classes=config.num_classes)
+        model.to(a.device())
+        model = model.eval()
+
+        transform = transforms.Compose([
+            transforms.CenterCrop(config.size),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=config.mean, std=config.std),
+        ])
+
+        ds = FoldDataset(
+             total_fold=config.total_fold,
+             fold=config.fold,
+             source_dir=J('cache', config.source),
+             target=a.target,
+             code=config.code,
+             size=config.size,
+             minimum_area=-1,
+             augmentation=False,
+             normalization=True,
+             limit=config.limit,
+        )
+
+        df = ds.df.copy()
+        df[ds.unique_code] = -1.0
+        df['pred'] = '_'
+
+        batch_count = math.ceil(len(df) / a.batch_size)
+        tq = tqdm(range(batch_count))
+
+        embss = []
+        featuress = []
+        for chunk in tq:
+            i0 = chunk*a.batch_size
+            i1 = (chunk+1)*a.batch_size
+            rows = df[i0:i1]
+            tt = []
+            for i, row in rows.iterrows():
+                fp = J(f'cache', config.source,  row['diag_org'], row['name'], row['filename'])
+                image = Image.open(fp)
+                tt.append(transform(image))
+                image.close()
+
+            tt = torch.stack(tt)
+            with torch.set_grad_enabled(False):
+                i = tt.to(a.device())
+                if a.no_features:
+                    embs = model(i, activate=False, with_feautres=False)
+                else:
+                    embs, f = model(i, activate=False, with_feautres=True)
+                    features = f.detach().cpu().numpy()
+                    featuress.append(features)
+                embs = embs.detach().cpu().numpy()
+
+            embss.append(embs)
+
+            tq.set_description(f'{i0} - {i1}')
+            tq.refresh()
+        # df.to_excel(with_wrote(J(a.model_dir, f'validate_{target}.xlsx')))
+
+        embs = np.concatenate(embss)
+        data = [
+            dict(zip(['name', 'filename', 'diag', 'diag_org', 'pred', 'feature'], values))
+            for values in zip(
+                df['name'],
+                df['filename'],
+                df['diag'],
+                df['diag_org'],
+                df['pred'],
+                embs
+            )
+        ]
+        torch.save(data, J(a.model_dir, f'embs_{a.target}.pt'))
+
+        if not a.no_features:
+            features = np.concatenate(featuress)
+            features = features.reshape(features.shape[0], features.shape[1])
+            data = [
+                dict(zip(['name', 'filename', 'diag', 'diag_org', 'pred', 'feature'], values))
+                for values in zip(
+                    df['name'],
+                    df['filename'],
+                    df['diag'],
+                    df['diag_org'],
+                    df['pred'],
+                    features
+                )
+            ]
+            torch.save(data, J(a.model_dir, f'features_{a.target}.pt'))
+
 
 
 
