@@ -380,7 +380,7 @@ class CLI(BaseMLCLI):
 
     class ClusterArgs(CommonArgs):
         model_dir: str = Field(..., s='-d')
-        target: str = 'test'
+        target_file: str = Field('features_test.pt', s='-T')
         count: int = 10
         show: bool = False
         mode: str = Field('original', choices=['original', 'gt', 'pred'])
@@ -391,7 +391,8 @@ class CLI(BaseMLCLI):
 
         unique_code = config.unique_code()
 
-        features_path = J(a.model_dir, f'features_{a.target}.pt')
+        features_path = J(a.model_dir, a.target_file)
+        name = os.path.splitext(os.path.split(features_path)[-1])[0]
         df = pd.DataFrame(torch.load(features_path))
         print('loaded', features_path)
 
@@ -503,7 +504,7 @@ class CLI(BaseMLCLI):
         plt.subplots_adjust(right=0.75, top=0.75)
         d = J(a.model_dir, 'umap')
         os.makedirs(d, exist_ok=True)
-        plt.savefig(with_wrote(J(d, f'{a.target}_{a.mode}_{a.count}.png')))
+        plt.savefig(with_wrote(J(d, f'{name}_{a.mode}_{a.count}.png')))
         if a.show:
             plt.show()
 
