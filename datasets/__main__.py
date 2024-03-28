@@ -41,13 +41,14 @@ class CLI(BaseMLCLI):
         dest: str = 'cache'
         size: int = 512
         zip: bool = False
+        code: str = 'LMGAOB'
 
     def run_build_dataset(self, a:BuildDatasetArgs):
         ds_name = f'{a.source}_{a.size}'
         dest_dir = J(a.dest, ds_name)
         src_dir = f'data/images/{a.source}'
         ee = []
-        for diag in 'LMGAOB':
+        for diag in a.code:
             print(f'loading {diag}')
             paths = sorted(glob(J(src_dir, f'{diag}/*.jpg')))
             diag_dir = J(dest_dir, diag)
@@ -90,7 +91,7 @@ class CLI(BaseMLCLI):
 
 
     class ZipArgs(CommonArgs):
-        source: str = 'cache/enda3_512'
+        source: str = 'cache/enda4_512'
 
     def run_zip(self, a):
         name = a.source.split('/')[-1]

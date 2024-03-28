@@ -188,8 +188,8 @@ class Dino(nn.Module):
     def __init__(
         self,
         net,
-        global_image_size,
         local_image_size,
+        global_image_size,
         hidden_layer = -2,
         projection_hidden_size = 256,
         num_classes_K = 65336,

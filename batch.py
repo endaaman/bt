@@ -2,7 +2,9 @@ import os
 import re
 from glob import glob
 import itertools
+import shutil
 import hashlib
+import random
 from itertools import compress
 
 import pandas as pd
@@ -392,7 +394,7 @@ class CLI(BaseMLCLI):
         unique_code = config.unique_code()
 
         features_path = J(a.model_dir, a.target_file)
-        name = os.path.splitext(os.path.split(features_path)[-1])[0]
+        data_name = os.path.splitext(os.path.split(features_path)[-1])[0]
         df = pd.DataFrame(torch.load(features_path))
         print('loaded', features_path)
 
@@ -501,10 +503,10 @@ class CLI(BaseMLCLI):
         fig.canvas.mpl_connect('motion_notify_event', hover)
 
         plt.legend()
-        plt.subplots_adjust(right=0.75, top=0.75)
+        # plt.subplots_adjust(right=0.75, top=0.75)
         d = J(a.model_dir, 'umap')
         os.makedirs(d, exist_ok=True)
-        plt.savefig(with_wrote(J(d, f'{name}_{a.mode}_{a.count}.png')))
+        plt.savefig(with_wrote(J(d, f'{data_name}_{a.mode}_{a.count}.png')))
         if a.show:
             plt.show()
 
@@ -754,6 +756,49 @@ class CLI(BaseMLCLI):
                 y += h
             wsi.close()
             t.close()
+
+
+    class RenumberArgs(CommonArgs):
+        src: str
+
+    def run_renumber(self, a):
+        paths = glob(J(a.src, '*.jpg'))
+        case_name = os.path.split(a.src)[-1]
+        cases = {}
+        for path in paths:
+            m = re.match(r'^(.*)_\d+\.jpg$', os.path.split(path)[1])
+            assert m
+            name = m[1]
+            if name in cases:
+                cases[m[1]].append(path)
+            else:
+                cases[m[1]] = [path]
+
+        print(list(cases.keys()))
+
+        index = 1
+        new_cases = {}
+        for name, paths in cases.items():
+            random.shuffle(paths)
+            print(name, len(paths))
+            num_groups = len(paths)//30
+            counts = n_split(len(paths), num_groups)
+            print(counts)
+            cursor = 0
+            idxs = random.sample(list(range(len(counts))), 3)
+            for idx in idxs:
+                count = counts[idx]
+                new_cases[f'{case_name}-{index:02d}'] = paths[cursor:cursor+count]
+                cursor = cursor+count
+                index += 1
+
+        for name, paths in new_cases.items():
+            index = 1
+            for fn in paths:
+                d = f'tmp/new/{case_name}/'
+                os.makedirs(d, exist_ok=True)
+                shutil.copy(J(fn), J(d, f'{name}_{index:02d}.jpg'))
+                index += 1
 
 
 if __name__ == '__main__':
