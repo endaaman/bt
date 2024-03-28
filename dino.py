@@ -39,6 +39,9 @@ from datasets.fold import DinoFoldDataset, FoldDataset, MEAN, STD
 from utils.dino import Dino
 
 
+def unique_code(code):
+    return [c for c in dict.fromkeys(code) if c in 'LMGAOB']
+
 np.set_printoptions(suppress=True, floatmode='fixed')
 J = os.path.join
 
@@ -57,7 +60,7 @@ class TrainerConfig(BaseTrainerConfig):
     std: float = STD
 
     def unique_code(self):
-        return [c for c in dict.fromkeys(self.code) if c in 'LMGAOB']
+        return unique_code(self.code)
 
 
 class Trainer(BaseTrainer):
@@ -67,7 +70,7 @@ class Trainer(BaseTrainer):
 
         if self.config.model_name == 'vit':
             model = ViT(
-                image_size = 512,
+                image_size = config.size,
                 patch_size = 32,
                 num_classes = self.config.num_classes,
                 dim = 1024,
