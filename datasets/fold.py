@@ -133,6 +133,7 @@ class BaseFoldDataset(Dataset):
                  crop_size=-1,
                  minimum_area=-1,
                  limit=-1,
+                 limit_B=300,
                  upsample=False,
                  augmentation=True,
                  normalization=True,
@@ -151,6 +152,7 @@ class BaseFoldDataset(Dataset):
         self.crop_size = crop_size if crop_size > 0 else size
         self.minimum_area = minimum_area
         self.limit = limit
+        self.limit_B = limit_B
         self.augmentation = augmentation
         self.normalization = normalization
         self.mean = mean
@@ -204,21 +206,28 @@ class BaseFoldDataset(Dataset):
             self.df = self.df[(self.df['white_area'] < 0.8) | (self.df['diag'] == 'B')].copy()
 
         ##* Filter by area
-        if limit > 0:
-            drop_idxs = []
-            for i, row in self.df_cases.iterrows():
-                rows = self.df[self.df['name'] == row.name]
-                # rows = rows[rows['flag_area']]
-                if len(rows) < limit:
-                    continue
-                # random
-                # drop_idxs.append(np.random.choice(rows.index, size=len(rows)-limit, replace=False))
-                # print(np.random.choice(rows.index, size=len(rows)-limit, replace=False))
+        drop_idxs = []
+        for i, row in self.df_cases.iterrows():
+            is_B = row['diag'] == 'B'
+            l = limit_B if is_B else limit
+            if l < 0:
+                continue
+            rows = self.df[self.df['name'] == row.name]
+            # rows = rows[rows['flag_area']]
+            if len(rows) < l:
+                continue
+            # random
+            # drop_idxs.append(np.random.choice(rows.index, size=len(rows)-l, replace=False))
+            # print(np.random.choice(rows.index, size=len(rows)-l, replace=False))
 
-                # drop more white
+            if is_B:
+                # just shuffle
+                rows = rows.sample(frac=1)
+            else:
+                # less white -> drop
                 rows = rows.sort_values('white_area', ascending=True)
-                drop_idxs.append(rows.index[limit:])
-            self.df = self.df.drop(np.concatenate(drop_idxs))
+            drop_idxs.append(rows.index[l:])
+        self.df = self.df.drop(np.concatenate(drop_idxs))
 
         ##* Upsample
         if upsample:

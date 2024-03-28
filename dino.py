@@ -79,7 +79,6 @@ class Trainer(BaseTrainer):
                 mlp_dim = 2048
             )
         else:
-            # model = TimmModel(name='resnext50d_32x4d', num_classes=self.config.num_classes)
             model = TimmModel(name=self.config.model_name, num_classes=self.config.num_classes)
 
         self.learner = Dino(
@@ -89,7 +88,7 @@ class Trainer(BaseTrainer):
             hidden_layer = get_pool(model.base),     # hidden layer name or index, from which to extract the embedding
             projection_hidden_size = 256,   # projector network hidden dimension
             projection_layers = 4,          # number of layers in projection network
-            num_classes_K = self.config.num_classes,          # output logits dimensions (referenced as K in paper)
+            num_classes_K = 65336,          # output logits dimensions (referenced as K in paper)
             student_temp = 0.9,             # student temperature
             teacher_temp = 0.04,            # teacher temperature, needs to be annealed from 0.04 to 0.07 over 30 epochs
             local_upper_crop_scale = 0.4,   # upper bound for local crop - 0.4 was recommended in the paper
@@ -244,9 +243,11 @@ class CLI(BaseMLCLI):
         batch_size: int = Field(16, s='-B')
         last: bool = False
         no_features: bool = False
+        use_last: bool = False
 
     def run_validate(self, a:ValidateArgs):
-        checkpoint = Checkpoint.from_file(J(a.model_dir, 'checkpoint_best.pt'))
+        chp = 'checkpoint_last.pt' if a.use_last else 'checkpoint_best.pt'
+        checkpoint = Checkpoint.from_file(J(a.model_dir, chp))
         config = TrainerConfig.from_file(J(a.model_dir, 'config.json'))
         model = TimmModel(name=config.model_name, num_classes=config.num_classes)
         model.to(a.device())

@@ -33,6 +33,7 @@ from models import TimmModel, CrossEntropyLoss
 from datasets.fold import FoldDataset, MEAN, STD
 
 
+torch.multiprocessing.set_sharing_strategy('file_system')
 np.set_printoptions(suppress=True, floatmode='fixed')
 J = os.path.join
 
