@@ -117,7 +117,7 @@ class CLI(BaseMLCLI):
         total_fold: int = 5
         fold: int
         model: str = Field('tf_efficientnet_b0', s='-m')
-        source: str = 'enda3_512'
+        source: str = 'enda4_512'
         suffix: str = Field('', s='-S')
         prefix: str = ''
         size: int = Field(512, s='-s')
