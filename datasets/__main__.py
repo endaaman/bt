@@ -213,6 +213,7 @@ class CLI(BaseMLCLI):
         fold: int = 0
         total_fold: int = 5
         limit: int = -1
+        limit_B: int = -1
         upsample: bool = Field(False, cli=('--upsample', ))
         show: bool = Field(False, cli=('--show', ))
 

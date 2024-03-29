@@ -105,15 +105,16 @@ class CLI(BaseMLCLI):
         pass
 
     class TrainArgs(BaseTrainArgs):
-        lr: float = 0.001
+        base_lr: float = 1e-5 # ViT for 1e-6
+        lr: float = -1
         batch_size: int = Field(16, s='-B')
         num_workers: int = Field(4, s='-N')
         minimum_area: float = 0.6
         limit: int = -1
-        upsample: bool = False
+        noupsample: bool = False
         noaug: bool = False
         epoch: int = Field(100, s='-E')
-        total_fold: int
+        total_fold: int = 5
         fold: int
         model: str = Field('tf_efficientnet_b0', s='-m')
         source: str = 'enda3_512'
@@ -125,11 +126,12 @@ class CLI(BaseMLCLI):
 
     def run_train(self, a:TrainArgs):
         num_classes = len(set([*a.code]) - {'_'})
+        lr = a.lr if a.lr>0 else a.base_lr*a.batch_size
 
         config = TrainerConfig(
             model_name = a.model,
             batch_size = a.batch_size,
-            lr = a.lr,
+            lr = lr,
             source = a.source,
             size = a.size,
             code = a.code,
@@ -138,7 +140,7 @@ class CLI(BaseMLCLI):
             num_classes = num_classes,
             minimum_area = a.minimum_area,
             limit = a.limit,
-            upsample = a.upsample,
+            upsample = not a.noupsample,
         )
 
         if a.fold < 0:
@@ -151,7 +153,7 @@ class CLI(BaseMLCLI):
                  size=a.size,
                  minimum_area=a.minimum_area,
                  limit=a.limit,
-                 upsample=a.upsample,
+                 upsample=not config.upsample,
                  augmentation=True,
                  normalization=True,
             ), None]
@@ -166,7 +168,7 @@ class CLI(BaseMLCLI):
                     size = a.size,
                     minimum_area = a.minimum_area,
                     limit = a.limit,
-                    upsample =  a.upsample and t=='train',
+                    upsample = config.upsample and t=='train',
                     augmentation= t=='train',
                     normalization = True,
                 ) for t in ('train', 'test')

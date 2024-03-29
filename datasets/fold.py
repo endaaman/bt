@@ -132,7 +132,6 @@ class BaseFoldDataset(Dataset):
                  size=512,
                  minimum_area=-1,
                  limit=-1,
-                 limit_B=300,
                  upsample=False,
                  augmentation=True,
                  normalization=True,
@@ -150,7 +149,6 @@ class BaseFoldDataset(Dataset):
         self.size = size
         self.minimum_area = minimum_area
         self.limit = limit
-        self.limit_B = limit_B
         self.augmentation = augmentation
         self.normalization = normalization
         self.mean = mean
@@ -207,7 +205,7 @@ class BaseFoldDataset(Dataset):
         drop_idxs = []
         for i, row in self.df_cases.iterrows():
             is_B = row['diag'] == 'B'
-            l = limit_B if is_B else limit
+            l = int(limit/1.5) if is_B else limit
             if l < 0:
                 continue
             rows = self.df[self.df['name'] == row.name]
