@@ -110,7 +110,7 @@ class CLI(BaseMLCLI):
         batch_size: int = Field(16, s='-B')
         num_workers: int = Field(4, s='-N')
         minimum_area: float = 0.6
-        limit: int = -1
+        limit: int = 500
         noupsample: bool = False
         noaug: bool = False
         epoch: int = Field(100, s='-E')
