@@ -130,7 +130,6 @@ class BaseFoldDataset(Dataset):
                  target='train',
                  code='LMGAO_',
                  size=512,
-                 crop_size=-1,
                  minimum_area=-1,
                  limit=-1,
                  limit_B=300,
@@ -149,7 +148,6 @@ class BaseFoldDataset(Dataset):
         self.target = target
         self.code = [*code]
         self.size = size
-        self.crop_size = crop_size if crop_size > 0 else size
         self.minimum_area = minimum_area
         self.limit = limit
         self.limit_B = limit_B
@@ -176,7 +174,7 @@ class BaseFoldDataset(Dataset):
 
         assert self.fold < self.total_fold
 
-        self.aug = get_augs(augmentation, self.crop_size, normalization, mean, std)
+        self.aug = get_augs(augmentation, self.size, normalization, mean, std)
 
         # process like converting LMGAO to LMGGG
         replacer = []
@@ -318,7 +316,7 @@ class DinoFoldDataset(BaseFoldDataset):
         super().__init__(*args, **kwargs)
         if self.target == 'test':
             aa = [
-                A.RandomCrop(width=self.crop_size, height=self.crop_size),
+                A.RandomCrop(width=self.size, height=self.size),
             ]
             if self.normalization:
                 aa += [A.Normalize(mean=self.mean, std=self.std)]
@@ -344,7 +342,7 @@ class IICFoldDataset(BaseFoldDataset):
         super().__init__(*args, **kwargs)
         # self.aug = get_augs(True, self.size, self.normalization, self.mean, self.std)
 
-        # self.aug = get_augs(augmentation, self.crop_size, normalization, mean, std)
+        # self.aug = get_augs(augmentation, self.size, normalization, mean, std)
         self.aug_affine = A.Compose([
             A.RandomResizedCrop(width=self.size, height=self.size, scale=(0.666, 1.5), ratio=(0.95, 1.05), ),
             A.RandomRotate90(p=1),
@@ -371,7 +369,7 @@ class IICFoldDataset(BaseFoldDataset):
 
 class QuadAttentionFoldDataset(BaseFoldDataset):
     def __init__(self, *args, **kwargs):
-        kwargs['crop_size'] = kwargs.get('size', 512)//2
+        self.tile_size = kwargs.get('size', 512)//2
         super().__init__(*args, **kwargs)
 
     def __len__(self):
@@ -382,7 +380,7 @@ class QuadAttentionFoldDataset(BaseFoldDataset):
         image = Image.open(J(self.source_dir, row['diag_org'], row['name'], row['filename']))
         arr = np.array(image)
 
-        ts = self.crop_size
+        ts = self.tile_size
         w = image.width
         h = image.height
         x = np.random.randint(w - ts*2) if w - ts*2 > 0 else 0
