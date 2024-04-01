@@ -331,7 +331,7 @@ class CLI(BaseMLCLI):
 
         data_by_image = []
         for image_name, items in tqdm(df.groupby('image_name')):
-            diag_org, diag = items.iloc[0][['diag_org', 'diag']]
+            diag_org, diag, name = items.iloc[0][['diag_org', 'diag', 'name']]
 
             preds = items[unique_code]
             preds_sum = np.sum(preds, axis=0)
