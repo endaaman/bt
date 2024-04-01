@@ -290,54 +290,6 @@ class CLI(BaseMLCLI):
             ]
             torch.save(data, J(a.model_dir, f'features_{target}.pt'))
 
-    class ValidateOriginalsArgs(BaseDLArgs):
-        model_dir: str = Field(..., s='-d')
-        target: str = Field('test', choices=['train', 'test', 'all'])
-        use_last: bool = False
-        base: str = 'data/tiles'
-
-    def run_validate_originals(self, a:ValidateOriginalsArgs):
-        chp = 'checkpoint_last.pt' if a.use_last else 'checkpoint_best.pt'
-        checkpoint = Checkpoint.from_file(J(a.model_dir, chp))
-        config = TrainerConfig.from_file(J(a.model_dir, 'config.json'))
-        model = TimmModel(name=config.model_name, num_classes=config.num_classes)
-        model = model.eval().to(a.device())
-
-        transform = transforms.Compose([
-            transforms.ToTensor(),
-            transforms.Normalize(mean=config.mean, std=config.std),
-        ])
-
-        ds = FoldDataset(
-             total_fold=config.total_fold,
-             fold=config.fold,
-             source_dir=J('cache', config.source),
-             target=a.target,
-             code=config.code,
-             size=config.size,
-             minimum_area=-1,
-             augmentation=False,
-             normalization=True,
-             limit=-1,
-        )
-
-        df = ds.df.drop_duplicates(subset='original')
-
-        for idx, rows in df.iterrows():
-            print(idx, rows['name'], rows['original'])
-            image = Image.open(J('data/images', 'enda4', rows['diag'], rows['original']))
-
-            t = transform(image)[None, ...].to(a.device())
-
-            p = model(t, activate=True)
-            print(p.item())
-
-            print(t)
-            print(t.shape)
-            break
-
-
-
 
     class PredictArgs(BaseDLArgs):
         model_dir: str = Field(..., s='-d')

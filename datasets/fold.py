@@ -116,7 +116,7 @@ def get_augs(image_aug, size, normalization, mean, std):
     return A.Compose(aa)
 
 @lru_cache
-def load_zipfile(path):
+def load_zip_file(path):
     p = os.path.abspath(path)
     with open(p, 'rb') as f:
         return zipfile.ZipFile(BytesIO(f.read()))
@@ -163,12 +163,12 @@ class BaseFoldDataset(Dataset):
         self.df_cases = df_cases.copy()
         self.total_fold = self.df['fold'].max() + 1
 
-        self.zipfile = None
-        zf = J(source_dir, 'tiles.zip')
-        if os.path.exists(zf):
-            print(f'Loading zip archive {zf}')
-            self.zipfile = load_zipfile(zf)
-            print(f'Loaded {zf}')
+        zip_path = J(source_dir, 'tiles.zip')
+        self.zip_file = None
+        if os.path.exists(zip_path):
+            print(f'Loading zip archive {zip_path}')
+            self.zip_file = load_zip_file(zip_path)
+            print(f'Loaded {zip_path}')
 
         assert self.fold < self.total_fold
 
@@ -260,18 +260,18 @@ class BaseFoldDataset(Dataset):
         print('Balance: tiles')
         show_fold_diag(self.df)
 
+    def load_image(self, diag, name, filename):
+        tile_path = J(diag, name, filename)
 
-    def load_from_row(self, row):
-        tile_path = J(row['diag_org'], row['name'], row['filename'])
-        if self.zipfile:
-            # with zipf.open(image_file_name) as image_file:
-            # image_data = BytesIO(self.zipfile.read(tile_path))
-            # image = Image.open(image_data)
-            with self.zipfile.open(tile_path) as image_file:
+        if self.zip_file:
+            with self.zip_file.open(tile_path) as image_file:
                 image = Image.open(BytesIO(image_file.read()))
         else:
             image = Image.open(J(self.source_dir, tile_path))
         return image
+
+    def load_from_row(self, row):
+        return self.load_image(row['diag_org'], row['name'], row['filename'])
 
     def inspect(self):
         folds = self.df_cases['fold'].unique()
