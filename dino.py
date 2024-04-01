@@ -241,7 +241,6 @@ class CLI(BaseMLCLI):
         model_dir: str = Field(..., s='-d')
         target: str = Field('test', choices=['train', 'test', 'all'])
         batch_size: int = Field(16, s='-B')
-        last: bool = False
         no_features: bool = False
         use_last: bool = False
 
