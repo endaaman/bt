@@ -218,6 +218,7 @@ class CLI(BaseMLCLI):
     class DrawResultArgs(CommonArgs):
         model_dir: str = Field(..., s='-d')
         target: str = Field('test', s='-t')
+        count: int = 1
 
     def run_draw_result(self, a):
         dest_dir= J(a.model_dir, a.target)
@@ -226,27 +227,40 @@ class CLI(BaseMLCLI):
         unique_code = config.unique_code()
 
         df = pd.read_excel(J(a.model_dir, f'validate_{a.target}.xlsx'))
+        df_report = pd.read_excel(J(a.model_dir, a.target, 'report.xlsx'), sheet_name='images')
+
+        # caseごとにcountの数だけoriginalにdrawする
+        # 間違えている場合は別にdrawする
+
+        selected_rows = []
+        for name, rows in df_report.groupby('name'):
+            selected_rows.append(rows.iloc[:a.count])
+        selected_rows.append(df_report[df_report['correct'] < 1])
+        selected_rows = pd.concat(selected_rows)
 
         colors = {
-            'L': 'green',
-            'M': 'blue',
-            'G': 'red',
-            'A': 'yellow',
-            'O': 'purple',
-            'B': 'black',
+            'L': ('#1f77b4', 'black'),
+            'M': ('#ff7f0e', 'white'),
+            'G': ('#2ca02c', 'white'),
+            'A': ('red', 'white'),
+            'O': ('blue', 'white'),
+            'B': ('#AC64AD', 'white'),
         }
 
-        font = ImageFont.truetype('/usr/share/fonts/ubuntu/Ubuntu-R.ttf', size=16)
+        font = ImageFont.truetype('/usr/share/fonts/ubuntu/Ubuntu-R.ttf', size=32)
 
         data = []
-        tq = tqdm(df.groupby('original'))
-        for image_name, rows in tq:
-            diag_org, diag = rows.iloc[0][['diag_org', 'diag']]
-
+        tq = tqdm(selected_rows.iterrows(), total=len(selected_rows))
+        for idx, row in tq:
+            diag_org, diag = row[['diag_org', 'gt']]
+            image_name = row['image_name']
+            rows = df[df['original'] == image_name]
             row_images = []
             for _y, cols in rows.groupby('y'):
                 row_image_list = []
                 for _x, item in cols.iterrows():
+                    bg = colors[item['pred']][0]
+                    fg = colors[item['pred']][1]
                     # print(item['x'], item['y'], item['pred'])
                     name, filename = item[['name', 'filename']]
                     # i = Image.new('RGBA', (item['width'], item['height']), color=(0,0,0,0,))
@@ -254,19 +268,20 @@ class CLI(BaseMLCLI):
                     draw = ImageDraw.Draw(i)
                     draw.rectangle(
                         xy=((0, 0), (item['width'], item['height'])),
-                        outline=colors[item['pred']],
+                        outline=bg,
                     )
                     text = ' '.join([f'{k}:{item[k]:.2f}' for k in unique_code])
+                    # text = item['pred'] + ' '+ text
                     bb = draw.textbbox(xy=(0, 0), text=text, font=font, spacing=8)
                     draw.rectangle(
-                        xy=bb,
-                        fill=colors[item['pred']],
+                        xy=(0, 0, bb[2]+4, bb[3]+4),
+                        fill=bg,
                     )
                     draw.text(
                         xy=(0, 0),
                         text=text,
                         font=font,
-                        fill='white'
+                        fill=fg
                     )
                     row_image_list.append(np.array(i))
 
@@ -281,7 +296,7 @@ class CLI(BaseMLCLI):
             d = J(dest_dir, diag)
             os.makedirs(d, exist_ok=True)
             # original_image = original_image.convert('RGB')
-            merged_image.save(J(d, f'{image_name}.jpg'))
+            merged_image.save(J(d, f'{image_name}'))
             merged_image.close()
 
             tq.set_description(f'Drew {diag} {image_name}')
