@@ -44,32 +44,30 @@ DS_BASE = 'data/tiles'
 # DS_BASE = 'cache'
 
 class IICLoss(nn.Module):
-    def __init__(self, alpha):
+    def __init__(self, alpha, beta=0.0):
         super().__init__()
-        self.alpha = torch.tensor(alpha)
+        self.alpha = alpha
+        self.beta = beta
 
-    def forward(self, i, j):
-        # EPS = sys.float_info.epsilon
-        EPS = torch.finfo(torch.float32).eps
-        bs, k = i.size()
-        p_i_j = i.unsqueeze(2) * j.unsqueeze(1)
-        p_i_j = p_i_j.sum(dim=0)
-        # p_i_j = (p_i_j + p_i_j.t()) / 2.0
-        # p_i_j = torch.clamp(p_i_j, min=EPS)
-        p_i_j += p_i_j.clone().t()
-        p_i_j /= 2.0
-        p_i_j /= p_i_j.sum()
-        p_i_j.clamp_(min=EPS)
+    def forward(self, p, q):
+        EPS = sys.float_info.epsilon
+        bs, k = p.size()
+        J = p.unsqueeze(2) * q.unsqueeze(1)
+        J = J.sum(dim=0)
+        J = (J + J.t()) / 2.0 / J.sum()
 
-        # p_i = p_i_j.sum(dim=0).view(1, k).expand(k, k)
-        # p_j = p_i.t()
-        p_i = p_i_j.sum(dim=0).view(1, k).expand(k, k)
-        p_j = p_i_j.sum(dim=1).view(k, 1).expand(k, k)
-        # p_j = p_i.t()
-        # p_j = p_i_j.sum(dim=0).view(1, k).repeat(1, 4)
-        # p_i = p_i_j.sum(dim=0).view(k, 1).repeat(1, k)
+        J = torch.clamp(J, min=EPS)
 
-        loss = p_i_j * (self.alpha*torch.log(p_j) + self.alpha*torch.log(p_i) - torch.log(p_i_j))
+        r = (p + q) / 2.0
+        Pm = r.mean(dim=0).view(k, 1).expand(k, k)
+        Qm = Pm.t()
+
+        Ps = r.std(dim=0).view(k, 1).expand(k, k)
+        Qs = Ps.t()
+
+        a = self.alpha
+        b = self.beta
+        loss = J * (a*Pm.log() + a*Qm.log() - J.log() - b*Ps.log() - b*Qs.log())
         loss = loss.sum()
         return loss
 
@@ -91,6 +89,7 @@ class TrainerConfig(BaseTrainerConfig):
     upsample: bool
 
     alpha: float
+    beta: float
     mean: float = 0.7
     std: float = 0.2
 
@@ -100,7 +99,7 @@ class TrainerConfig(BaseTrainerConfig):
 
 class Trainer(BaseTrainer):
     def prepare(self):
-        self.criterion = IICLoss(alpha=self.config.alpha)
+        self.criterion = IICLoss(alpha=self.config.alpha, beta=self.config.beta)
         self.fig_col_count = 2
         return IICModel(
             name=self.config.model_name,
@@ -137,13 +136,14 @@ class CLI(BaseMLCLI):
         pass
 
     class TrainArgs(BaseTrainArgs):
-        lr: float = 0.001
-        batch_size: int = Field(128, s='-B')
+        lr: float = -1
+        base_lr: float = 1e-5 # ViT for 1e-6
+        batch_size: int = Field(100, s='-B')
         code: str = 'LMGGG_'
-        num_classes_over: int = 10
+        num_classes_over: int = 32
         minimum_area: float = 0.6
-        limit: int = 800
-        upsample: bool = Field(False, s='-U')
+        limit: int = 500
+        noupsample: bool = False
         epoch: int = Field(50, l='--epoch', s='-E')
         total_fold: int = 5
         fold: int = 0
@@ -152,23 +152,27 @@ class CLI(BaseMLCLI):
         suffix: str = ''
         prefix: str = ''
         alpha: float = 2.0
+        beta: float = 0.1
         size: int = Field(256, s='-s')
         overwrite: bool = Field(False, s='-O')
 
     def run_train(self, a:TrainArgs):
+        lr = a.lr if a.lr>0 else a.base_lr*a.batch_size
+
         config = TrainerConfig(
             model_name = a.model_name,
             batch_size = a.batch_size,
             code = a.code,
-            lr = a.lr,
+            lr = lr,
             source = a.source,
             size = a.size,
             total_fold = a.total_fold,
             fold = a.fold,
             minimum_area = a.minimum_area,
             limit = a.limit,
-            upsample = a.upsample,
+            upsample = not a.noupsample,
             alpha = a.alpha,
+            beta = a.beta,
 
             num_classes = len(to_unique_code(a.code)),
             num_classes_over = a.num_classes_over,
@@ -183,7 +187,7 @@ class CLI(BaseMLCLI):
             size=a.size,
             minimum_area=a.minimum_area,
             limit=a.limit,
-            upsample = a.upsample,
+            upsample=config.upsample,
             augmentation=True,
             normalization=True,
             mean=config.mean,

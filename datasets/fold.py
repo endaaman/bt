@@ -197,17 +197,15 @@ class BaseFoldDataset(Dataset):
 
         ##* Filter by area
         if minimum_area > 0:
-            # self.df.loc[self.df['white_area'] > minimum_area, 'flag_area'] = False
-            # self.df = self.df[self.df['white_area'] < minimum_area].copy()
-            self.df = self.df[(self.df['white_area'] < 0.8) | (self.df['diag'] == 'B')].copy()
+            self.df = self.df[(self.df['area'] > minimum_area) | (self.df['diag'] == 'B')].copy()
 
         ##* Filter by area
         drop_idxs = []
         for i, row in self.df_cases.iterrows():
+            if limit < 0:
+                continue
             is_B = row['diag'] == 'B'
             l = int(limit/1.5) if is_B else limit
-            if l < 0:
-                continue
             rows = self.df[self.df['name'] == row.name]
             # rows = rows[rows['flag_area']]
             if len(rows) < l:
@@ -221,9 +219,11 @@ class BaseFoldDataset(Dataset):
                 rows = rows.sample(frac=1)
             else:
                 # less white -> drop
-                rows = rows.sort_values('white_area', ascending=True)
+                rows = rows.sort_values('area', ascending=True)
             drop_idxs.append(rows.index[l:])
-        self.df = self.df.drop(np.concatenate(drop_idxs))
+
+        if len(drop_idxs) > 0:
+            self.df = self.df.drop(np.concatenate(drop_idxs))
 
         ##* Upsample
         if upsample:
@@ -342,7 +342,7 @@ class IICFoldDataset(BaseFoldDataset):
 
         # self.aug = get_augs(augmentation, self.size, normalization, mean, std)
         self.aug_affine = A.Compose([
-            A.RandomResizedCrop(width=self.size, height=self.size, scale=(0.666, 1.5), ratio=(0.95, 1.05), ),
+            A.RandomResizedCrop(width=self.size, height=self.size, scale=(0.9, 1.1), ratio=(0.95, 1.05), ),
             A.RandomRotate90(p=1),
             A.Flip(p=0.5),
             A.Normalize(mean=self.mean, std=self.std),
