@@ -73,7 +73,7 @@ class CLI(BaseMLCLI):
                         os.makedirs(case_dir, exist_ok=True)
                         filename = f'{tile_order:04d}.jpg'
                         g.save(J(case_dir, filename))
-                        area = calc_white_area(g)
+                        white_area = calc_white_area(g)
                         ee.append({
                             'name': name,
                             'diag': diag,
@@ -84,7 +84,7 @@ class CLI(BaseMLCLI):
                             'original': image_name,
                             'width': g.width,
                             'height': g.height,
-                            'white_area': area,
+                            'area': 1-white_area,
                         })
         df_tiles = pd.DataFrame(ee)
         df_tiles.to_excel(with_wrote(J(dest_dir, 'tiles.xlsx')))

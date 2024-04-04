@@ -226,7 +226,6 @@ class CLI(BaseMLCLI):
         unique_code = config.unique_code()
 
         df = pd.read_excel(J(a.model_dir, f'validate_{a.target}.xlsx'))
-        df['image_name'] = df['name'].str.cat(df['order'].astype(str), sep='_')
 
         colors = {
             'L': 'green',
@@ -240,7 +239,7 @@ class CLI(BaseMLCLI):
         font = ImageFont.truetype('/usr/share/fonts/ubuntu/Ubuntu-R.ttf', size=16)
 
         data = []
-        tq = tqdm(df.groupby('image_name'))
+        tq = tqdm(df.groupby('original'))
         for image_name, rows in tq:
             diag_org, diag = rows.iloc[0][['diag_org', 'diag']]
 
@@ -301,8 +300,6 @@ class CLI(BaseMLCLI):
         unique_code = config.unique_code()
         df = pd.read_excel(J(a.model_dir, f'validate_{a.target}.xlsx'))
 
-        df['image_name'] = df['name'].str.cat(df['order'].astype(str), sep='_')
-
         data_by_case = []
         for name, items in tqdm(df.groupby('name')):
             diag_org, diag = items.iloc[0][['diag_org', 'diag']]
@@ -330,7 +327,7 @@ class CLI(BaseMLCLI):
             data_by_case.append(d)
 
         data_by_image = []
-        for image_name, items in tqdm(df.groupby('image_name')):
+        for image_name, items in tqdm(df.groupby('original')):
             diag_org, diag, name = items.iloc[0][['diag_org', 'diag', 'name']]
 
             preds = items[unique_code]

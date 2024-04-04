@@ -70,7 +70,7 @@ class Trainer(BaseTrainer):
 
         if self.config.model_name == 'vit':
             model = ViT(
-                image_size = config.size,
+                image_size = self.config.size,
                 patch_size = 32,
                 num_classes = self.config.num_classes,
                 dim = 1024,
@@ -78,14 +78,16 @@ class Trainer(BaseTrainer):
                 heads = 8,
                 mlp_dim = 2048
             )
+            hidden_layer = 'to_latent'
         else:
             model = TimmModel(name=self.config.model_name, num_classes=self.config.num_classes)
+            hidden_layer = get_pool(model.base)
 
         self.learner = Dino(
             model,
             local_image_size = self.config.size//2,
             global_image_size = self.config.size,
-            hidden_layer = get_pool(model.base),     # hidden layer name or index, from which to extract the embedding
+            hidden_layer = hidden_layer,     # hidden layer name or index, from which to extract the embedding
             projection_hidden_size = 256,   # projector network hidden dimension
             projection_layers = 4,          # number of layers in projection network
             num_classes_K = 65336,          # output logits dimensions (referenced as K in paper)
@@ -151,8 +153,9 @@ class CLI(BaseMLCLI):
         source: str = 'enda4_512'
         model_name: str = Field('vit', l='--model', s='-m')
         batch_size: int = Field(16, s='-B')
-        lr: float = 0.0001
         code: str = 'LMGGG_'
+        base_lr: float = 1e-5 # ViT for 1e-6
+        lr: float = -1
         total_fold: int = 5
         fold: int = 0
         minimum_area: float = 0.6
@@ -170,13 +173,14 @@ class CLI(BaseMLCLI):
         m = re.match(r'^.*_(\d+)$', a.source)
         assert m
         size = int(m[1])
+        lr = a.lr if a.lr>0 else a.base_lr*a.batch_size
 
         config = TrainerConfig(
             source = a.source,
             model_name = a.model_name,
             batch_size = a.batch_size,
             size = size,
-            lr = a.lr,
+            lr = lr,
             code = a.code,
             num_classes = a.num_classes,
             total_fold = a.total_fold,
