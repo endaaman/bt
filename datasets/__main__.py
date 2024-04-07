@@ -254,7 +254,8 @@ class CLI(BaseMLCLI):
             hue='diag',
             order=ds.df['name'].value_counts().index
         )
-        plt.xticks(rotation=90)
+        # plt.xticks(rotation=90)
+        plt.xticks([])
         plt.show()
 
     class ExampleArgs(BaseDatasetArgs):
