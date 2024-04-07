@@ -41,6 +41,74 @@ class CLI(BaseMLCLI):
     class CommonArgs(BaseMLCLI.CommonArgs):
         pass
 
+    def run_balance(self, a):
+        df_org = pd.read_excel('data/tiles/enda4_512/folds5.xlsx')
+        col_count = 3
+        fig, axes = plt.subplots(2, col_count, figsize=(8, 5))
+
+        colors = [
+            'tab:green',
+            'tab:blue',
+            'tab:orange',
+        ]
+
+        code = {
+            'G': 'G',
+            'A': 'G',
+            'O': 'G',
+            'L': 'L',
+            'M': 'M',
+            'B': None,
+        }
+        print(axes)
+        for fold in range(5):
+            ax = axes[fold//col_count, fold%col_count]
+            ax.set_title(f'Fold {fold+1}')
+            df = df_org[df_org['fold'] == fold]
+            counts = df.value_counts('diag')
+            counts2 = {}
+            for c, alt in code.items():
+                if not alt:
+                    continue
+                counts2[alt] = counts2.get(alt, 0) + counts[c]
+            ax.bar(counts2.keys(), counts2.values(), color=colors)
+            # sns.histplot(f['diag'], ax=)
+        plt.subplots_adjust()
+        plt.tight_layout()
+        plt.show()
+
+    def run_population(self, a):
+        df = pd.read_excel('data/tiles/enda4_512/folds5.xlsx')
+        count = df['diag'].value_counts()
+        code = list('GAOLM')
+        count = [count[count.index == c].iloc[0] for c in code]
+        total = sum(count)
+        colors = [
+            'tab:green',
+            'tab:red',
+            'tab:purple',
+            'tab:blue',
+            'tab:orange',
+            # 'tab:brown',
+        ]
+        labels = [
+            'GBM',
+            'A',
+            'O',
+            'L',
+            'M',
+        ]
+        wedges, texts, autotexts = plt.pie(
+                count, labels=labels, autopct=lambda p: f'{round(p*total/100)} ({round(p)}%)',
+                startangle=90, counterclock=False, colors=colors)
+
+        for text in texts:
+            text.set_fontsize(20)
+        for text in autotexts:
+            text.set_fontsize(12)
+            text.set_color('white')
+        plt.show()
+
     class MeanStdArgs(CommonArgs):
         src: str = 'data/images'
 
@@ -78,7 +146,6 @@ class CLI(BaseMLCLI):
         std = np.mean(ss, axis=0).tolist()
         print('mean', mean)
         print('std', std)
-
 
     class GridSplitArgs(CommonArgs):
         src: str = 'data/images'
