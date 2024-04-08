@@ -1,15 +1,62 @@
 import itertools
+from functools import lru_cache
 
 import cv2
 import torch
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageFont, ImageDraw
 from PIL.Image import Image as ImageType
 
 from endaaman.ml import pil_to_tensor
 from endaaman import grid_split
 
 
+COLORS = {
+    'L': '#1f77b4',
+    'M': '#ff7f0e',
+    'G': '#2ca02c',
+    'A': 'red',
+    'O': 'blue',
+    'B': '#AC64AD',
+}
+
+FG_COLORS = {
+    'L': 'white',
+    'M': 'white',
+    'G': 'white',
+    'A': 'white',
+    'O': 'white',
+    'B': 'white',
+}
+
+@lru_cache
+def get_font():
+    return ImageFont.truetype('/usr/share/fonts/ubuntu/Ubuntu-R.ttf', size=36)
+
+def draw_frame(i, pred, unique_code):
+    font = get_font()
+    d = unique_code[np.argmax(pred)]
+    bg = COLORS[d]
+    fg = FG_COLORS[d]
+
+    draw = ImageDraw.Draw(i)
+    draw.rectangle(
+        xy=((0, 0), (i.width, i.height)),
+        outline=bg,
+    )
+    text = ' '.join([f'{k}:{round(pred[i])*100}' for i, k in enumerate(unique_code)])
+    # text = item['pred'] + ' '+ text
+    bb = draw.textbbox(xy=(0, 0), text=text, font=font, spacing=8)
+    draw.rectangle(
+        xy=(0, 0, bb[2]+4, bb[3]+4),
+        fill=bg,
+    )
+    draw.text(
+        xy=(0, 0),
+        text=text,
+        font=font,
+        fill=fg
+    )
 
 def show_fold_diag(df):
     for fold, df0 in df.groupby('fold'):

@@ -22,6 +22,7 @@ from pydantic import Field
 from torchvision import transforms
 from torchvision.transforms.functional import adjust_gamma
 import umap
+import albumentations as A
 from openslide import OpenSlide
 
 from endaaman import load_images_from_dir_or_file, with_wrote, grid_split, with_mkdir, n_split
@@ -29,7 +30,7 @@ from endaaman.ml.cli import BaseMLCLI
 import imagesize
 
 from datasets.utils import show_fold_diag
-from utils import calc_white_area
+from utils import calc_white_area, draw_frame
 from classification import TrainerConfig
 
 
@@ -40,6 +41,58 @@ J = os.path.join
 class CLI(BaseMLCLI):
     class CommonArgs(BaseMLCLI.CommonArgs):
         pass
+
+    def run_aug_one(self, a):
+        blur_limit = (3, 5)
+        aug = A.Compose([
+            # A.RandomCrop(width=size, height=size),
+            A.RandomResizedCrop(width=512, height=512, scale=(0.666, 1.5), ratio=(0.95, 1.05), ),
+            A.RandomRotate90(p=1),
+            A.Flip(p=0.5),
+
+            # Blurs
+            A.OneOf([
+                A.MotionBlur(blur_limit=blur_limit),
+                A.MedianBlur(blur_limit=blur_limit),
+                A.GaussianBlur(blur_limit=blur_limit),
+                A.Blur(blur_limit=blur_limit),
+            ], p=1.0),
+            # A.ShiftScaleRotate(shift_limit=0.0625, scale_limit=0.2, rotate_limit=5, p=0.5),
+
+            # Brightness
+            A.OneOf([
+                A.CLAHE(clip_limit=2),
+                A.Emboss(),
+                # A.RandomBrightnessContrast(brightness_limit=0.1),
+                A.RandomToneCurve(),
+            ], p=1.0),
+
+            # Color
+            A.OneOf([
+                A.RGBShift(),
+                A.HueSaturationValue(sat_shift_limit=20),
+            ], p=1.0),
+
+            # Noise
+            A.OneOf([
+                A.ISONoise(),
+                A.GaussNoise(),
+                A.ImageCompression(quality_lower=50, quality_upper=100),
+            ], p=1.0),
+
+            # Transform
+            # A.OneOf([
+            #     A.CoarseDropout(max_holes=16, min_holes=1,
+            #                     max_height=32, max_width=32,
+            #                     min_height=8, min_width=8, fill_value=0, p=1.0),
+            #     A.RandomGridShuffle(grid=(2, 2)),
+            #     A.RandomGridShuffle(grid=(3, 3)),
+            # ], p=1.0),
+        ])
+
+        image =  np.array(Image.open(',/tile.jpg'))
+        a = aug(image=image)['image']
+        Image.fromarray(a).save(',/aug.png')
 
     def run_balance(self, a):
         df_org = pd.read_excel('data/tiles/enda4_512/folds5.xlsx')
@@ -305,17 +358,6 @@ class CLI(BaseMLCLI):
         selected_rows.append(df_report[df_report['correct'] < 1])
         selected_rows = pd.concat(selected_rows)
 
-        colors = {
-            'L': ('#1f77b4', 'black'),
-            'M': ('#ff7f0e', 'white'),
-            'G': ('#2ca02c', 'white'),
-            'A': ('red', 'white'),
-            'O': ('blue', 'white'),
-            'B': ('#AC64AD', 'white'),
-        }
-
-        font = ImageFont.truetype('/usr/share/fonts/ubuntu/Ubuntu-R.ttf', size=32)
-
         data = []
         tq = tqdm(selected_rows.iterrows(), total=len(selected_rows))
         for idx, row in tq:
@@ -325,31 +367,13 @@ class CLI(BaseMLCLI):
             row_images = []
             for _y, cols in rows.groupby('y'):
                 row_image_list = []
-                for _x, item in cols.iterrows():
-                    bg = colors[item['pred']][0]
-                    fg = colors[item['pred']][1]
+                for _x, row in cols.iterrows():
                     # print(item['x'], item['y'], item['pred'])
-                    name, filename = item[['name', 'filename']]
-                    # i = Image.new('RGBA', (item['width'], item['height']), color=(0,0,0,0,))
+                    name, filename = row[['name', 'filename']]
+                    # i = Image.new('RGBA', (row['width'], row['height']), color=(0,0,0,0,))
                     i = Image.open(f'cache/{config.source}/{diag_org}/{name}/{filename}')
-                    draw = ImageDraw.Draw(i)
-                    draw.rectangle(
-                        xy=((0, 0), (item['width'], item['height'])),
-                        outline=bg,
-                    )
-                    text = ' '.join([f'{k}:{item[k]:.2f}' for k in unique_code])
-                    # text = item['pred'] + ' '+ text
-                    bb = draw.textbbox(xy=(0, 0), text=text, font=font, spacing=8)
-                    draw.rectangle(
-                        xy=(0, 0, bb[2]+4, bb[3]+4),
-                        fill=bg,
-                    )
-                    draw.text(
-                        xy=(0, 0),
-                        text=text,
-                        font=font,
-                        fill=fg
-                    )
+                    pred = np.array([row[c] for i, c in enumerate(unique_code)])
+                    draw_frame(i, pred, unique_code)
                     row_image_list.append(np.array(i))
 
                 row_image = cv2.hconcat(row_image_list)
@@ -581,8 +605,8 @@ class CLI(BaseMLCLI):
 
         fig.canvas.mpl_connect('motion_notify_event', hover)
 
-        plt.legend()
-        # plt.subplots_adjust(right=0.75, top=0.75)
+        # plt.legend()
+        plt.subplots_adjust(right=0.75, top=0.75)
         d = J(a.model_dir, 'umap')
         os.makedirs(d, exist_ok=True)
         plt.savefig(with_wrote(J(d, f'{data_name}_{a.mode}_{a.count}.png')))
