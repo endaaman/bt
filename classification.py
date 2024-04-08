@@ -31,6 +31,7 @@ from endaaman.ml.cli import BaseMLCLI, BaseDLArgs, BaseTrainArgs
 
 from models import TimmModel, CrossEntropyLoss
 from datasets.fold import FoldDataset, MEAN, STD
+from utils import draw_frame
 
 
 torch.multiprocessing.set_sharing_strategy('file_system')
@@ -326,7 +327,27 @@ class CLI(BaseMLCLI):
             transforms.Normalize(mean=MEAN, std=STD),
         ] if v])
 
-        images, paths  = load_images_from_dir_or_file(a.src, with_path=True)
+        if os.path.splitext(a.src)[-1] == '.xlsx':
+            df_report = pd.read_excel(a.src, sheet_name='images')
+            # caseごとの最初の画像と、間違えてえたものを評価
+            selected_rows = []
+            for name, rows in df_report.groupby('name'):
+                # select first
+                selected_rows.append(rows.iloc[:1])
+            selected_rows.append(df_report[df_report['correct'] < 1])
+            selected_rows = pd.concat(selected_rows)
+
+            paths = []
+            dests = []
+            source = config.source.split('_')[0]
+            for i, row in selected_rows.iterrows():
+                paths.append(J('data/images', source, row['diag_org'], row['image_name']))
+                dests.append(J(dest_dir, row['gt']))
+            images = [Image.open(p) for p in paths]
+        else:
+            images, paths  = load_images_from_dir_or_file(a.src, with_path=True)
+            dests = [dest_dir for _ in range(len(images))]
+
         imagess = []
         col_counts = []
         row_counts = []
@@ -354,20 +375,9 @@ class CLI(BaseMLCLI):
 
         unique_code = config.unique_code()
 
-        colors = {
-            'L': '#1f77b4',
-            'M': '#ff7f0e',
-            'G': '#2ca02c',
-            'A': 'red',
-            'O': 'blue',
-            'B': '#AC64AD',
-        }
-
-        font = ImageFont.truetype('/usr/share/fonts/ubuntu/Ubuntu-R.ttf', size=24)
-
         for idx, (
-            path, images, col_count, row_count
-        ) in enumerate(zip(paths, imagess, col_counts, row_counts)):
+            path, images, dest, col_count, row_count
+        ) in enumerate(zip(paths, imagess, dests, col_counts, row_counts)):
 
             oo = []
             # drews = [[None]*col_count]*row_count
@@ -393,24 +403,7 @@ class CLI(BaseMLCLI):
                     # overwrite variable
                     image = Image.fromarray(vis)
 
-                draw = ImageDraw.Draw(image)
-                draw.rectangle(
-                    xy=((0, 0), (image.width, image.height)),
-                    outline=colors[pred],
-                    width=max(image.width//100, 1),
-                )
-                text = ' '.join([f'{k}:{v:.2f}' for v, k in zip(o, unique_code)])
-                bb = draw.textbbox(xy=(0, 0), text=text, font=font, spacing=8)
-                draw.rectangle(
-                    xy=bb,
-                    fill=colors[pred],
-                )
-                draw.text(
-                    xy=(0, 0),
-                    text=text,
-                    font=font,
-                    fill='white'
-                )
+                draw_frame(image, o, unique_code)
                 drews[i // col_count][i % col_count] = image
 
             row_images = []
@@ -431,7 +424,7 @@ class CLI(BaseMLCLI):
             print(f'{path}: ({w}x{h}) {pred} ({label})')
 
             name = os.path.splitext(os.path.basename(path))[0]
-            merged_image.save(J(dest_dir, f'{name}.jpg'))
+            merged_image.save(J(with_mkdir(dest), f'{name}.jpg'))
 
             merged_image.close()
 
