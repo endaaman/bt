@@ -213,8 +213,8 @@ class CLI(BaseMLCLI):
         fold: int = 0
         total_fold: int = 5
         limit: int = -1
-        upsample: bool = Field(False, cli=('--upsample', ))
-        show: bool = Field(False, cli=('--show', ))
+        upsample: bool = False
+        show: bool = False
 
     class InspectArgs(BaseDatasetArgs):
         pass
@@ -256,7 +256,8 @@ class CLI(BaseMLCLI):
         )
         # plt.xticks(rotation=90)
         plt.xticks([])
-        plt.show()
+        if a.show:
+            plt.show()
 
     class ExampleArgs(BaseDatasetArgs):
         count:int = 10
