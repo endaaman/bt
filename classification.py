@@ -113,11 +113,10 @@ class CLI(BaseMLCLI):
         minimum_area: float = 0.6
         limit: int = 500
         noupsample: bool = False
-        noaug: bool = False
         epoch: int = Field(100, s='-E')
         total_fold: int = 5
         fold: int
-        model: str = Field('tf_efficientnet_b0', s='-m')
+        model: str = Field(..., s='-m')
         source: str = 'enda4_512'
         suffix: str = Field('', s='-S')
         prefix: str = ''
