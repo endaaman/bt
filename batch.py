@@ -16,6 +16,7 @@ from tqdm import tqdm
 import imagesize
 from matplotlib import pyplot as plt
 from matplotlib.offsetbox import OffsetImage, AnnotationBbox
+from matplotlib.legend_handler import HandlerTuple
 from sklearn.model_selection import StratifiedKFold
 from sklearn import metrics as skmetrics
 from pydantic import Field
@@ -27,6 +28,7 @@ from openslide import OpenSlide
 
 from endaaman import load_images_from_dir_or_file, with_wrote, grid_split, with_mkdir, n_split
 from endaaman.ml.cli import BaseMLCLI
+from endaaman.ml.utils import hover_images_on_scatters
 import imagesize
 
 from datasets.utils import show_fold_diag
@@ -514,6 +516,7 @@ class CLI(BaseMLCLI):
 
         center_crop = transforms.CenterCrop((512, 512))
 
+        corrects = []
         for name, rows in df.groupby('name'):
             selected_rows = df.loc[np.random.choice(rows.index, a.count)]
             selected_features = list(selected_rows['feature'])
@@ -530,13 +533,15 @@ class CLI(BaseMLCLI):
                 labels += [unique_code.index(d) for d in selected_rows['pred']]
             else:
                 raise RuntimeError('Invalid mode', a.mode)
-
+            corrects += list(selected_rows['pred'] == selected_rows['diag'])
             images += [
                 np.array(center_crop(Image.open(f'cache/{config.source}/{diag}/{name}/{fn}')))
                 for _, (diag, name, fn) in selected_rows[['diag_org', 'name', 'filename']].iterrows()
             ]
 
         labels = np.array(labels)
+        corrects = np.array(corrects)
+        images = np.stack(images)
         target_features = np.stack(target_features)
         print(target_features.shape)
 
@@ -551,65 +556,36 @@ class CLI(BaseMLCLI):
         fig, ax = plt.subplots(1, 1, figsize=(14, 10))
 
         target_features = np.array(target_features)
-        scs = []
-        dds = []
-        iis = []
-        for n in np.unique(labels):
-            label = unique_code[n] if a.mode == 'pred' else 'LMGAOB'[n]
-            scs.append(plt.scatter(embedding_x[labels == n], embedding_y[labels == n], label=label, s=24))
-            dds.append(labels[labels == n])
-            iis.append([i for (i, d) in zip(images, labels) if d == n])
+        scatters = []
+        imagess = []
+        # for n in np.unique(labels):
+        #     label = unique_code[n] if a.mode == 'pred' else 'LMGAOB'[n]
+        #     scs.append(plt.scatter(embedding_x[labels == n], embedding_y[labels == n], label=label, s=10))
+        #     dds.append(labels[labels == n])
+        #     iis.append([i for (i, d) in zip(images, labels) if d == n])
 
-        # annot = ax.annotate("", xy=(0,0), xytext=(20,20),textcoords="offset points",
-        #                 bbox=dict(boxstyle="round", fc="w"),
-        #                 arrowprops=dict(arrowstyle="->"))
-        imagebox = OffsetImage(images[0], zoom=.5)
-        imagebox.image.axes = ax
+        for label in np.unique(labels):
+            needle = labels == label
+            label_str = unique_code[label] if a.mode == 'pred' else 'LMGAOB'[label]
+            xx, yy, cc, ii = embedding_x[needle], embedding_y[needle], corrects[needle], images[needle]
+            for t in [True, False]:
+                idx = corrects[needle] == t
+                scatters.append(plt.scatter(xx[idx], yy[idx], label=label_str, c=f'C{label}',
+                                            marker='o'if t else 'x',
+                                            s=5 if t else 10, ))
+                imagess.append([cv2.resize(i.squeeze(), (224, 224)) for i in ii[idx]])
 
-        annot = AnnotationBbox(imagebox,
-                               xy=(0, 0),
-                               # xybox=(256, 256),
-                               # xycoords='data',
-                               boxcoords='offset points',
-                               # boxcoords=('axes fraction', 'data'),
-                               pad=0.1,
-                               arrowprops=dict(arrowstyle='->', connectionstyle='arc3,rad=-0.3'))
-        annot.set_visible(False)
-        ax.add_artist(annot)
-
-        def hover(event):
-            vis = annot.get_visible()
-            if event.inaxes != ax:
-                return
-
-            for n, (sc, ii) in enumerate(zip(scs, iis)):
-                cont, index = sc.contains(event)
-                if cont:
-                    i = index['ind'][0]
-                    pos = sc.get_offsets()[i]
-                    annot.xy = pos
-                    annot.xybox = pos + np.array([150, 30])
-                    image = ii[i]
-                    # text = unique_code[n]
-                    # annot.set_text(text)
-                    # annot.get_bbox_patch().set_facecolor(cmap(int(text)/10))
-                    imagebox.set_data(image)
-                    annot.set_visible(True)
-                    fig.canvas.draw_idle()
-                    return
-
-            if vis:
-                annot.set_visible(False)
-                fig.canvas.draw_idle()
-                return
-
-        fig.canvas.mpl_connect('motion_notify_event', hover)
+        hover_images_on_scatters(scatters, imagess, ax=ax)
 
         # plt.legend()
-        plt.subplots_adjust(right=0.75, top=0.75)
+        legend_entries = [(scatters[i*2], scatters[i*2+1]) for i in range(len(scatters)//2)]
+        ax.legend(legend_entries, 'LMGAOB', handler_map={tuple: HandlerTuple(ndivide=None)})
+
         d = J(a.model_dir, 'umap')
         os.makedirs(d, exist_ok=True)
         plt.savefig(with_wrote(J(d, f'{data_name}_{a.mode}_{a.count}.png')))
+
+        plt.subplots_adjust(right=0.75, top=0.75)
         if a.show:
             plt.show()
 
