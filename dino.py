@@ -23,7 +23,6 @@ from pydantic import Field, Extra
 from vit_pytorch import ViT
 # from vit_pytorch import Dino
 import albumentations as A
-from albumentations.pytorch.transforms import ToTensorV2
 
 import pytorch_grad_cam as CAM
 from pytorch_grad_cam.utils.image import show_cam_on_image
