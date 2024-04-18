@@ -49,6 +49,7 @@ class TrainerConfig(BaseTrainerConfig):
     minimum_area: float
     limit: int = -1
     upsample: bool = False
+    schduler: str = 'plateau_10'
     mean: float = MEAN
     std: float = STD
 
@@ -89,8 +90,15 @@ class Trainer(BaseTrainer):
         self._visualize_confusion(ax, 'val', val_preds, val_gts)
 
     def create_scheduler(self):
-        return optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, patience=10)
-        # return torch.optim.lr_scheduler.ExponentialLR(self.optimizer, gamma=0.1)
+        s = self.config.schduler
+        m = re.match(r'^plateau_(\d+)$', s)
+        if m:
+            return optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, patience=int(m[1]))
+        m = re.match(r'^step_(\d+)$', s)
+        if m:
+            return optim.lr_scheduler.StepLR(self.optimizer, step_size=int(m[1]), gamma=0.1)
+        raise RuntimeError('Invalid schduler')
+        # return optim.lr_scheduler.ExponentialLR(self.optimizer, gamma=0.1)
 
     def continues(self):
         lr = self.get_current_lr()
