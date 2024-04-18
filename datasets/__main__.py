@@ -290,7 +290,7 @@ class CLI(BaseMLCLI):
             img = ds.load_from_row(row)
 
             img.save(J(d, f'{i}_a.jpg'))
-            aug = ds.aug(x)
+            aug = tensor_to_pil(ds.aug(image=np.array(img))['image'])
             aug.save(J(d, f'{i}_b.jpg'))
 
     def run_quad_attention(self, a):
