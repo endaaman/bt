@@ -41,15 +41,15 @@ J = os.path.join
 class TrainerConfig(BaseTrainerConfig):
     model_name:str
     source: str
-    fold: int
     total_fold: int
+    fold: int
     code: str
     num_classes: int
     size: int
     minimum_area: float
     limit: int = -1
     upsample: bool = False
-    schduler: str = 'plateau_10'
+    scheduler: str = 'plateau_10'
     mean: float = MEAN
     std: float = STD
 
@@ -90,14 +90,14 @@ class Trainer(BaseTrainer):
         self._visualize_confusion(ax, 'val', val_preds, val_gts)
 
     def create_scheduler(self):
-        s = self.config.schduler
+        s = self.config.scheduler
         m = re.match(r'^plateau_(\d+)$', s)
         if m:
             return optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, patience=int(m[1]))
         m = re.match(r'^step_(\d+)$', s)
         if m:
             return optim.lr_scheduler.StepLR(self.optimizer, step_size=int(m[1]), gamma=0.1)
-        raise RuntimeError('Invalid schduler')
+        raise RuntimeError('Invalid scheduler')
         # return optim.lr_scheduler.ExponentialLR(self.optimizer, gamma=0.1)
 
     def continues(self):
@@ -114,41 +114,45 @@ class CLI(BaseMLCLI):
         pass
 
     class TrainArgs(BaseTrainArgs):
+        # train param
+        epoch: int = Field(100, s='-E')
+        num_workers: int = Field(4, s='-N')
+        suffix: str = Field('', s='-S')
+        prefix: str = ''
+        overwrite: bool = Field(False, s='-O')
+
         base_lr: float = 1e-5 # ViT for 1e-6
         lr: float = -1
         batch_size: int = Field(16, s='-B')
-        num_workers: int = Field(4, s='-N')
+        model_name: str = Field(..., l='--model', s='-m')
+        source: str = 'enda4_512'
+        total_fold: int = 5
+        fold: int
+        code: str = 'LMGGGB'
+        size: int = Field(512, s='-s')
         minimum_area: float = 0.6
         limit: int = 500
         noupsample: bool = False
-        epoch: int = Field(100, s='-E')
-        total_fold: int = 5
-        fold: int
-        model: str = Field(..., s='-m')
-        source: str = 'enda4_512'
-        suffix: str = Field('', s='-S')
-        prefix: str = ''
-        size: int = Field(512, s='-s')
-        code: str = 'LMGGGB'
-        overwrite: bool = Field(False, s='-O')
+        scheduler: str = 'plateau_10'
 
     def run_train(self, a:TrainArgs):
         num_classes = len(set([*a.code]) - {'_'})
         lr = a.lr if a.lr>0 else a.base_lr*a.batch_size
 
         config = TrainerConfig(
-            model_name = a.model,
             batch_size = a.batch_size,
             lr = lr,
+            model_name = a.model_name,
             source = a.source,
-            size = a.size,
-            code = a.code,
             total_fold = a.total_fold,
             fold = a.fold,
+            code = a.code,
+            size = a.size,
             num_classes = num_classes,
             minimum_area = a.minimum_area,
             limit = a.limit,
             upsample = not a.noupsample,
+            scheduler = a.scheduler,
         )
 
         if a.fold < 0:
