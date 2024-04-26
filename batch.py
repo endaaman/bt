@@ -7,6 +7,7 @@ import hashlib
 import random
 from itertools import compress
 
+import joblib
 import pandas as pd
 import torch
 from PIL import Image, ImageOps, ImageFile, ImageDraw, ImageFont
@@ -22,7 +23,7 @@ from sklearn import metrics as skmetrics
 from pydantic import Field
 from torchvision import transforms
 from torchvision.transforms.functional import adjust_gamma
-import umap
+from umap import UMAP
 import albumentations as A
 from openslide import OpenSlide
 
@@ -487,11 +488,11 @@ class CLI(BaseMLCLI):
 
     class ClusterArgs(CommonArgs):
         model_dir: str = Field(..., s='-d')
-        target_file: str = Field('features_test.pt', s='-T')
+        target_file: str = Field('features_test.pt', s='-t')
         count: int = 10
         show: bool = False
-        mode: str = Field('original', choices=['original', 'gt', 'pred'])
         notrained: bool = Field(False, cli=('--notrained', ))
+        export: bool= False
 
     def run_cluster(self, a):
         config = TrainerConfig.from_file(J(a.model_dir, 'config.json'))
@@ -517,27 +518,24 @@ class CLI(BaseMLCLI):
         center_crop = transforms.CenterCrop((512, 512))
 
         corrects = []
-        for name, rows in df.groupby('name'):
-            selected_rows = df.loc[np.random.choice(rows.index, a.count)]
-            selected_features = list(selected_rows['feature'])
+        selected_rowss = []
+        for name, _rows in df.groupby('name'):
+            rows = df.loc[np.random.choice(_rows.index, a.count)]
+            selected_features = list(rows['feature'])
 
-            # print(selected_rows)
+            # print(rows)
             # print(selected_features[0].shape)
             # break
             target_features += selected_features
-            if a.mode == 'original':
-                labels += ['LMGAOB'.index(d) for d in selected_rows['diag_org']]
-            elif a.mode == 'gt':
-                labels += [unique_code.index(d) for d in selected_rows['diag']]
-            elif a.mode == 'pred':
-                labels += [unique_code.index(d) for d in selected_rows['pred']]
-            else:
-                raise RuntimeError('Invalid mode', a.mode)
-            corrects += list(selected_rows['pred'] == selected_rows['diag'])
+            labels += ['LMGAOB'.index(d) for d in rows['diag_org']]
+            corrects += list(rows['pred'] == rows['diag'])
             images += [
                 np.array(center_crop(Image.open(f'cache/{config.source}/{diag}/{name}/{fn}')))
-                for _, (diag, name, fn) in selected_rows[['diag_org', 'name', 'filename']].iterrows()
+                for _, (diag, name, fn) in rows[['diag_org', 'name', 'filename']].iterrows()
             ]
+            selected_rowss.append(rows)
+
+        selected_rows = pd.concat(selected_rowss)
 
         labels = np.array(labels)
         corrects = np.array(corrects)
@@ -548,7 +546,8 @@ class CLI(BaseMLCLI):
         print('Loaded samples.')
 
         ##* UMAP
-        embedding = umap.UMAP().fit_transform(target_features)
+        umap_model = UMAP()
+        embedding = umap_model.fit_transform(target_features)
         embedding_x = embedding[:, 0]
         embedding_y = embedding[:, 1]
 
@@ -566,7 +565,7 @@ class CLI(BaseMLCLI):
 
         for label in np.unique(labels):
             needle = labels == label
-            label_str = unique_code[label] if a.mode == 'pred' else 'LMGAOB'[label]
+            label_str = 'LMGAOB'[label]
             xx, yy, cc, ii = embedding_x[needle], embedding_y[needle], corrects[needle], images[needle]
             for t in [True, False]:
                 idx = corrects[needle] == t
@@ -583,11 +582,27 @@ class CLI(BaseMLCLI):
 
         d = J(a.model_dir, 'umap')
         os.makedirs(d, exist_ok=True)
-        plt.savefig(with_wrote(J(d, f'{data_name}_{a.mode}_{a.count}.png')))
+        plt.savefig(with_wrote(J(d, f'{data_name}_{a.count}.png')))
 
         plt.subplots_adjust(right=0.75, top=0.75)
+
+        if a.export:
+            export_dir = with_mkdir(J(a.model_dir, 'umap', f'{data_name}_{a.count}'))
+            os.makedirs(J(export_dir, 'images'), exist_ok=True)
+            joblib.dump(umap_model, J(export_dir, 'umap_model.joblib'))
+            selected_rows['x'] = embedding[:, 0]
+            selected_rows['y'] = embedding[:, 1]
+            selected_rows.drop(columns=['feature'], inplace=True)
+            selected_rows.to_excel(J(export_dir, 'umap.xlsx'))
+            # for i, (diag, name, fn) in selected_rows[['diag_org', 'name', 'filename']].iterrows():
+            #     shutil.copy(
+            #         f'cache/{config.source}/{diag}/{name}/{fn}',
+            #         J(export_dir, 'images', f'{diag}_{name}_{fn}')
+            #     )
+
         if a.show:
             plt.show()
+
 
     def run_list_reports(self, a):
         df = []
