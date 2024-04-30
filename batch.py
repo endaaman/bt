@@ -492,7 +492,7 @@ class CLI(BaseMLCLI):
         count: int = 10
         show: bool = False
         notrained: bool = Field(False, cli=('--notrained', ))
-        export: bool= False
+        export: bool = False
 
     def run_cluster(self, a):
         config = TrainerConfig.from_file(J(a.model_dir, 'config.json'))
