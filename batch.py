@@ -488,13 +488,17 @@ class CLI(BaseMLCLI):
 
     class ClusterArgs(CommonArgs):
         model_dir: str = Field(..., s='-d')
+        save: str = ''
         target_file: str = Field('features_test.pt', s='-t')
         count: int = 10
         show: bool = False
         notrained: bool = Field(False, cli=('--notrained', ))
         export: bool = False
 
-    def run_cluster(self, a):
+        n_neighbors:int = 15
+        min_dist:float = 0.1
+
+    def run_cluster(self, a:ClusterArgs):
         config = TrainerConfig.from_file(J(a.model_dir, 'config.json'))
 
         unique_code = config.unique_code()
@@ -546,7 +550,12 @@ class CLI(BaseMLCLI):
         print('Loaded samples.')
 
         ##* UMAP
-        umap_model = UMAP()
+        umap_model = UMAP(
+            # n_neighbors=15,
+            # n_components=2
+            n_neighbors=a.n_neighbors,
+            min_dist=a.min_dist,
+        )
         embedding = umap_model.fit_transform(target_features)
         embedding_x = embedding[:, 0]
         embedding_y = embedding[:, 1]
@@ -582,12 +591,13 @@ class CLI(BaseMLCLI):
 
         d = J(a.model_dir, 'umap')
         os.makedirs(d, exist_ok=True)
-        plt.savefig(with_wrote(J(d, f'{data_name}_{a.count}.png')))
+        path = a.save or J(d, f'{data_name}_{a.count}.png')
+        plt.savefig(with_wrote(path))
 
         plt.subplots_adjust(right=0.75, top=0.75)
 
         if a.export:
-            export_dir = with_mkdir(J(a.model_dir, 'umap', f'{data_name}_{a.count}'))
+            export_dir = with_mkdir(J(a.model_dir, 'umap', f'{data_name}_{a.count}_{a.n_neighbors}_{a.min_dist}'))
             os.makedirs(J(export_dir, 'images'), exist_ok=True)
             joblib.dump(umap_model, J(export_dir, 'umap_model.joblib'))
             selected_rows['x'] = embedding[:, 0]
