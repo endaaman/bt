@@ -206,7 +206,7 @@ class NestedCrossEntropyLoss(nn.Module):
         # Ex. rules: [{'weight': 1.0, 'index': [[0, 1], [3, 4]]}]
         #     This means to merge 0 and 1, 3 and 4
         # The logits should be like below
-        # [1, 2, 3, 4, 5] -> [(1 + 2), 3, (4 + 5)] -> [3, 3, 9]
+        # logits=[1, 2, 3, 4, 5] -> [(1 + 2), 3, (4 + 5)] -> [3, 3, 9]
         self.rules = rules
         self.by_index = by_index
         self.sum_logits = sum_logits
@@ -219,7 +219,6 @@ class NestedCrossEntropyLoss(nn.Module):
         drop_idx = []
 
         # Sum up logits specified by param index
-
         for idx in idxs:
             merging_logits = logits[..., idx]
             merged = torch.sum(merging_logits, dim=-1)[..., None]

@@ -26,10 +26,11 @@ from pytorch_grad_cam.utils.model_targets import BinaryClassifierOutputTarget, C
 
 from endaaman import with_wrote, load_images_from_dir_or_file, grid_split, with_mkdir
 from endaaman.ml import BaseTrainerConfig, BaseTrainer, Checkpoint, pil_to_tensor
-from endaaman.ml.metrics import MultiAccuracy
+from endaaman.ml.metrics import MultiAccuracy, BaseMetrics
+from endaaman.ml.functional import multi_accuracy
 from endaaman.ml.cli import BaseMLCLI, BaseDLArgs, BaseTrainArgs
 
-from models import TimmModel, CrossEntropyLoss
+from models import TimmModel, NestedCrossEntropyLoss
 from datasets.fold import FoldDataset, MEAN, STD
 from utils import draw_frame
 
@@ -39,6 +40,9 @@ np.set_printoptions(suppress=True, floatmode='fixed')
 J = os.path.join
 
 class TrainerConfig(BaseTrainerConfig):
+    mean: float = MEAN
+    std: float = STD
+
     model_name:str
     source: str
     total_fold: int
@@ -47,11 +51,10 @@ class TrainerConfig(BaseTrainerConfig):
     num_classes: int
     size: int
     minimum_area: float
+    nested_weight = 0.0
     limit: int = -1
     upsample: bool = False
     scheduler: str = 'plateau_10'
-    mean: float = MEAN
-    std: float = STD
 
     # NOT USED
     image_aug: bool =True
@@ -59,11 +62,37 @@ class TrainerConfig(BaseTrainerConfig):
     def unique_code(self):
         return [c for c in dict.fromkeys(self.code) if c in 'LMGAOB']
 
+class Acc3(BaseMetrics):
+    def calc(self, preds, gts, batch=True):
+        new_preds = torch.zeros(preds.shape[0], 4)
+        # LMGAOB -> LMBG
+        new_preds[:, 0] = preds[:, 0] # L_____
+        new_preds[:, 1] = preds[:, 1] # _M____
+        new_preds[:, 2] = preds[:, 5] # _____B
+        new_preds[:, 3] = preds[:, [2,3,4]].sum(dim=1) # __GAO_
+        new_gts = torch.tensor([0, 1, 3, 3, 3, 2])[gts]
+        return multi_accuracy(new_preds, new_gts, by_index=True)
+
 
 class Trainer(BaseTrainer):
     def prepare(self):
-        self.criterion = CrossEntropyLoss(input_logits=True)
-        self.fig_col_count = 2
+        self.nested = self.config.code == 'LMGAOB'
+        if self.nested:
+            self.criterion = NestedCrossEntropyLoss(
+                rules=[
+                    {
+                        'weight': 1.0-self.config.nested_weight,
+                        'index': [],
+                    }, {
+                        'weight': self.config.nested_weight,
+                        'index': [[2,3,4]], #LMGAOB -> LMGB
+                    }
+                ]
+            )
+            self.fig_col_count = 3
+        else:
+            self.criterion = NestedCrossEntropyLoss()
+            self.fig_col_count = 2
         return TimmModel(name=self.config.model_name, num_classes=self.config.num_classes)
 
     def eval(self, inputs, gts):
@@ -105,9 +134,15 @@ class Trainer(BaseTrainer):
         return lr > 1e-7
 
     def get_metrics(self):
+        if self.nested:
+            return {
+                'acc5': MultiAccuracy(),
+                'acc3': Acc3(),
+            }
         return {
-            'acc': MultiAccuracy(),
+            f'acc{len(self.config.unique_code())}': MultiAccuracy(),
         }
+
 
 class CLI(BaseMLCLI):
     class CommonArgs(BaseMLCLI.CommonArgs):
@@ -117,9 +152,9 @@ class CLI(BaseMLCLI):
         # train param
         epoch: int = Field(100, s='-E')
         num_workers: int = Field(4, s='-N')
-        suffix: str = Field('', s='-S')
-        prefix: str = ''
         overwrite: bool = Field(False, s='-O')
+        suffix: str = ''
+        out: str = 'out/{source}/{code}/fold{total_fold}_{fold}/{model_name}{suffix}'
 
         base_lr: float = 1e-5 # ViT for 1e-6
         lr: float = -1
@@ -131,6 +166,7 @@ class CLI(BaseMLCLI):
         code: str = 'LMGGGB'
         size: int = Field(512, s='-s')
         minimum_area: float = 0.6
+        nested_weight: float = 0.0
         limit: int = 500
         noupsample: bool = False
         scheduler: str = 'plateau_10'
@@ -150,6 +186,7 @@ class CLI(BaseMLCLI):
             size = a.size,
             num_classes = num_classes,
             minimum_area = a.minimum_area,
+            nested_weight = a.nested_weight,
             limit = a.limit,
             upsample = not a.noupsample,
             scheduler = a.scheduler,
@@ -186,12 +223,12 @@ class CLI(BaseMLCLI):
                 ) for t in ('train', 'test')
             ]
 
-        out_dir = J(
-            'out', a.source, config.code,
-            f'fold{a.total_fold}_{a.fold}', a.prefix, config.model_name
-        )
-        if a.suffix:
-            out_dir += f'_{a.suffix}'
+        # out_dir = J(
+        #     'out', a.source, config.code,
+        #     f'fold{a.total_fold}_{a.fold}', config.model_name
+        # )
+        # default: f'out/{source}/{code}/fold{total_fold}_{fold}/{model_name}{suffix}'
+        out_dir = a.out.format(**a.dict())
 
         trainer = Trainer(
             config=config,
