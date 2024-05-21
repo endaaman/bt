@@ -25,12 +25,12 @@ from pytorch_grad_cam.utils.image import show_cam_on_image
 from pytorch_grad_cam.utils.model_targets import BinaryClassifierOutputTarget, ClassifierOutputTarget
 
 from endaaman import with_wrote, load_images_from_dir_or_file, grid_split, with_mkdir
-from endaaman.ml import BaseTrainerConfig, BaseTrainer, Checkpoint, pil_to_tensor
+from endaaman.ml import BaseTrainerConfig, BaseTrainer, Checkpoint, EvacuateModel, pil_to_tensor
 from endaaman.ml.metrics import MultiAccuracy, BaseMetrics
 from endaaman.ml.functional import multi_accuracy
 from endaaman.ml.cli import BaseMLCLI, BaseDLArgs, BaseTrainArgs
 
-from models import TimmModel, NestedCrossEntropyLoss
+from models import TimmModel, TimmModelWithGraph, NestedCrossEntropyLoss, GraphMatrix
 from datasets.fold import FoldDataset, MEAN, STD
 from utils import draw_frame
 
@@ -51,7 +51,7 @@ class TrainerConfig(BaseTrainerConfig):
     num_classes: int
     size: int
     minimum_area: float
-    nested_weight = 0.0
+    nested: float|str = 0.0
     limit: int = -1
     upsample: bool = False
     scheduler: str = 'plateau_10'
@@ -77,27 +77,58 @@ class Acc3(BaseMetrics):
 class Trainer(BaseTrainer):
     def prepare(self):
         self.nested = self.config.code == 'LMGAOB'
+        model = TimmModel(name=self.config.model_name, num_classes=self.config.num_classes)
         if self.nested:
-            self.criterion = NestedCrossEntropyLoss(
-                rules=[
-                    {
-                        'weight': 1.0-self.config.nested_weight,
-                        'index': [],
-                    }, {
-                        'weight': self.config.nested_weight,
-                        'index': [[2,3,4]], #LMGAOB -> LMGB
-                    }
-                ]
-            )
-            self.fig_col_count = 3
+            if self.config.nested == 'graph':
+                graph_matrix = GraphMatrix(size=self.config.num_classes).to(self.device)
+                model = TimmModelWithGraph(model, graph_matrix)
+                self.criterion = nn.CrossEntropyLoss()
+            elif self.config.nested == 'none' or self.config.nested == 0:
+                self.criterion = nn.CrossEntropyLoss()
+            else:
+                self.criterion = NestedCrossEntropyLoss(
+                    rules=[
+                        {
+                            'weight': 1.0-self.config.nested_weight,
+                            'index': [],
+                        }, {
+                            'weight': self.config.nested_weight,
+                            'index': [[2,3,4]], #LMGAOB -> LMGB
+                        }
+                    ]
+                )
+                self.fig_col_count = 3
         else:
-            self.criterion = NestedCrossEntropyLoss()
+            self.criterion = nn.CrossEntropyLoss()
             self.fig_col_count = 2
-        return TimmModel(name=self.config.model_name, num_classes=self.config.num_classes)
 
-    def eval(self, inputs, gts):
-        preds = self.model(inputs.to(self.device), activate=False)
-        loss = self.criterion(preds, gts.to(self.device))
+        return model
+
+    def create_optimizer(self):
+        if self.config.nested == 'graph':
+            params = [
+                {'params': self.model.model.parameters(), 'lr': self.config.lr},
+                {'params': self.model.graph_matrix.parameters(), 'lr': 0.001},
+            ]
+        else:
+            params = [
+                {'params': self.model.parameters(), 'lr': self.config.lr},
+            ]
+        return optim.RAdam(params)
+
+    def eval(self, inputs, gts, i):
+        inputs = inputs.to(self.device)
+        gts = gts.to(self.device)
+        preds = self.model(inputs, activate=False)
+        loss = self.criterion(preds, gts)
+        if self.config.nested == 'graph':
+            preds = torch.softmax(preds, dim=1)
+            graph_loss = self.model.graph_matrix(preds, gts)
+            loss = loss + graph_loss
+            if i%500 == 0:
+                torch.set_printoptions(precision=2, sci_mode=False)
+                print(self.model.graph_matrix.matrix)
+                print(self.model.graph_matrix.get_matrix())
         return loss, preds.detach().cpu()
 
     def _visualize_confusion(self, ax, label, preds, gts):
@@ -166,7 +197,7 @@ class CLI(BaseMLCLI):
         code: str = 'LMGGGB'
         size: int = Field(512, s='-s')
         minimum_area: float = 0.6
-        nested_weight: float = 0.0
+        nested:str = '0'
         limit: int = 500
         noupsample: bool = False
         scheduler: str = 'plateau_10'
@@ -174,6 +205,10 @@ class CLI(BaseMLCLI):
     def run_train(self, a:TrainArgs):
         num_classes = len(set([*a.code]) - {'_'})
         lr = a.lr if a.lr>0 else a.base_lr*a.batch_size
+        try:
+            nested = float(a.nested)
+        except (ValueError, TypeError):
+            pass
 
         config = TrainerConfig(
             batch_size = a.batch_size,
@@ -186,7 +221,7 @@ class CLI(BaseMLCLI):
             size = a.size,
             num_classes = num_classes,
             minimum_area = a.minimum_area,
-            nested_weight = a.nested_weight,
+            nested = a.nested,
             limit = a.limit,
             upsample = not a.noupsample,
             scheduler = a.scheduler,

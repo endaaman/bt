@@ -1,4 +1,5 @@
 import sys
+import math
 import re
 from typing import NamedTuple, Callable
 
@@ -54,7 +55,7 @@ class TimmModel(nn.Module):
 
         if activate:
             if self.num_classes > 1:
-                x = torch.softmax(x, dim=1)
+                x = torch.softmax(x, dim=-1)
             else:
                 x = torch.sigmoid(x)
 
@@ -184,6 +185,57 @@ class MILModel(nn.Module):
             'attentions': aa,
         }
 
+class GraphMatrix(nn.Module):
+    def __init__(self, size, initial_value=None):
+        super().__init__()
+        self.size = size
+        self.gamma = 2
+        # self.depth = depth
+        self.mask = nn.Parameter(torch.triu(torch.ones(size, size), diagonal=0))
+        self.mask.requires_grad = False
+        if initial_value is None:
+            param = torch.normal(mean=1, std=math.sqrt(2/size/size), size=(size, size))
+        else:
+            param = initial_value
+        param[self.mask<1] = 0.0
+        self.matrix = nn.Parameter(param)
+
+    def get_matrix(self):
+        m = self.matrix * self.mask
+        # return ((m+m.t())/2).clamp_(1e-16)
+
+        # dim0
+        return torch.softmax((m+m.t())/2, dim=0)
+
+        # dim1
+        # return torch.softmax((m+m.t())/2, dim=1)
+
+        # dimx
+        # t = (m+m.t())/2
+        # s = t.size()
+        # return torch.softmax(t.view(-1), dim=-1).view(s)
+
+    def forward(self, preds, gts, by_index=True):
+        if by_index:
+            gts = F.one_hot(gts, num_classes=preds.shape[-1]).float()
+        m = self.get_matrix()
+        preds = torch.matmul(preds, m)
+        gts = torch.matmul(gts, m)
+        loss = preds * (preds.log() - gts.log())
+        # focal
+        loss = (1 - preds * gts) ** self.gamma
+        loss = loss.sum(dim=-1)
+        return loss.mean()
+
+
+class TimmModelWithGraph(nn.Module):
+    def __init__(self, model, graph_matrix):
+        super().__init__()
+        self.model = model
+        self.graph_matrix = graph_matrix
+
+    def forward(self, *args, **kwargs):
+        return self.model(*args, **kwargs)
 
 
 class CrossEntropyLoss(nn.Module):
@@ -317,6 +369,26 @@ class CLI(BaseMLCLI):
         print('y', y.shape)
         print('y_over', y_over.shape)
         print('f', f.shape)
+
+    def run_mat(self, a):
+        initial_value = torch.tensor([
+            [10, .0, .0, .0, .0, ],
+            [.0, 10, .0, .0, .0, ],
+            [.0, .0, 5, 10, .0, ],
+            [.0, .0, .0, 5, .0, ],
+            [.0, .0, .0, .0, 10, ],
+        ]).float().clamp(1e-16)
+        g = GraphMatrix(5, initial_value)
+        # preds = torch.randn([3, 5]).softmax(dim=1)
+        preds = torch.tensor([
+            [.6, .1, .1, .1, .1],
+            [.1, .6, .1, .1, .1],
+            [.1, .1, .6, .1, .1],
+            [.1, .1, .1, .6, .1],
+            [.1, .1, .1, .1, .6],
+        ])
+        gts = torch.tensor([2, 2, 2, 2, 2])
+        print(g(preds, gts, by_index=True))
 
 
 if __name__ == '__main__':
