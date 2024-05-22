@@ -69,13 +69,13 @@ def mat():
 
 
 def draw():
-    c = torch.load('out/nested/LMGAOB_graph_gamma2_dim0/checkpoint_last.pt')
-    # c = torch.load('out/nested/LMGAOB_graph_gamma2_dim1/checkpoint_last.pt')
+    # c = torch.load('out/nested/LMGAOB_graph_gamma2_dim0/checkpoint_last.pt')
+    c = torch.load('out/nested/LMGAOB_graph_gamma2_dim1/checkpoint_last.pt')
     # c = torch.load('out/nested/LMGAOB_graph_gamma2_dimx/checkpoint_last.pt')
+    # c = torch.load('out/nested/LMGAO__graph_dim0/checkpoint_last.pt')
+
     matrix = c['model_state']['graph_matrix.matrix'].numpy()
     # matrix=(matrix-matrix.min())/(matrix.max()-matrix.min())
-
-    print(matrix)
 
     G = nx.Graph()
 
@@ -91,7 +91,9 @@ def draw():
     # グラフを描画
     pos = nx.spring_layout(G)  # グラフのレイアウトを決定
     nx.draw(G, pos, with_labels=True, font_weight='bold')
+    labels = dict(enumerate(['L', 'M', 'GBM', 'A', 'O', 'B'][:matrix.shape[0]]))
     labels = nx.get_edge_attributes(G, 'weight')
+    print(labels)
     nx.draw_networkx_edge_labels(G, pos, edge_labels=labels)
 
     plt.axis('off')
@@ -126,7 +128,7 @@ def draw_with_weight():
     # ])
     # matrix = matrix + matrix.T
 
-    c = torch.load('out/nested/LMGAOB_graph_gamma2_dim0/checkpoint_last.pt')
+    c = torch.load('out/nested/LMGAOB_graph_gamma2_dim1/checkpoint_last.pt')
     matrix = c['model_state']['graph_matrix.matrix'].numpy()
 
     # NetworkXのグラフオブジェクトを作成
@@ -208,4 +210,4 @@ def mat():
     # print((p[None, :] * m).sum(1))
 
 if __name__ == '__main__':
-    mat()
+    draw()

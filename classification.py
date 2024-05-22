@@ -64,40 +64,47 @@ class TrainerConfig(BaseTrainerConfig):
 
 class Acc3(BaseMetrics):
     def calc(self, preds, gts, batch=True):
+        num_classes = preds.shape[-1]
         new_preds = torch.zeros(preds.shape[0], 4)
         # LMGAOB -> LMBG
         new_preds[:, 0] = preds[:, 0] # L_____
         new_preds[:, 1] = preds[:, 1] # _M____
-        new_preds[:, 2] = preds[:, 5] # _____B
-        new_preds[:, 3] = preds[:, [2,3,4]].sum(dim=1) # __GAO_
-        new_gts = torch.tensor([0, 1, 3, 3, 3, 2])[gts]
+        if num_classes == 6:
+            new_preds[:, 2] = preds[:, 5] # _____B
+            new_preds[:, 3] = preds[:, [2,3,4]].sum(dim=1) # __GAO_
+            new_gts = torch.tensor([0, 1, 3, 3, 3, 2])[gts]
+        else:
+            new_preds[:, 2] = preds[:, [2,3,4]].sum(dim=1) # __GAO_
+            new_gts = torch.tensor([0, 1, 2, 2, 2])[gts]
         return multi_accuracy(new_preds, new_gts, by_index=True)
 
 
 class Trainer(BaseTrainer):
     def prepare(self):
-        self.nested = self.config.code == 'LMGAOB'
+        self.nested = self.config.code in ['LMGAOB', 'LMGAO_']
         model = TimmModel(name=self.config.model_name, num_classes=self.config.num_classes)
         if self.nested:
             if self.config.nested == 'graph':
                 graph_matrix = GraphMatrix(size=self.config.num_classes).to(self.device)
                 model = TimmModelWithGraph(model, graph_matrix)
                 self.criterion = nn.CrossEntropyLoss()
+                print('USING GRAPH')
             elif self.config.nested == 'none' or self.config.nested == 0:
                 self.criterion = nn.CrossEntropyLoss()
             else:
                 self.criterion = NestedCrossEntropyLoss(
                     rules=[
                         {
-                            'weight': 1.0-self.config.nested_weight,
+                            'weight': 1.0-self.config.nested,
                             'index': [],
                         }, {
-                            'weight': self.config.nested_weight,
+                            'weight': self.config.nested,
                             'index': [[2,3,4]], #LMGAOB -> LMGB
                         }
                     ]
                 )
                 self.fig_col_count = 3
+                print('USING NESTED WEIGHT:', self.config.nested)
         else:
             self.criterion = nn.CrossEntropyLoss()
             self.fig_col_count = 2
@@ -119,17 +126,20 @@ class Trainer(BaseTrainer):
     def eval(self, inputs, gts, i):
         inputs = inputs.to(self.device)
         gts = gts.to(self.device)
-        preds = self.model(inputs, activate=False)
-        loss = self.criterion(preds, gts)
+        logits = self.model(inputs, activate=False)
+        preds = torch.softmax(logits, dim=1)
+        loss = self.criterion(logits, gts)
         if self.config.nested == 'graph':
-            preds = torch.softmax(preds, dim=1)
             graph_loss = self.model.graph_matrix(preds, gts)
             loss = loss + graph_loss
             if i%500 == 0:
                 torch.set_printoptions(precision=2, sci_mode=False)
                 print(self.model.graph_matrix.matrix)
-                print(self.model.graph_matrix.get_matrix())
-        return loss, preds.detach().cpu()
+                m = self.model.graph_matrix.get_matrix()
+                print(m)
+                print(m.softmax(dim=0))
+                print(m.softmax(dim=1))
+        return loss, logits.detach().cpu()
 
     def _visualize_confusion(self, ax, label, preds, gts):
         preds = torch.argmax(preds, dim=-1)
