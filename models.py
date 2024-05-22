@@ -202,23 +202,11 @@ class GraphMatrix(nn.Module):
 
     def get_matrix(self):
         m = self.matrix * self.mask
-        # return ((m+m.t())/2).clamp_(1e-16)
+        m =(m+m.t())/2
+        # return m.clamp_(1e-16)
+        return m
 
-        # dim0
-        return torch.softmax((m+m.t())/2, dim=0)
-
-        # dim1
-        # return torch.softmax((m+m.t())/2, dim=1)
-
-        # dimx
-        # t = (m+m.t())/2
-        # s = t.size()
-        # return torch.softmax(t.view(-1), dim=-1).view(s)
-
-    def forward(self, preds, gts, by_index=True):
-        if by_index:
-            gts = F.one_hot(gts, num_classes=preds.shape[-1]).float()
-        m = self.get_matrix()
+    def calc_loss(self, preds, gts, m):
         preds = torch.matmul(preds, m)
         gts = torch.matmul(gts, m)
         loss = preds * (preds.log() - gts.log())
@@ -226,6 +214,25 @@ class GraphMatrix(nn.Module):
         loss = (1 - preds * gts) ** self.gamma
         loss = loss.sum(dim=-1)
         return loss.mean()
+
+    def forward(self, preds, gts, by_index=True):
+        if by_index:
+            gts = F.one_hot(gts, num_classes=preds.shape[-1]).float()
+        m = self.get_matrix()
+
+        # dim0
+        # return self.calc_loss(preds, gts, m.softmax(dim=0))
+
+        # dim1
+        # return self.calc_loss(preds, gts, m.softmax(dim=1))
+
+        # sigmoid
+        # return self.calc_loss(preds, gts, torch.sigmoid(m))
+
+        # dual
+        loss0 = self.calc_loss(preds, gts, m.softmax(dim=0))
+        loss1 = self.calc_loss(preds, gts, m.softmax(dim=1))
+        return (loss0 + loss1) / 2
 
 
 class TimmModelWithGraph(nn.Module):
