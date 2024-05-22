@@ -290,8 +290,16 @@ class CLI(BaseMLCLI):
         checkpoint = Checkpoint.from_file(J(a.model_dir, chp))
         config = TrainerConfig.from_file(J(a.model_dir, 'config.json'))
         model = TimmModel(name=config.model_name, num_classes=config.num_classes)
-        if not a.default:
-            model.load_state_dict(checkpoint.model_state)
+        print('config:', config)
+        if config.nested == 'graph':
+            model_state = {
+                k.replace('model.', ''): v
+                for k, v in checkpoint.model_state.items()
+                if k.startswith('model.')
+            }
+        else:
+            model_state = checkpoint.model_state
+        model.load_state_dict(model_state)
         model = model.to(a.device()).eval()
 
         transform = transforms.Compose([
