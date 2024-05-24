@@ -592,8 +592,8 @@ class CLI(BaseMLCLI):
         d = J(a.model_dir, 'umap')
         os.makedirs(d, exist_ok=True)
         path = a.save or J(d, f'{data_name}_{a.count}.png')
+        plt.title(a.model_dir)
         plt.savefig(with_wrote(path))
-
         plt.subplots_adjust(right=0.75, top=0.75)
 
         if a.export:
