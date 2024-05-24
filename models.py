@@ -221,7 +221,7 @@ class GraphMatrix(nn.Module):
         m = self.get_matrix()
 
         # dim0
-        # return self.calc_loss(preds, gts, m.softmax(dim=0))
+        return self.calc_loss(preds, gts, m.softmax(dim=0))
 
         # dim1
         # return self.calc_loss(preds, gts, m.softmax(dim=1))
@@ -230,9 +230,9 @@ class GraphMatrix(nn.Module):
         # return self.calc_loss(preds, gts, torch.sigmoid(m))
 
         # dual
-        loss0 = self.calc_loss(preds, gts, m.softmax(dim=0))
-        loss1 = self.calc_loss(preds, gts, m.softmax(dim=1))
-        return (loss0 + loss1) / 2
+        # loss0 = self.calc_loss(preds, gts, m.softmax(dim=0))
+        # loss1 = self.calc_loss(preds, gts, m.softmax(dim=1))
+        # return (loss0 + loss1) / 2
 
 
 class TimmModelWithGraph(nn.Module):
