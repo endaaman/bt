@@ -178,6 +178,7 @@ class Trainer(BaseTrainer):
         if self.nested:
             return {
                 'acc5': MultiAccuracy(),
+                # 'acc4': Acc4(),
                 'acc3': Acc3(),
             }
         return {
