@@ -245,6 +245,17 @@ class TimmModelWithGraph(nn.Module):
         return self.model(*args, **kwargs)
 
 
+
+class TimmModelWithHier(nn.Module):
+    def __init__(self, model, graph_matrix):
+        super().__init__()
+        self.model = model
+        self.hier_matrixes = hier_matrixes
+
+    def forward(self, *args, **kwargs):
+        return self.model(*args, **kwargs)
+
+
 class CrossEntropyLoss(nn.Module):
     def __init__(self, eps=1e-32, input_logits=True):
         super().__init__()
