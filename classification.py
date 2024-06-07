@@ -282,6 +282,7 @@ class CLI(BaseMLCLI):
             train_dataset=dss[0],
             val_dataset=dss[1],
             use_gpu=not a.cpu,
+            multi_gpu=True,
             overwrite=a.overwrite,
             experiment_name=a.source,
         )
