@@ -177,6 +177,8 @@ class Trainer(BaseTrainer):
                 torch.set_printoptions(precision=2, sci_mode=False)
                 print(self.model.hier_matrixes.matrixes[0].softmax(dim=1))
                 print(self.model.hier_matrixes.matrixes[1].softmax(dim=1))
+                print(self.model.hier_matrixes.matrixes[2].softmax(dim=1))
+                print(self.model.hier_matrixes.matrixes[3].softmax(dim=1))
         return loss, logits.detach().cpu()
 
     def _visualize_confusion(self, ax, label, preds, gts):
