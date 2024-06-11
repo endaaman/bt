@@ -116,7 +116,7 @@ class Trainer(BaseTrainer):
                 hier_matrixes = HierMatrixes(size=self.config.num_classes).to(self.device)
                 model = TimmModelWithHier(model, hier_matrixes)
                 print('USING HIER')
-                self.criterion = None
+                self.criterion = nn.CrossEntropyLoss()
             elif self.config.nested == 'none' or self.config.nested == 0:
                 self.criterion = nn.CrossEntropyLoss()
             else:
@@ -161,9 +161,7 @@ class Trainer(BaseTrainer):
         gts = gts.to(self.device)
         logits = self.model(inputs, activate=False)
         preds = torch.softmax(logits, dim=1)
-        loss = None
-        if self.criterion:
-            loss = self.criterion(logits, gts)
+        loss = self.criterion(logits, gts)
         if self.config.nested == 'graph':
             graph_loss = self.model.graph_matrix(preds, gts)
             loss = loss + graph_loss
@@ -173,7 +171,8 @@ class Trainer(BaseTrainer):
                 m = self.model.graph_matrix.get_matrix()
                 print(m.softmax(dim=0))
         elif self.config.nested == 'hier':
-            loss = self.model.hier_matrixes(preds, gts)
+            h_loss = self.model.hier_matrixes(preds, gts)
+            loss = loss + h_loss
             if i%500 == 0:
                 torch.set_printoptions(precision=2, sci_mode=False)
                 print(self.model.hier_matrixes.matrixes[0].softmax(dim=1))
