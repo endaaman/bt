@@ -25,7 +25,7 @@ from pytorch_grad_cam.utils.image import show_cam_on_image
 from pytorch_grad_cam.utils.model_targets import BinaryClassifierOutputTarget, ClassifierOutputTarget
 
 from endaaman import with_wrote, load_images_from_dir_or_file, grid_split, with_mkdir
-from endaaman.ml import BaseTrainerConfig, BaseTrainer, Checkpoint, EvacuateModel, pil_to_tensor
+from endaaman.ml import BaseTrainerConfig, BaseTrainer, Checkpoint, pil_to_tensor
 from endaaman.ml.metrics import MultiAccuracy, BaseMetrics
 from endaaman.ml.functional import multi_accuracy
 from endaaman.ml.cli import BaseMLCLI, BaseDLArgs, BaseTrainArgs
@@ -320,7 +320,7 @@ class CLI(BaseMLCLI):
             train_dataset=dss[0],
             val_dataset=dss[1],
             use_gpu=not a.cpu,
-            multi_gpu=True,
+            multi_gpu=False,
             overwrite=a.overwrite,
             experiment_name=a.source,
         )
