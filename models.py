@@ -245,9 +245,37 @@ class TimmModelWithGraph(nn.Module):
         return self.model(*args, **kwargs)
 
 
+class HierMatrixes(nn.Module):
+    def __init__(self, size):
+        super().__init__()
+        self.size = size
+        assert size > 2
+        # self.matrixes = []
+        self.matrixes = nn.ParameterList()
+        for level in range(2, size):
+            param = torch.normal(mean=1, std=math.sqrt(2/size/size), size=(size, level))
+            m = nn.Parameter(param)
+            m.requires_grad = True
+            self.matrixes.append(m)
+
+    def forward(self, preds, gts):
+        losses = []
+        m_losses = []
+        gts = F.one_hot(gts, num_classes=preds.shape[-1]).float()
+        for m in self.matrixes:
+            m = torch.softmax(m, dim=1)
+            pred = torch.matmul(preds, m)
+            gt = torch.matmul(gts, m)
+            loss = -(pred.softmax(dim=1).log() * gt).sum()
+            losses.append(loss)
+            m_losses.append(m.std(dim=0).mean())
+        loss = torch.stack(losses).mean()
+        m_loss = torch.stack(m_losses).mean()
+        return loss - m_loss*3
+
 
 class TimmModelWithHier(nn.Module):
-    def __init__(self, model, graph_matrix):
+    def __init__(self, model, hier_matrixes):
         super().__init__()
         self.model = model
         self.hier_matrixes = hier_matrixes
@@ -407,6 +435,20 @@ class CLI(BaseMLCLI):
         ])
         gts = torch.tensor([2, 2, 2, 2, 2])
         print(g(preds, gts, by_index=True))
+
+    def run_hier(self, a):
+        model = TimmModel('resnet18', 6)
+        hier_matrixes = HierMatrixes(6)
+        h = TimmModelWithHier(model, hier_matrixes)
+
+        ii = torch.randn(4, 3, 256, 256)
+        ll = h(ii)
+
+        gts = torch.tensor([0, 1, 2, 3])
+
+        loss = hier_matrixes(ll, gts)
+        print(ll.shape)
+        print(loss)
 
 
 if __name__ == '__main__':

@@ -30,7 +30,7 @@ from endaaman.ml.metrics import MultiAccuracy, BaseMetrics
 from endaaman.ml.functional import multi_accuracy
 from endaaman.ml.cli import BaseMLCLI, BaseDLArgs, BaseTrainArgs
 
-from models import TimmModel, TimmModelWithGraph, NestedCrossEntropyLoss, GraphMatrix
+from models import TimmModel, NestedCrossEntropyLoss, TimmModelWithGraph, GraphMatrix, TimmModelWithHier, HierMatrixes
 from datasets.fold import FoldDataset, MEAN, STD
 from utils import draw_frame
 
@@ -63,21 +63,44 @@ class TrainerConfig(BaseTrainerConfig):
         return [c for c in dict.fromkeys(self.code) if c in 'LMGAOB']
 
 class Acc3(BaseMetrics):
-    def calc(self, preds, gts, batch=True):
-        num_classes = preds.shape[-1]
-        new_preds = torch.zeros(preds.shape[0], 4)
-        # LMGAOB -> LMBG
-        new_preds[:, 0] = preds[:, 0] # L_____
-        new_preds[:, 1] = preds[:, 1] # _M____
-        if num_classes == 6:
-            new_preds[:, 2] = preds[:, 5] # _____B
-            new_preds[:, 3] = preds[:, [2,3,4]].sum(dim=1) # __GAO_
-            new_gts = torch.tensor([0, 1, 3, 3, 3, 2])[gts]
-        else:
-            new_preds[:, 2] = preds[:, [2,3,4]].sum(dim=1) # __GAO_
-            new_gts = torch.tensor([0, 1, 2, 2, 2])[gts]
-        return multi_accuracy(new_preds, new_gts, by_index=True)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.mat = torch.tensor([
+            # L, M, G, B
+            [ 1, 0, 0, 0, ], # L
+            [ 0, 1, 0, 0, ], # M
+            [ 0, 0, 1, 0, ], # G
+            [ 0, 0, 1, 0, ], # A
+            [ 0, 0, 1, 0, ], # O
+            [ 0, 0, 0, 1, ], # B
+        ]).float()
+        self.I = torch.tensor([0, 1, 2, 2, 2, 3])
 
+    def calc(self, preds, gts, batch):
+        num_classes = preds.shape[-1]
+        new_preds = torch.matmul(preds, self.mat[:num_classes, :].to(preds.device))
+        new_gts = self.I.to(gts.device)[gts]
+        return multi_accuracy(new_preds, new_gts)
+
+class Acc4(BaseMetrics):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.mat = torch.tensor([
+            # L, M, G,AO, B
+            [ 1, 0, 0, 0, 0,], # L
+            [ 0, 1, 0, 0, 0,], # M
+            [ 0, 0, 1, 0, 0,], # G
+            [ 0, 0, 0, 1, 0,], # A
+            [ 0, 0, 0, 1, 0,], # O
+            [ 0, 0, 0, 0, 1,], # B
+        ]).float()
+        self.I = torch.tensor([0, 1, 2, 3, 3, 4])
+
+    def calc(self, preds, gts, batch):
+        num_classes = preds.shape[-1]
+        new_preds = torch.matmul(preds, self.mat[:num_classes, :].to(preds.device))
+        new_gts = self.I.to(gts.device)[gts]
+        return multi_accuracy(new_preds, new_gts)
 
 class Trainer(BaseTrainer):
     def prepare(self):
@@ -89,6 +112,11 @@ class Trainer(BaseTrainer):
                 model = TimmModelWithGraph(model, graph_matrix)
                 self.criterion = nn.CrossEntropyLoss()
                 print('USING GRAPH')
+            elif self.config.nested == 'hier':
+                hier_matrixes = HierMatrixes(size=self.config.num_classes).to(self.device)
+                model = TimmModelWithHier(model, hier_matrixes)
+                print('USING HIER')
+                self.criterion = None
             elif self.config.nested == 'none' or self.config.nested == 0:
                 self.criterion = nn.CrossEntropyLoss()
             else:
@@ -117,6 +145,11 @@ class Trainer(BaseTrainer):
                 {'params': self.model.model.parameters(), 'lr': self.config.lr},
                 {'params': self.model.graph_matrix.parameters(), 'lr': 0.001},
             ]
+        elif self.config.nested == 'hier':
+            params = [
+                {'params': self.model.model.parameters(), 'lr': self.config.lr},
+                {'params': self.model.hier_matrixes.parameters(), 'lr': 0.001},
+            ]
         else:
             params = [
                 {'params': self.model.parameters(), 'lr': self.config.lr},
@@ -128,7 +161,9 @@ class Trainer(BaseTrainer):
         gts = gts.to(self.device)
         logits = self.model(inputs, activate=False)
         preds = torch.softmax(logits, dim=1)
-        loss = self.criterion(logits, gts)
+        loss = None
+        if self.criterion:
+            loss = self.criterion(logits, gts)
         if self.config.nested == 'graph':
             graph_loss = self.model.graph_matrix(preds, gts)
             loss = loss + graph_loss
@@ -136,9 +171,13 @@ class Trainer(BaseTrainer):
                 torch.set_printoptions(precision=2, sci_mode=False)
                 print(self.model.graph_matrix.matrix)
                 m = self.model.graph_matrix.get_matrix()
-                print(m)
                 print(m.softmax(dim=0))
-                print(m.softmax(dim=1))
+        elif self.config.nested == 'hier':
+            loss = self.model.hier_matrixes(preds, gts)
+            if i%500 == 0:
+                torch.set_printoptions(precision=2, sci_mode=False)
+                print(self.model.hier_matrixes.matrixes[0].softmax(dim=1))
+                print(self.model.hier_matrixes.matrixes[1].softmax(dim=1))
         return loss, logits.detach().cpu()
 
     def _visualize_confusion(self, ax, label, preds, gts):
@@ -178,7 +217,7 @@ class Trainer(BaseTrainer):
         if self.nested:
             return {
                 'acc5': MultiAccuracy(),
-                # 'acc4': Acc4(),
+                'acc4': Acc4(),
                 'acc3': Acc3(),
             }
         return {
@@ -303,7 +342,7 @@ class CLI(BaseMLCLI):
         config = TrainerConfig.from_file(J(a.model_dir, 'config.json'))
         model = TimmModel(name=config.model_name, num_classes=config.num_classes)
         print('config:', config)
-        if config.nested == 'graph':
+        if config.nested in ['graph', 'hier']:
             model_state = {
                 k.replace('model.', ''): v
                 for k, v in checkpoint.model_state.items()
