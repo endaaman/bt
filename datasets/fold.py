@@ -362,12 +362,15 @@ class PairedFoldDataset(BaseFoldDataset):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         aa = [
-            A.RandomResizedCrop(width=self.size, height=self.size, scale=(0.8, 1.25)),
+            # A.RandomCrop(width=self.size, height=self.size),
+            A.RandomResizedCrop(width=self.size, height=self.size, scale=(0.5, 1.5)),
             A.RandomRotate90(p=1),
             A.Flip(p=0.5),
-            A.ColorJitter(0.4, 0.4, 0.4, 0.1, p=0.8),
-            A.ToGray(p=0.2),
+            # A.ColorJitter(0.4, 0.4, 0.4, 0.1, p=0.8),
+            A.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.2, p=0.8),
+            # A.ToGray(p=0.2),
             A.GaussianBlur(sigma_limit=[.1, 2.], p=0.5),
+            A.ElasticTransform(p=1.0, alpha=1, sigma=3, alpha_affine=3),
         ]
         if self.normalization:
             aa += [A.Normalize(mean=self.mean, std=self.std)]
