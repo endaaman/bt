@@ -34,22 +34,12 @@ from endaaman.image import load_images_from_dir_or_file, grid_split, select_side
 from endaaman.ml import BaseMLCLI, pil_to_tensor, tensor_to_pil, get_global_seed
 
 from .utils import show_fold_diag
+from . import *
 
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 # Image.MAX_IMAGE_PIXELS = 1_000_000_000_000
 Image.MAX_IMAGE_PIXELS = None
 
-IMAGE_CACHE = {}
-
-DIAG_TO_NUM = OrderedDict([(c, i) for i, c in enumerate('LMGAOB')])
-NUM_TO_DIAG = list(DIAG_TO_NUM.keys())
-
-# MEAN = [0.8032, 0.5991, 0.8318]
-# STD = [0.1203, 0.1435, 0.0829]
-# MEAN = np.array([216, 172, 212]) / 255
-# STD = np.array([34, 61, 30]) / 255
-MEAN = 0.7
-STD = 0.2
 
 DEFAULT_SIZE = 512
 
@@ -115,6 +105,7 @@ def get_augs(image_aug, size, normalization, mean, std):
     aa += [ToTensorV2()]
     return A.Compose(aa)
 
+
 @lru_cache
 def load_zip_file(path):
     p = os.path.abspath(path)
@@ -169,6 +160,8 @@ class BaseFoldDataset(Dataset):
             print(f'Loading zip archive {zip_path}')
             self.zip_file = load_zip_file(zip_path)
             print(f'Loaded {zip_path}')
+        else:
+            print(f'No zip file {zip_path} found.')
 
         assert self.fold < self.total_fold
 
@@ -364,6 +357,38 @@ class IICFoldDataset(BaseFoldDataset):
         y = self.aug(image=arr)['image']
         arr = None
         return x, y, gt
+
+class PairedFoldDataset(BaseFoldDataset):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        aa = [
+            A.RandomResizedCrop(width=self.size, height=self.size, scale=(0.8, 1.25)),
+            A.RandomRotate90(p=1),
+            A.Flip(p=0.5),
+            A.ColorJitter(0.4, 0.4, 0.4, 0.1, p=0.8),
+            A.ToGray(p=0.2),
+            A.GaussianBlur(sigma_limit=[.1, 2.], p=0.5),
+        ]
+        if self.normalization:
+            aa += [A.Normalize(mean=self.mean, std=self.std)]
+        aa += [ToTensorV2()]
+        self.aug = A.Compose(aa)
+
+    def __len__(self):
+        return len(self.df)
+
+    def __getitem__(self, idx):
+        row = self.df.iloc[idx]
+        image = self.load_from_row(row)
+        arr = np.array(image)
+        image.close()
+        image = None
+
+        x0 = self.aug(image=arr)['image']
+        x1 = self.aug(image=arr)['image']
+        y = torch.tensor(self.unique_code.index(row['diag']))
+        return torch.stack([x0, x1]), y
+
 
 class QuadAttentionFoldDataset(BaseFoldDataset):
     def __init__(self, *args, **kwargs):

@@ -106,4 +106,5 @@ class SymmetricCosSimLoss(nn.Module):
             z1.detach(),  # Stop Gradient
             p0
         )
-        return (loss0 + loss1) / 2.0
+        loss =  (loss0 + loss1) / 2.0
+        return loss.mean()
