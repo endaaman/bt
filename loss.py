@@ -92,3 +92,18 @@ class NestedCrossEntropyLoss(nn.Module):
         loss = torch.sum(torch.stack(ll))
         loss /= total_weight
         return loss
+
+
+
+
+class SymmetricCosSimLoss(nn.Module):
+    def forward(self, z0, z1, p0, p1):
+        loss0 = - F.cosine_similarity(
+            z0.detach(),  # Stop Gradient
+            p1
+        )
+        loss1 = - F.cosine_similarity(
+            z1.detach(),  # Stop Gradient
+            p0
+        )
+        return (loss0 + loss1) / 2.0
