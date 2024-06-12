@@ -87,7 +87,7 @@ class CLI(BaseMLCLI):
         num_workers: int = Field(4, s='-N')
         epoch: int = Field(30, s='-E')
         suffix: str = ''
-        out: str = 'out/{source}/SimSiam/fold{total_fold}_{fold}/{model_name}{suffix}'
+        out: str = 'out/SimSiam/fold{total_fold}_{fold}/{model_name}{suffix}'
         overwrite: bool = Field(False, s='-O')
 
 
@@ -205,7 +205,7 @@ class CLI(BaseMLCLI):
 
     def run_cluster(self, a):
         from umap import UMAP
-        df = pd.DataFrame(torch.load('out/enda4_512/SimSiam/fold5_0/resnetrs50/features_test2.pt'))
+        df = pd.DataFrame(torch.load('out/SimSiam/fold5_0/resnetrs50_2/features_test.pt'))
 
         rowss = []
         for name, _rows in df.groupby('name'):
@@ -213,7 +213,7 @@ class CLI(BaseMLCLI):
             rowss.append(rows)
         df = pd.concat(rowss)
 
-        features = np.stack([f.numpy() for f in df['feature']])
+        features = np.stack(df['feature'])
         print('features', features.shape)
 
         labels = df['diag_org'].values

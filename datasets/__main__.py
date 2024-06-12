@@ -378,10 +378,15 @@ class CLI(BaseMLCLI):
                 t.set_description(case)
 
     def run_paired(self, a):
-        ds = PairedFoldDataset(source_dir='data/tiles/enda4_512')
+        ds = PairedFoldDataset(source_dir='data/tiles/enda4_512', normalization=False, target='test', size=256)
+        i = 0
         for xx, y in ds:
-            print(xx.shape)
-            break
+            x0, x1 = xx
+            tensor_to_pil(x0).save(f'tmp/paired/{i}_0.png')
+            tensor_to_pil(x1).save(f'tmp/paired/{i}_1.png')
+            i += 1
+            if i > 50:
+                break
 
 if __name__ == '__main__':
     cli = CLI()
