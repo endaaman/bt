@@ -285,6 +285,28 @@ class TimmModelWithHier(nn.Module):
         return self.model(*args, **kwargs)
 
 
+class SimSiamModel(nn.Module):
+    def __init__(self, model, hier_matrixes):
+        super().__init__()
+        self.model = model
+        self.projection_mlp = hier_matrixes
+        self.prediction_mlp = hier_matrixes
+
+    def forward(self, x01):
+        x0 = x01[:, 0, ...] # B, P, C, H, W
+        x1 = x01[:, 1, ...] # B, P, C, H, W
+
+        f0 = self.model.forward_features(x0)
+        z0 = self.projection_mlp(f0)  # Freezing
+        p0 = self.prediction_mlp(z0)  # Predictorの出力
+
+        f1 = self.model.forward_features(x1)
+        z1 = self.projection_mlp(f1)  # Stop Gradientがある方のブランチの出力
+        p1 = self.prediction_mlp(z1)  # Predictorの出力
+        return z0, z1, p0, p1
+
+
+
 class CLI(BaseMLCLI):
     class CommonArgs(BaseMLCLI.CommonArgs):
         pass
