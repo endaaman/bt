@@ -264,7 +264,7 @@ class HierMatrixes(nn.Module):
         gts = F.one_hot(gts, num_classes=preds.shape[-1]).float()
         for m in self.matrixes:
             m = torch.softmax(m, dim=1)
-            pred = torch.matmul(preds.softmax(dim=1), m)
+            pred = torch.matmul(preds, m).softmax(dim=1)
             gt = torch.matmul(gts, m)
             loss = -(pred.log() * gt).sum()
             losses.append(loss)
