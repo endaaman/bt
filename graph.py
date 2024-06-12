@@ -1,9 +1,14 @@
+import numpy as np
 import torch
 from torch import nn
-import numpy as np
 import torch.nn.functional as F
 import networkx as nx
 import matplotlib.pyplot as plt
+from scipy.cluster.hierarchy import dendrogram, linkage
+from scipy.spatial.distance import pdist, squareform
+
+from endaaman import BaseCLI
+
 
 class Graph(nn.Module):
     def __init__(self, size, depth):
@@ -209,5 +214,73 @@ def mat():
     # print(torch.matmul(p, m.t()))
     # print((p[None, :] * m).sum(1))
 
+
+class CLI(BaseCLI):
+    class DendroArgs(BaseCLI.CommonArgs):
+        load: bool = False
+
+    def run_dendro(self, a):
+        torch.set_printoptions(precision=2, sci_mode=False)
+
+        labels = None
+        mat = np.array([
+            [1.0, 0.0],  # 0
+            [0.6, 0.4],  # 1
+            [0.5, 0.5],  # 5
+            [0.2, 0.8],  # 4
+            [0.2, 0.8],  # 2
+            [0.1, 0.9],  # 3
+        ])
+
+        if a.load:
+            labels = list('LMGAOB')
+            c = torch.load('out/nested/LMGAOB_graph_gamma2_dim0/checkpoint_last.pt')
+            # c = torch.load('out/nested/LMGAOB_graph_dual/checkpoint_last.pt')
+            mat = c['model_state']['graph_matrix.matrix']
+            mat = (mat+mat.t())/2
+            # mat = torch.softmax(mat, dim=0)
+            # mat = torch.sigmoid(mat)
+
+        distant_matrix = pdist(mat, metric='euclidean')
+        linkage_matrix = linkage(distant_matrix, method='ward')
+
+        # distant_matrix = np.corrcoef(mat)
+        # linkage_matrix = linkage(distant_matrix, method='ward')
+
+        plt.figure(figsize=(10, 5))
+        dendrogram(linkage_matrix, labels=labels)
+        plt.xlabel('Samples')
+        plt.ylabel('Distance')
+        plt.title('Dendrogram')
+        plt.tight_layout()
+        plt.show()
+
+    def run_dendro2(self, a):
+        torch.set_printoptions(precision=2, sci_mode=False)
+
+        labels = list('LMGAOB')
+        c = torch.load('out/nested/LMGAOB_hier/checkpoint_last.pt')
+        mat6x2 = c['model_state']['hier_matrixes.matrixes.0']
+        mat6x3 = c['model_state']['hier_matrixes.matrixes.1']
+        mat6x4 = c['model_state']['hier_matrixes.matrixes.2']
+        mat6x5 = c['model_state']['hier_matrixes.matrixes.3']
+
+        print(mat6x2)
+        print(mat6x3)
+
+        combined_matrix = np.hstack((mat6x2, mat6x3, mat6x4, mat6x5))
+        distant_matrix = pdist(combined_matrix, metric='euclidean')
+        linkage_matrix = linkage(distant_matrix, method='ward')
+
+        plt.figure(figsize=(10, 5))
+        dendrogram(linkage_matrix, labels=labels)
+        plt.xlabel('Samples')
+        plt.ylabel('Distance')
+        plt.title('Dendrogram')
+        plt.tight_layout()
+        plt.show()
+
+
 if __name__ == '__main__':
-    draw()
+    cli = CLI()
+    cli.run()

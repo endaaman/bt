@@ -268,10 +268,11 @@ class HierMatrixes(nn.Module):
             gt = torch.matmul(gts, m)
             loss = -(pred.log() * gt).sum()
             losses.append(loss)
-            m_losses.append(m.std(dim=0).mean())
+            m_losses.append(m.mean(dim=0).std())
+            m_losses.append(-m.std(dim=0).mean())
         loss = torch.stack(losses).mean()
-        m_loss = torch.stack(m_losses).mean()
-        return loss - m_loss*3
+        m_loss = torch.stack(m_losses).sum()
+        return loss + m_loss
 
 
 class TimmModelWithHier(nn.Module):
