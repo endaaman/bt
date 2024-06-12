@@ -12,6 +12,8 @@ from pydantic import Field
 
 from endaaman.ml import BaseMLCLI
 
+from loss import SymmetricCosSimLoss, NestedCrossEntropyLoss, CrossEntropyLoss
+
 
 def get_cam_layers(m, name=None):
     name = name or m.default_cfg['architecture']
@@ -31,7 +33,6 @@ def get_cam_layers(m, name=None):
     if name == 'swin_base_patch4_window7_224':
         return [m.layers[-1].blocks[-1].norm1]
     raise RuntimeError('CAM layers are not determined.')
-    return []
 
 def get_pool(m):
     if hasattr(m, 'global_pool'):
@@ -286,23 +287,55 @@ class TimmModelWithHier(nn.Module):
 
 
 class SimSiamModel(nn.Module):
-    def __init__(self, model, hier_matrixes):
+    def __init__(self, name, num_output=512, num_features=2048,  pretrained=True):
         super().__init__()
-        self.model = model
-        self.projection_mlp = hier_matrixes
-        self.prediction_mlp = hier_matrixes
+        self.name = name
+        self.num_features = num_features
+        self.num_output = num_output
+
+        self.base = timm.create_model(name, pretrained=pretrained)
+        num_prev = self.base.num_features
+        self.pool = get_pool(self.base)
+        self.num_output = num_output
+
+        self.projection_mlp = nn.Sequential(
+            nn.Linear(num_prev, num_prev, bias=False),
+            nn.BatchNorm1d(num_prev),
+            nn.ReLU(inplace=True),
+            nn.Linear(num_prev, num_prev, bias=False),
+            nn.BatchNorm1d(num_prev),
+            nn.ReLU(inplace=True),
+            nn.Linear(num_prev, num_features, bias=False),
+            nn.BatchNorm1d(num_features, affine=False)
+        )
+
+        self.prediction_mlp = nn.Sequential(
+            nn.Linear(num_features, num_output, bias=False),
+            nn.BatchNorm1d(num_output),
+            nn.ReLU(inplace=True),
+            nn.Linear(num_output, num_features)
+        )
+
+
+    def forward_features(self, x, use_mlp=True):
+        x = self.pool(self.base.forward_features(x))
+        if use_mlp:
+            x = self.projection_mlp(x)
+            x = self.prediction_mlp(x)
+        return x
 
     def forward(self, x01):
         x0 = x01[:, 0, ...] # B, P, C, H, W
         x1 = x01[:, 1, ...] # B, P, C, H, W
 
-        f0 = self.model.forward_features(x0)
-        z0 = self.projection_mlp(f0)  # Freezing
-        p0 = self.prediction_mlp(z0)  # Predictorの出力
+        f0 = self.pool(self.base.forward_features(x0))
+        f1 = self.pool(self.base.forward_features(x1))
 
-        f1 = self.model.forward_features(x1)
-        z1 = self.projection_mlp(f1)  # Stop Gradientがある方のブランチの出力
-        p1 = self.prediction_mlp(z1)  # Predictorの出力
+        z0 = self.projection_mlp(f0)
+        z1 = self.projection_mlp(f1)
+
+        p0 = self.prediction_mlp(z0)
+        p1 = self.prediction_mlp(z1)
         return z0, z1, p0, p1
 
 
@@ -390,6 +423,23 @@ class CLI(BaseMLCLI):
 
         loss = hier_matrixes(ll, gts)
         print(ll.shape)
+        print(loss)
+
+
+    def run_sim(self, a):
+        model = SimSiamModel('resnet18', num_output=512, num_features=2048)
+
+        t = torch.randn(4, 2, 3, 256, 256)
+
+        z0, z1, p0, p1 = model(t)
+
+        c = SymmetricCosSimLoss()
+        loss = c(z0.detach(), z1.detach(), p0, p1)
+
+        print(z0.shape)
+        print(z1.shape)
+        print(p0.shape)
+        print(p1.shape)
         print(loss)
 
 

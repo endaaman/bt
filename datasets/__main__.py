@@ -24,7 +24,7 @@ from endaaman.ml import tensor_to_pil
 from endaaman.ml.cli import BaseMLCLI
 
 from utils import calc_white_area, show_fold_diag
-from .fold import FoldDataset, QuadAttentionFoldDataset
+from .fold import FoldDataset, QuadAttentionFoldDataset, PairedFoldDataset
 
 
 
@@ -376,6 +376,12 @@ class CLI(BaseMLCLI):
                         g.save(J(dest_dir, f'{case}_{new_index:02}.jpg'), quality=100)
                         new_index += 1
                 t.set_description(case)
+
+    def run_paired(self, a):
+        ds = PairedFoldDataset(source_dir='data/tiles/enda4_512')
+        for xx, y in ds:
+            print(xx.shape)
+            break
 
 if __name__ == '__main__':
     cli = CLI()
