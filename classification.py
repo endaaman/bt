@@ -335,10 +335,10 @@ class CLI(BaseMLCLI):
         batch_size: int = Field(16, s='-B')
         default: bool = False
         no_features: bool = False
-        use_last: bool = False
+        use_best: bool = False
 
     def run_validate(self, a:ValidateArgs):
-        chp = 'checkpoint_last.pt' if a.use_last else 'checkpoint_best.pt'
+        chp = 'checkpoint_best.pt' if a.use_best else 'checkpoint_last.pt'
         checkpoint = Checkpoint.from_file(J(a.model_dir, chp))
         config = TrainerConfig.from_file(J(a.model_dir, 'config.json'))
         model = TimmModel(name=config.model_name, num_classes=config.num_classes)
@@ -405,14 +405,27 @@ class CLI(BaseMLCLI):
                     featuress.append(features)
                 o = o.detach().cpu().numpy()
             df.loc[df.index[i0:i1], ds.unique_code] = o
-            preds = [ds.unique_code[i] for i in np.argmax(o, axis=1)]
+            preds = pd.Series([ds.unique_code[i] for i in np.argmax(o, axis=1)], index=df.index[i0:i1])
+            diags = df.loc[df.index[i0:i1], 'diag']
+
             df.loc[df.index[i0:i1], 'pred'] = preds
 
-            diags = df.loc[df.index[i0:i1], 'diag']
-            acc = np.mean(diags == preds)
+            map3 = {'L':'L', 'M':'M', 'G':'G', 'A':'G', 'O':'G', 'B':'B'}
+            map4 = {'L':'L', 'M':'M', 'G':'G', 'A':'I', 'O':'I', 'B':'B'}
 
-            diags = df.loc[df.index[i0:i1], 'correct'] = (diags == preds).astype(int)
-            tq.set_description(f'{i0} - {i1}: Acc: {acc:.3f}')
+            correct = (diags == preds).astype(int)
+            df.loc[df.index[i0:i1], 'correct'] = correct
+            acc = correct.mean()
+            message = f'Acc:{acc:.3f}'
+            if config.code == 'LMGAOB':
+                correct3 = (diags.map(map3) == preds.map(map3)).astype(int)
+                correct4 = (diags.map(map4) == preds.map(map4)).astype(int)
+                df.loc[df.index[i0:i1], 'correct3'] = correct3
+                df.loc[df.index[i0:i1], 'correct4'] = correct4
+                acc3 = correct3.mean()
+                acc4 = correct4.mean()
+                message += f' Acc3:{acc3:.3f} Acc4:{acc4:.3f}'
+            tq.set_description(f'{i0} - {i1}: {message}')
             tq.refresh()
 
         df.to_excel(with_wrote(J(a.model_dir, f'validate_{target}.xlsx')))
