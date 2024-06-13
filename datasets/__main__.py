@@ -378,7 +378,7 @@ class CLI(BaseMLCLI):
                 t.set_description(case)
 
     def run_paired(self, a):
-        ds = PairedFoldDataset(source_dir='data/tiles/enda4_512', normalization=False, target='test', size=256)
+        ds = PairedFoldDataset(source='enda4_512', normalization=False, target='test', size=256)
         i = 0
         for xx, y in ds:
             x0, x1 = xx

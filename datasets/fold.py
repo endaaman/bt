@@ -117,7 +117,7 @@ CACHE_DIR = os.path.expanduser('~/.cache/endaaman/bt/tiles')
 
 class BaseFoldDataset(Dataset):
     def __init__(self,
-                 source_dir,
+                 source,
                  total_fold=5,
                  fold=0,
                  target='train',
@@ -136,7 +136,9 @@ class BaseFoldDataset(Dataset):
         assert re.match('^[LMGAOB_]{6}$', code)
         self.fold = fold
         self.total_fold = total_fold
-        self.source_dir = source_dir
+        self.source = source
+        self.source_dir = J('data/tiles', source)
+        self.cache_dir = J(CACHE_DIR, self.source)
         self.target = target
         self.code = [*code]
         self.size = size
@@ -149,27 +151,28 @@ class BaseFoldDataset(Dataset):
 
         self.unique_code = [c for c in dict.fromkeys(self.code) if c in 'LMGAOB']
 
-        df_tiles = pd.read_excel(J(source_dir, 'tiles.xlsx'), index_col=0)
-        df_cases = pd.read_excel(J(source_dir, f'folds{total_fold}.xlsx'), index_col=0)
+        print('Loading data sheets')
+        df_tiles = pd.read_excel(J(self.source_dir, 'tiles.xlsx'), index_col=0)
+        df_cases = pd.read_excel(J(self.source_dir, f'folds{total_fold}.xlsx'), index_col=0)
         df_merge = pd.merge(df_tiles, df_cases.drop(columns='diag'), on='name')
         self.df = df_merge.copy()
         self.df_cases = df_cases.copy()
         self.total_fold = self.df['fold'].max() + 1
+        print('Loaded data sheets')
 
-        zip_path = J(source_dir, 'tiles.zip')
-        if os.path.exists(J(CACHE_DIR, source_dir)):
+        if os.path.isdir(self.cache_dir):
             print('Using cache files')
         else:
+            zip_path = J(self.source_dir, 'tiles.zip')
             if not os.path.exists(zip_path):
                 print(f'No zipfile({zip_path}) or caches found.')
             else:
                 print(f'Loading zip archive {zip_path}')
                 zip_file = load_zip_file(zip_path)
                 print(f'Loaded {zip_path}')
-                tiles_dir = J(CACHE_DIR, self.source_dir)
-                os.makedirs(tiles_dir, exist_ok=True)
-                zip_file.extractall(tiles_dir)
-                print(f'Extracted to {tiles_dir}')
+                os.makedirs(self.cache_dir, exist_ok=True)
+                zip_file.extractall(self.cache_dir)
+                print(f'Extracted to {self.cache_dir}')
                 zip_file.close()
 
         assert self.fold < self.total_fold
@@ -263,13 +266,11 @@ class BaseFoldDataset(Dataset):
         show_fold_diag(self.df)
 
     def load_image(self, diag, name, filename):
-        tile_path = J(diag, name, filename)
-
-        if self.zip_file:
-            with self.zip_file.open(tile_path) as image_file:
-                image = Image.open(BytesIO(image_file.read()))
-        else:
-            image = Image.open(J(self.source_dir, tile_path))
+        # if self.zip_file:
+        #     with self.zip_file.open(tile_path) as image_file:
+        #         image = Image.open(BytesIO(image_file.read()))
+        # else:
+        image = Image.open(J(self.cache_dir, diag, name, filename))
         return image
 
     def load_from_row(self, row):
@@ -412,7 +413,7 @@ class QuadAttentionFoldDataset(BaseFoldDataset):
 
     def __getitem__(self, idx):
         row = self.df.iloc[idx]
-        image = Image.open(J(self.source_dir, row['diag_org'], row['name'], row['filename']))
+        image = self.load_from_row(row)
         arr = np.array(image)
 
         ts = self.tile_size

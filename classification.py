@@ -282,7 +282,7 @@ class CLI(BaseMLCLI):
             dss = [FoldDataset(
                  total_fold=a.total_fold,
                  fold=-1,
-                 source_dir=J('data/tiles', a.source),
+                 source=a.source,
                  target='all',
                  code=a.code,
                  size=a.size,
@@ -297,7 +297,7 @@ class CLI(BaseMLCLI):
                 FoldDataset(
                     total_fold=a.total_fold,
                     fold=a.fold,
-                    source_dir=J('data/tiles', a.source),
+                    source=a.source,
                     target = t,
                     code = a.code,
                     size = a.size,
@@ -363,7 +363,7 @@ class CLI(BaseMLCLI):
         ds = FoldDataset(
              total_fold=config.total_fold,
              fold=config.fold,
-             source_dir=J('cache', config.source),
+             source=config.source,
              target=a.target,
              code=config.code,
              size=config.size,

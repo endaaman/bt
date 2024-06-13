@@ -99,7 +99,7 @@ class CLI(BaseMLCLI):
         config = TrainerConfig(**a.dict())
 
         dss = [PairedFoldDataset(
-             source_dir = J('data/tiles', a.source),
+             source = a.source,
              total_fold = a.total_fold,
              fold = a.fold,
              target = t,
@@ -159,7 +159,7 @@ class CLI(BaseMLCLI):
         ds = FoldDataset(
              total_fold=config.total_fold,
              fold=config.fold,
-             source_dir=J('data/tiles', config.source),
+             source=config.source,
              target=a.target,
              code=config.code,
              size=config.size,
