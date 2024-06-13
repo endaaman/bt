@@ -132,15 +132,22 @@ class CLI(BaseMLCLI):
         model_dir: str = Field(..., s='-d')
         target: str = Field('test', choices=['train', 'test', 'all'])
         batch_size: int = Field(128, s='-B')
-        use_best: bool = False
+        use: str = Field('best', choices=['best', 'last', 'none'])
 
     def run_validate(self, a:ValidateArgs):
-        chp = 'checkpoint_best.pt' if a.use_best else 'checkpoint_last.pt'
-        checkpoint = Checkpoint.from_file(J(a.model_dir, chp))
         config = TrainerConfig.from_file(J(a.model_dir, 'config.json'))
         model = SimSiamModel(name=config.model_name)
         print('config:', config)
-        model.load_state_dict(checkpoint.model_state)
+        if a.use == 'best':
+            chp = 'checkpoint_best.pt'
+        elif a.use == 'last':
+            chp = 'checkpoint_last.pt'
+        else:
+            chp = None
+
+        if chp:
+            checkpoint = Checkpoint.from_file(J(a.model_dir, chp))
+            model.load_state_dict(checkpoint.model_state)
         model = model.cuda().eval()
 
         transform = transforms.Compose([
@@ -198,14 +205,15 @@ class CLI(BaseMLCLI):
                 features.numpy()
             )
         ]
-        torch.save(data, J(a.model_dir, f'features_{a.target}.pt'))
+        torch.save(data, J(a.model_dir, f'features_{a.use}_{a.target}.pt'))
 
     class ClusterArgs(CommonArgs):
         count: int = 50
+        file: str = 'out/SimSiam/fold5_0/resnetrs50_2/features_test.pt'
 
     def run_cluster(self, a):
         from umap import UMAP
-        df = pd.DataFrame(torch.load('out/SimSiam/fold5_0/resnetrs50_2/features_test.pt'))
+        df = pd.DataFrame(torch.load(a.file))
 
         rowss = []
         for name, _rows in df.groupby('name'):
