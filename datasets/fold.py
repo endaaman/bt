@@ -168,9 +168,9 @@ class BaseFoldDataset(Dataset):
                 print(f'Loaded {zip_path}')
                 tiles_dir = J(CACHE_DIR, self.source_dir)
                 os.makedirs(tiles_dir, exist_ok=True)
-                zip_file.extractall()
+                zip_file.extractall(tiles_dir)
                 print(f'Extracted to {tiles_dir}')
-                # zip_file.close()
+                zip_file.close()
 
         assert self.fold < self.total_fold
 
