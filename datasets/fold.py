@@ -21,6 +21,7 @@ from tqdm import tqdm
 import pandas as pd
 from torch.nn import functional as F
 from torch.utils.data import Dataset
+import torch.multiprocessing as mp
 from PIL import Image, ImageOps, ImageFile
 from PIL.Image import Image as ImageType
 from sklearn.model_selection import train_test_split
@@ -36,14 +37,16 @@ from endaaman.ml import BaseMLCLI, pil_to_tensor, tensor_to_pil, get_global_seed
 from .utils import show_fold_diag
 from . import *
 
+
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 # Image.MAX_IMAGE_PIXELS = 1_000_000_000_000
 Image.MAX_IMAGE_PIXELS = None
+mp.set_sharing_strategy('file_system')
+J = os.path.join
 
 
 DEFAULT_SIZE = 512
 
-J = os.path.join
 
 def get_augs(image_aug, size, normalization, mean, std):
     blur_limit = (3, 5)
