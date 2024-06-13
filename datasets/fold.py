@@ -152,7 +152,7 @@ class BaseFoldDataset(Dataset):
         self.unique_code = [c for c in dict.fromkeys(self.code) if c in 'LMGAOB']
 
         print('Loading data sheets')
-        df_tiles = pd.read_excel(J(self.source_dir, 'tiles.xls'), index_col=0)
+        df_tiles = pd.read_csv(J(self.source_dir, 'tiles.csv'), index_col=0)
         df_cases = pd.read_excel(J(self.source_dir, f'folds{total_fold}.xlsx'), index_col=0)
         df_merge = pd.merge(df_tiles, df_cases.drop(columns='diag'), on='name')
         self.df = df_merge.copy()

@@ -35,6 +35,7 @@ class TrainerConfig(BaseTrainerConfig):
     minimum_area: float = 0.6
     limit: int = 100
     noupsample: bool = False
+    scheduler: str = ''
 
     mean: float = MEAN
     std: float = STD
@@ -54,6 +55,15 @@ class Trainer(BaseTrainer):
 
     def create_optimizer(self):
         return optim.RAdam(self.model.parameters())
+
+    def create_scheduler(self):
+        s = self.config.scheduler
+        if not s:
+            return None
+        m = re.match(r'^step_(\d+)$', s)
+        if m:
+            return optim.lr_scheduler.StepLR(self.optimizer, step_size=int(m[1]), gamma=0.1)
+        raise RuntimeError('Invalid scheduler')
 
     def eval(self, inputs, __gts, i):
         inputs = inputs.to(self.device)

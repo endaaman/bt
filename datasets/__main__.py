@@ -378,15 +378,23 @@ class CLI(BaseMLCLI):
                 t.set_description(case)
 
     def run_paired(self, a):
-        ds = PairedFoldDataset(source='enda4_512', normalization=False, target='test', size=256)
+        ds = PairedFoldDataset(
+                source='enda4_512',
+                normalization=False,
+                target='test',
+                size=256,
+                minimum_area=0.6)
+        D = 'tmp/simsiam_paired'
+        os.makedirs(D, exist_ok=True)
         i = 0
-        for xx, y in ds:
-            x0, x1 = xx
-            tensor_to_pil(x0).save(f'tmp/paired/{i}_0.png')
-            tensor_to_pil(x1).save(f'tmp/paired/{i}_1.png')
+        count = 100
+        idx = np.random.choice(len(ds), count)
+        for i in range(count):
+            x01, y = ds.__getitem__(idx[i])
+            x0, x1 = x01[0], x01[1]
+            tensor_to_pil(x0).save(f'{D}/{i}_0.png')
+            tensor_to_pil(x1).save(f'{D}/{i}_1.png')
             i += 1
-            if i > 50:
-                break
 
 if __name__ == '__main__':
     cli = CLI()
