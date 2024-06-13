@@ -71,19 +71,10 @@ class Trainer(BaseTrainer):
         loss = self.criterion(z0, z1, p0, p1)
         return loss, None
 
-    # def metrics_precision(self, preds, gts, batch):
-    #     if batch:
-    #         return None
-    #     preds = preds.detach().cpu()
-    #     labels = torch.unique(preds)
-    #     correct = 0
-    #     for label in labels:
-    #         items = gts[preds == label]
-    #         elements, counts = torch.unique(items, return_counts=True)
-    #         dominant = elements[torch.argmax(counts)]
-    #         # print(label, dominant, torch.sum(items == dominant))
-    #         correct += torch.sum(items == dominant)
-    #     return correct/len(preds)
+    def metrics_std(self, preds, gts, batch):
+        if batch:
+            return None
+        return 0
 
 
 class CLI(BaseMLCLI):
