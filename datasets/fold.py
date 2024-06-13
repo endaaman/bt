@@ -113,6 +113,8 @@ def load_zip_file(path):
         return zipfile.ZipFile(BytesIO(f.read()))
 
 
+CACHE_DIR = os.path.expanduser('~/.cache/endaaman/bt/tiles')
+
 class BaseFoldDataset(Dataset):
     def __init__(self,
                  source_dir,
@@ -155,13 +157,20 @@ class BaseFoldDataset(Dataset):
         self.total_fold = self.df['fold'].max() + 1
 
         zip_path = J(source_dir, 'tiles.zip')
-        self.zip_file = None
-        if os.path.exists(zip_path):
-            print(f'Loading zip archive {zip_path}')
-            self.zip_file = load_zip_file(zip_path)
-            print(f'Loaded {zip_path}')
+        if os.path.exists(J(CACHE_DIR, source_dir)):
+            print('Using cache files')
         else:
-            print(f'No zip file {zip_path} found.')
+            if not os.path.exists(zip_path):
+                print(f'No zipfile({zip_path}) or caches found.')
+            else:
+                print(f'Loading zip archive {zip_path}')
+                zip_file = load_zip_file(zip_path)
+                print(f'Loaded {zip_path}')
+                tiles_dir = J(CACHE_DIR, self.source_dir)
+                os.makedirs(tiles_dir, exist_ok=True)
+                zip_file.extractall()
+                print(f'Extracted to {tiles_dir}')
+                # zip_file.close()
 
         assert self.fold < self.total_fold
 
