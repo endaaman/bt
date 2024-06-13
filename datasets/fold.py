@@ -152,12 +152,12 @@ class BaseFoldDataset(Dataset):
         self.unique_code = [c for c in dict.fromkeys(self.code) if c in 'LMGAOB']
 
         print('Loading data sheets')
-        df_tiles = pd.read_excel(J(self.source_dir, 'tiles.xlsx'), index_col=0)
+        df_tiles = pd.read_excel(J(self.source_dir, 'tiles.xls'), index_col=0)
         df_cases = pd.read_excel(J(self.source_dir, f'folds{total_fold}.xlsx'), index_col=0)
         df_merge = pd.merge(df_tiles, df_cases.drop(columns='diag'), on='name')
         self.df = df_merge.copy()
         self.df_cases = df_cases.copy()
-        self.total_fold = self.df['fold'].max() + 1
+        assert self.fold < self.total_fold
         print('Loaded data sheets')
 
         if os.path.isdir(self.cache_dir):
@@ -174,8 +174,6 @@ class BaseFoldDataset(Dataset):
                 zip_file.extractall(self.cache_dir)
                 print(f'Extracted to {self.cache_dir}')
                 zip_file.close()
-
-        assert self.fold < self.total_fold
 
         self.aug = get_augs(augmentation, self.size, normalization, mean, std)
 
