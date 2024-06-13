@@ -124,7 +124,7 @@ class MILModel(nn.Module):
         self.w = nn.Linear(self.params_count, 1, bias=False)
 
     def set_freeze_base_model_weights(self, flag):
-        for param in base.parameters():
+        for param in self.base.parameters():
             param.requires_grad = flag
 
     def get_cam_layers(self):
@@ -287,16 +287,16 @@ class TimmModelWithHier(nn.Module):
 
 
 class SimSiamModel(nn.Module):
-    def __init__(self, name, num_output=512, num_features=2048,  pretrained=True):
+    def __init__(self, name, num_neck=512, num_features=2048,  pretrained=True):
         super().__init__()
         self.name = name
         self.num_features = num_features
-        self.num_output = num_output
+        self.num_neck = num_neck
 
         self.base = timm.create_model(name, pretrained=pretrained)
         num_prev = self.base.num_features
         self.pool = get_pool(self.base)
-        self.num_output = num_output
+        self.num_neck = num_neck
 
         self.projection_mlp = nn.Sequential(
             nn.Linear(num_prev, num_prev, bias=False),
@@ -310,10 +310,10 @@ class SimSiamModel(nn.Module):
         )
 
         self.prediction_mlp = nn.Sequential(
-            nn.Linear(num_features, num_output, bias=False),
-            nn.BatchNorm1d(num_output),
+            nn.Linear(num_features, num_neck, bias=False),
+            nn.BatchNorm1d(num_neck),
             nn.ReLU(inplace=True),
-            nn.Linear(num_output, num_features)
+            nn.Linear(num_neck, num_features)
         )
 
 
@@ -327,14 +327,18 @@ class SimSiamModel(nn.Module):
     def forward(self, x01):
         x0 = x01[:, 0, ...] # B, P, C, H, W
         x1 = x01[:, 1, ...] # B, P, C, H, W
+        print('x0', x0.shape)
 
         f0 = self.pool(self.base.forward_features(x0))
+        print('f0', f0.shape)
         f1 = self.pool(self.base.forward_features(x1))
 
         z0 = self.projection_mlp(f0)
+        print('z0', z0.shape)
         z1 = self.projection_mlp(f1)
 
         p0 = self.prediction_mlp(z0)
+        print('p0', p0.shape)
         p1 = self.prediction_mlp(z1)
         return z0, z1, p0, p1
 
@@ -427,7 +431,7 @@ class CLI(BaseMLCLI):
 
 
     def run_sim(self, a):
-        model = SimSiamModel('resnet18', num_output=512, num_features=2048)
+        model = SimSiamModel('resnet18', num_neck=512, num_features=2048)
 
         t = torch.randn(4, 2, 3, 256, 256)
 
