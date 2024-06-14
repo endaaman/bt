@@ -36,6 +36,7 @@ class TrainerConfig(BaseTrainerConfig):
     minimum_area: float = 0.6
     limit: int = 100
     noupsample: bool = False
+    pretrained: bool = False
     scheduler: str = ''
 
     mean: float = MEAN
@@ -52,7 +53,7 @@ class TrainerConfig(BaseTrainerConfig):
 
 class Trainer(BaseTrainer):
     def prepare(self):
-        model = SimSiamModel(name=self.config.model_name)
+        model = SimSiamModel(name=self.config.model_name, pretrained=self.config.pretrained)
         self.criterion = SymmetricCosSimLoss(stop_grads=not self.config.no_stop_grads)
         return model
 
