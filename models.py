@@ -287,7 +287,7 @@ class TimmModelWithHier(nn.Module):
 
 
 class SimSiamModel(nn.Module):
-    def __init__(self, name, num_neck=512, num_features=2048,  pretrained=True):
+    def __init__(self, name, num_features=2048, num_neck=512,  pretrained=True):
         super().__init__()
         self.name = name
         self.num_features = num_features
@@ -296,7 +296,6 @@ class SimSiamModel(nn.Module):
         self.base = timm.create_model(name, pretrained=pretrained)
         num_prev = self.base.num_features
         self.pool = get_pool(self.base)
-        self.num_neck = num_neck
 
         self.projection_mlp = nn.Sequential(
             nn.Linear(num_prev, num_prev, bias=False),
@@ -327,18 +326,14 @@ class SimSiamModel(nn.Module):
     def forward(self, x01):
         x0 = x01[:, 0, ...] # B, P, C, H, W
         x1 = x01[:, 1, ...] # B, P, C, H, W
-        print('x0', x0.shape)
 
         f0 = self.pool(self.base.forward_features(x0))
-        print('f0', f0.shape)
         f1 = self.pool(self.base.forward_features(x1))
 
         z0 = self.projection_mlp(f0)
-        print('z0', z0.shape)
         z1 = self.projection_mlp(f1)
 
         p0 = self.prediction_mlp(z0)
-        print('p0', p0.shape)
         p1 = self.prediction_mlp(z1)
         return z0, z1, p0, p1
 
