@@ -97,13 +97,17 @@ class NestedCrossEntropyLoss(nn.Module):
 
 
 class SymmetricCosSimLoss(nn.Module):
+    def __init__(self, stop_grads=True):
+        super().__init__()
+        self.stop_grads = stop_grads
+
     def forward(self, z0, z1, p0, p1):
         loss0 = - F.cosine_similarity(
-            z0.detach(),  # Stop Gradient
+            z0.detach() if self.stop_grads else z0,
             p1
         )
         loss1 = - F.cosine_similarity(
-            z1.detach(),  # Stop Gradient
+            z1.detach() if self.stop_grads else z1,
             p0
         )
         loss =  (loss0 + loss1) / 2.0

@@ -154,14 +154,12 @@ class BaseFoldDataset(Dataset):
 
         self.unique_code = [c for c in dict.fromkeys(self.code) if c in 'LMGAOB']
 
-        print('Loading data sheets')
         df_tiles = pd.read_csv(J(self.source_dir, 'tiles.csv'), index_col=0)
         df_cases = pd.read_excel(J(self.source_dir, f'folds{total_fold}.xlsx'), index_col=0)
         df_merge = pd.merge(df_tiles, df_cases.drop(columns='diag'), on='name')
         self.df = df_merge.copy()
         self.df_cases = df_cases.copy()
         assert self.fold < self.total_fold
-        print('Loaded data sheets')
 
         if os.path.isdir(self.cache_dir):
             print('Using cache files')
@@ -172,10 +170,10 @@ class BaseFoldDataset(Dataset):
             else:
                 print(f'Loading zip archive {zip_path}')
                 zip_file = load_zip_file(zip_path)
-                print(f'Loaded {zip_path}')
+                print(f'Extracting {zip_path} to {self.cache_dir}')
                 os.makedirs(self.cache_dir, exist_ok=True)
                 zip_file.extractall(self.cache_dir)
-                print(f'Extracted to {self.cache_dir}')
+                print(f'Extraction done.')
                 zip_file.close()
 
         self.aug = get_augs(augmentation, self.size, normalization, mean, std)

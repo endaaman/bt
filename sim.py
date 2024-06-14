@@ -7,6 +7,7 @@ import pandas as pd
 import torch
 from torch import nn
 from torch import optim
+import torch.nn.functional as F
 from torchvision import transforms
 from pydantic import Field
 from PIL import Image
@@ -40,6 +41,8 @@ class TrainerConfig(BaseTrainerConfig):
     mean: float = MEAN
     std: float = STD
 
+    no_stop_grads: bool = False
+
     def unique_code(self):
         return [c for c in dict.fromkeys(self.code) if c in 'LMGAOB']
 
@@ -50,7 +53,7 @@ class TrainerConfig(BaseTrainerConfig):
 class Trainer(BaseTrainer):
     def prepare(self):
         model = SimSiamModel(name=self.config.model_name)
-        self.criterion = SymmetricCosSimLoss()
+        self.criterion = SymmetricCosSimLoss(stop_grads=not self.config.no_stop_grads)
         return model
 
     def create_optimizer(self):
@@ -69,12 +72,12 @@ class Trainer(BaseTrainer):
         inputs = inputs.to(self.device)
         z0, z1, p0, p1 = self.model(inputs)
         loss = self.criterion(z0, z1, p0, p1)
-        return loss, None
+        return loss, p0
 
     def metrics_std(self, preds, gts, batch):
-        if batch:
-            return None
-        return 0
+        preds = F.normalize(preds, p=2, dim=1)
+        std = torch.std(preds, dim=0).mean()
+        return std.detach().cpu()
 
 
 class CLI(BaseMLCLI):
@@ -133,7 +136,7 @@ class CLI(BaseMLCLI):
         model_dir: str = Field(..., s='-d')
         target: str = Field('test', choices=['train', 'test', 'all'])
         batch_size: int = Field(128, s='-B')
-        use: str = Field('best', choices=['best', 'last', 'none'])
+        use: str = Field('last', choices=['best', 'last', 'none'])
 
     def run_validate(self, a:ValidateArgs):
         config = TrainerConfig.from_file(J(a.model_dir, 'config.json'))
@@ -211,6 +214,7 @@ class CLI(BaseMLCLI):
     class ClusterArgs(CommonArgs):
         count: int = 50
         file: str = 'out/SimSiam/fold5_0/resnetrs50_2/features_test.pt'
+        noshow: bool = False
 
     def run_cluster(self, a):
         from umap import UMAP
@@ -238,7 +242,11 @@ class CLI(BaseMLCLI):
             needle = labels == label
             xx, yy = embedding_x[needle], embedding_y[needle]
             plt.scatter(xx, yy, label=label, c=f'C{i}')
-        plt.show()
+
+        dir = os.path.dirname(a.file)
+        plt.savefig(J(dir, 'umap.png'))
+        if not a.noshow:
+            plt.show()
 
         # reducer = umap.UMAP(n_components=2, random_state=42)
         # reduced_features = reducer.fit_transform(features)
