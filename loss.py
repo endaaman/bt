@@ -112,3 +112,22 @@ class SymmetricCosSimLoss(nn.Module):
         )
         loss =  (loss0 + loss1) / 2.0
         return loss.mean()
+
+
+class BarlowTwinsLoss(nn.Module):
+    def __init__(self, lambd=5e-3):
+        super().__init__()
+        self.lambd = lambd
+
+    def off_diagonal(x):
+        n, m = x.shape
+        assert n == m
+        return x.flatten()[:-1].view(n - 1, n + 1)[:, 1:].flatten()
+
+    def forward(self, z_a, z_b):
+        N, D = z_a.size()
+        c = z_a.T @ z_b / N
+        on_diag = torch.diagonal(c).add_(-1).pow(2).sum()
+        off_diag = self.off_diagonal(c).pow(2).sum()
+        loss = on_diag + self.lambd * off_diag
+        return loss

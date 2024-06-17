@@ -338,7 +338,7 @@ class SimSiamModel(nn.Module):
         return z0, z1, p0, p1
 
 
-class BarlowTwins(nn.Module):
+class BarlowTwinsModel(nn.Module):
     def __init__(self, name, num_features=2048, pretrained=True):
         super().__init__()
         self.name = name
@@ -347,7 +347,7 @@ class BarlowTwins(nn.Module):
 
         self.base = timm.create_model(name, pretrained=pretrained)
         num_prev = self.base.num_features
-        self.backbone.fc = nn.Identity()
+        self.base.fc = nn.Identity()
 
         self.projection = nn.Sequential(
             nn.Linear(num_prev, num_features),
@@ -358,7 +358,7 @@ class BarlowTwins(nn.Module):
 
     def forward(self, x):
         x = self.base(x)
-        x = self.projector(x)
+        x = self.projection(x)
         return x
 
 
