@@ -17,7 +17,7 @@ from sklearn.decomposition import PCA
 
 from endaaman.ml import BaseTrainer, BaseTrainerConfig, BaseMLCLI, Checkpoint
 
-from models import SimSiamModel, TimmModel
+from models import TimmModel, SimSiamModel, BarlowTwinsModel
 from loss import SymmetricCosSimLoss
 from datasets import MEAN, STD
 from datasets.fold import PairedFoldDataset, FoldDataset
@@ -42,6 +42,8 @@ class TrainerConfig(BaseTrainerConfig):
     mean: float = MEAN
     std: float = STD
 
+    arc: str = Field('simsiam', choices=['simsiam', 'barlow'])
+
     no_stop_grads: bool = False
 
     def unique_code(self):
@@ -53,8 +55,12 @@ class TrainerConfig(BaseTrainerConfig):
 
 class Trainer(BaseTrainer):
     def prepare(self):
-        model = SimSiamModel(name=self.config.model_name, pretrained=self.config.pretrained)
-        self.criterion = SymmetricCosSimLoss(stop_grads=not self.config.no_stop_grads)
+        if self.config.arc == 'simsiam':
+            model = SimSiamModel(name=self.config.model_name, pretrained=self.config.pretrained)
+            self.criterion = SymmetricCosSimLoss(stop_grads=not self.config.no_stop_grads)
+        elif self.config.arc == 'barlow':
+            model = BarlowTwinsModel(name=self.config.model_name, pretrained=self.config.pretrained)
+            self.criterion = SymmetricCosSimLoss(stop_grads=not self.config.no_stop_grads)
         return model
 
     def create_optimizer(self):
