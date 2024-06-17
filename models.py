@@ -338,6 +338,30 @@ class SimSiamModel(nn.Module):
         return z0, z1, p0, p1
 
 
+class BarlowTwins(nn.Module):
+    def __init__(self, name, num_features=2048, pretrained=True):
+        super().__init__()
+        self.name = name
+        self.num_features = num_features
+        self.num_neck = num_neck
+
+        self.base = timm.create_model(name, pretrained=pretrained)
+        num_prev = self.base.num_features
+        self.backbone.fc = nn.Identity()
+
+        self.projection = nn.Sequential(
+            nn.Linear(num_prev, num_features),
+            nn.BatchNorm1d(num_features),
+            nn.ReLU(),
+            nn.Linear(num_features, num_features)
+        )
+
+    def forward(self, x):
+        x = self.base(x)
+        x = self.projector(x)
+        return x
+
+
 
 class CLI(BaseMLCLI):
     class CommonArgs(BaseMLCLI.CommonArgs):
