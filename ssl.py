@@ -18,7 +18,7 @@ from sklearn.decomposition import PCA
 from endaaman.ml import BaseTrainer, BaseTrainerConfig, BaseMLCLI, Checkpoint
 
 from models import TimmModel, SimSiamModel, BarlowTwinsModel
-from loss import SymmetricCosSimLoss
+from models.loss import SymmetricCosSimLoss, BarlowTwinsLoss
 from datasets import MEAN, STD
 from datasets.fold import PairedFoldDataset, FoldDataset
 
@@ -60,7 +60,7 @@ class Trainer(BaseTrainer):
             self.criterion = SymmetricCosSimLoss(stop_grads=not self.config.no_stop_grads)
         elif self.config.arc == 'barlow':
             model = BarlowTwinsModel(name=self.config.model_name, pretrained=self.config.pretrained)
-            self.criterion = SymmetricCosSimLoss(stop_grads=not self.config.no_stop_grads)
+            self.criterion = BarlowTwinsLoss(stop_grads=not self.config.no_stop_grads)
         return model
 
     def create_optimizer(self):
@@ -77,9 +77,20 @@ class Trainer(BaseTrainer):
 
     def eval(self, inputs, __gts, i):
         inputs = inputs.to(self.device)
-        z0, z1, p0, p1 = self.model(inputs)
-        loss = self.criterion(z0, z1, p0, p1)
-        return loss, p0
+        if self.config.arc == 'simsiam':
+            # inputs: [N, 2, C, H, W]
+            z0, z1, p0, p1 = self.model(inputs)
+            loss = self.criterion(z0, z1, p0, p1)
+            return loss, p0
+
+        if self.config.arc == 'barlow':
+            # inputs: [N, 2, C, H, W]
+            x0 = inputs[:, 0, ...]
+            x1 = inputs[:, 1, ...]
+            z0 = self.model(inputs)
+            z1 = self.model(x1)
+            loss = self.criterion(z0, z1)
+            return loss, z0
 
     def metrics_std(self, preds, gts, batch):
         preds = F.normalize(preds, p=2, dim=1)
@@ -98,7 +109,7 @@ class CLI(BaseMLCLI):
         num_workers: int = Field(4, s='-N')
         epoch: int = Field(30, s='-E')
         suffix: str = ''
-        out: str = 'out/SimSiam/fold{total_fold}_{fold}/{model_name}{suffix}'
+        out: str = 'out/{arc}/fold{total_fold}_{fold}/{model_name}{suffix}'
         overwrite: bool = Field(False, s='-O')
 
 
