@@ -233,7 +233,7 @@ class CLI(BaseMLCLI):
 
             tt = torch.stack(tt)
             with torch.set_grad_enabled(False):
-                f = model.forward_features(tt.cuda(), use_mlp=False)
+                f = model.forward_features(tt.cuda(), use_mlp=True)
             features = f.detach().cpu()
             featuress.append(features)
             tq.set_description(f'{i0} - {i1}')
