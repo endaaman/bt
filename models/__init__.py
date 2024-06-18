@@ -12,7 +12,7 @@ from pydantic import Field
 
 from endaaman.ml import BaseMLCLI
 
-from loss import SymmetricCosSimLoss, NestedCrossEntropyLoss, CrossEntropyLoss
+from .loss import SymmetricCosSimLoss, NestedCrossEntropyLoss, CrossEntropyLoss
 
 
 def get_cam_layers(m, name=None):
