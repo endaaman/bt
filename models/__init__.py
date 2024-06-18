@@ -359,7 +359,7 @@ class BarlowTwinsModel(nn.Module):
         x = self.base(x)
         x = self.projection(x)
         if normalize:
-            x = (x - z.mean(0)) / z.std(0)
+            x = (x - x.mean(0)) / x.std(0)
         return x
 
 
