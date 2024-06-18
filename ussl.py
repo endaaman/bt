@@ -43,7 +43,6 @@ class TrainerConfig(BaseTrainerConfig):
     std: float = STD
 
     arc: str = Field('simsiam', choices=['simsiam', 'barlow'])
-
     no_stop_grads: bool = False
 
     def unique_code(self):
@@ -60,7 +59,7 @@ class Trainer(BaseTrainer):
             self.criterion = SymmetricCosSimLoss(stop_grads=not self.config.no_stop_grads)
         elif self.config.arc == 'barlow':
             model = BarlowTwinsModel(name=self.config.model_name, pretrained=self.config.pretrained)
-            self.criterion = BarlowTwinsLoss(stop_grads=not self.config.no_stop_grads)
+            self.criterion = BarlowTwinsLoss(lambd=5e-3)
         return model
 
     def create_optimizer(self):
@@ -87,8 +86,8 @@ class Trainer(BaseTrainer):
             # inputs: [N, 2, C, H, W]
             x0 = inputs[:, 0, ...]
             x1 = inputs[:, 1, ...]
-            z0 = self.model(inputs)
-            z1 = self.model(x1)
+            z0 = self.model(x0, normalize=True)
+            z1 = self.model(x1, normalize=True)
             loss = self.criterion(z0, z1)
             return loss, z0
 
