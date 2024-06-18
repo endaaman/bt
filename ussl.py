@@ -37,7 +37,7 @@ class TrainerConfig(BaseTrainerConfig):
     limit: int = 100
     noupsample: bool = False
     pretrained: bool = False
-    scheduler: str = ''
+    scheduler: str = 'step_10'
 
     mean: float = MEAN
     std: float = STD
@@ -68,6 +68,8 @@ class Trainer(BaseTrainer):
                 pretrained=self.config.pretrained
             )
             self.criterion = BarlowTwinsLoss(lambd=5e-3)
+        else:
+            raise RuntimeError('Invalid arc', self.config.arc)
         return model
 
     def create_optimizer(self):
@@ -103,7 +105,7 @@ class Trainer(BaseTrainer):
 
     def metrics_std(self, preds, gts, batch):
         preds = F.normalize(preds, p=2, dim=1)
-        std = torch.std(preds, dim=1).mean()
+        std = torch.std(preds, dim=0).mean()
         return std.detach().cpu()
 
 
@@ -118,7 +120,7 @@ class CLI(BaseMLCLI):
         num_workers: int = Field(4, s='-N')
         epoch: int = Field(30, s='-E')
         suffix: str = ''
-        out: str = 'out/{arc}/fold{total_fold}_{fold}/{model_name}{suffix}'
+        out: str = 'out/{arc}/fold{total_fold}_{fold}/{code}-{model_name}{suffix}'
         overwrite: bool = Field(False, s='-O')
 
 
@@ -163,14 +165,22 @@ class CLI(BaseMLCLI):
         model_dir: str = Field(..., s='-d')
         target: str = Field('test', choices=['train', 'test', 'all'])
         batch_size: int = Field(128, s='-B')
-        use: str = Field('last', choices=['best', 'last', 'none'])
+        use: str = Field('last', choices=['best', 'last', 'none', 'pretrained'])
 
     def run_validate(self, a:ValidateArgs):
         config = TrainerConfig.from_file(J(a.model_dir, 'config.json'))
         if config.arc == 'simsiam':
-            model = SimSiamModel(name=config.model_name, num_features=config.num_features)
+            model = SimSiamModel(
+                name=config.model_name,
+                num_features=config.num_features,
+                pretrained=a.use == 'pretrained'
+            )
         elif config.arc == 'barlow':
-            model = BarlowTwinsModel(name=config.model_name, num_features=config.num_features)
+            model = BarlowTwinsModel(
+                name=config.model_name,
+                num_features=config.num_features,
+                pretrained=a.use == 'pretrained'
+            )
         else:
             raise RuntimeError('Invalid arc:', config.arc)
 
@@ -180,6 +190,7 @@ class CLI(BaseMLCLI):
         elif a.use == 'last':
             chp = 'checkpoint_last.pt'
         else:
+            # none | pretrained
             chp = None
 
         if chp:
@@ -248,6 +259,7 @@ class CLI(BaseMLCLI):
         count: int = 50
         file: str = 'out/SimSiam/fold5_0/resnetrs50_2/features_test.pt'
         noshow: bool = False
+        out: str = ''
 
     def run_cluster(self, a):
         from umap import UMAP
@@ -264,7 +276,10 @@ class CLI(BaseMLCLI):
 
         labels = df['diag_org'].values
 
-        umap_model = UMAP(n_components=2, min_dist=0.1)
+        umap_model = UMAP(
+            n_neighbors=30,
+            min_dist=0.1,
+        )
         print('Start projection')
         embedding = umap_model.fit_transform(features)
         print('Done projection')
@@ -277,7 +292,7 @@ class CLI(BaseMLCLI):
             plt.scatter(xx, yy, label=label, c=f'C{i}')
 
         dir = os.path.dirname(a.file)
-        plt.savefig(J(dir, 'umap.png'))
+        plt.savefig(J(dir, a.out or f'umap.png'))
         if not a.noshow:
             plt.show()
 
