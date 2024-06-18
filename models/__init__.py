@@ -355,6 +355,12 @@ class BarlowTwinsModel(nn.Module):
             nn.Linear(num_features, num_features)
         )
 
+    def forward_features(self, x, use_mlp=True):
+        x = self.base(x)
+        if use_mlp:
+            x = self.projection(x)
+        return x
+
     def forward(self, x, normalize=False):
         x = self.base(x)
         x = self.projection(x)
