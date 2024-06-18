@@ -91,9 +91,11 @@ class Trainer(BaseTrainer):
             loss = self.criterion(z0, z1)
             return loss, z0
 
+        raise RuntimeError('Invalid arc', self.config.arc)
+
     def metrics_std(self, preds, gts, batch):
         preds = F.normalize(preds, p=2, dim=1)
-        std = torch.std(preds, dim=0).mean()
+        std = torch.std(preds, dim=1).mean()
         return std.detach().cpu()
 
 
