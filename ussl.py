@@ -43,6 +43,7 @@ class TrainerConfig(BaseTrainerConfig):
     std: float = STD
 
     arc: str = Field('simsiam', choices=['simsiam', 'barlow'])
+    num_features: int = Field(2048, s='-f')
     no_stop_grads: bool = False
 
     def unique_code(self):
@@ -55,10 +56,17 @@ class TrainerConfig(BaseTrainerConfig):
 class Trainer(BaseTrainer):
     def prepare(self):
         if self.config.arc == 'simsiam':
-            model = SimSiamModel(name=self.config.model_name, pretrained=self.config.pretrained)
+            model = SimSiamModel(
+                name=self.config.model_name,
+                num_features=self.config.num_features,
+                pretrained=self.config.pretrained)
             self.criterion = SymmetricCosSimLoss(stop_grads=not self.config.no_stop_grads)
         elif self.config.arc == 'barlow':
-            model = BarlowTwinsModel(name=self.config.model_name, pretrained=self.config.pretrained)
+            model = BarlowTwinsModel(
+                name=self.config.model_name,
+                num_features=self.config.num_features,
+                pretrained=self.config.pretrained
+            )
             self.criterion = BarlowTwinsLoss(lambd=5e-3)
         return model
 
@@ -159,7 +167,13 @@ class CLI(BaseMLCLI):
 
     def run_validate(self, a:ValidateArgs):
         config = TrainerConfig.from_file(J(a.model_dir, 'config.json'))
-        model = SimSiamModel(name=config.model_name)
+        if config.arc == 'simsiam':
+            model = SimSiamModel(name=config.model_name, num_features=config.num_features)
+        elif config.arc == 'barlow':
+            model = BarlowTwinsModel(name=config.model_name, num_features=config.num_features)
+        else:
+            raise RuntimeError('Invalid arc:', config.arc)
+
         print('config:', config)
         if a.use == 'best':
             chp = 'checkpoint_best.pt'
