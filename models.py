@@ -343,7 +343,6 @@ class BarlowTwinsModel(nn.Module):
         super().__init__()
         self.name = name
         self.num_features = num_features
-        self.num_neck = num_neck
 
         self.base = timm.create_model(name, pretrained=pretrained)
         num_prev = self.base.num_features
@@ -356,9 +355,11 @@ class BarlowTwinsModel(nn.Module):
             nn.Linear(num_features, num_features)
         )
 
-    def forward(self, x):
+    def forward(self, x, normalize=False):
         x = self.base(x)
         x = self.projection(x)
+        if normalize:
+            x = (x - z.mean(0)) / z.std(0)
         return x
 
 

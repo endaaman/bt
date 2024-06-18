@@ -131,3 +131,5 @@ class BarlowTwinsLoss(nn.Module):
         off_diag = self.off_diagonal(c).pow(2).sum()
         loss = on_diag + self.lambd * off_diag
         return loss
+
+
