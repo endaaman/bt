@@ -4,6 +4,7 @@ import math
 
 import numpy as np
 import pandas as pd
+import seaborn as sns
 import torch
 from torch import nn
 from torch import optim
@@ -15,7 +16,11 @@ from tqdm import tqdm
 import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
 
+import leidenalg as la
+import igraph as ig
+
 from endaaman.ml import BaseTrainer, BaseTrainerConfig, BaseMLCLI, Checkpoint
+from endaaman.ml.utils import hover_images_on_scatters
 
 from models import TimmModel, SimSiamModel, BarlowTwinsModel
 from models.loss import SymmetricCosSimLoss, BarlowTwinsLoss
@@ -263,8 +268,8 @@ class CLI(BaseMLCLI):
 
     def run_cluster(self, a):
         from umap import UMAP
-        df = pd.DataFrame(torch.load(a.file))
 
+        df = pd.DataFrame(torch.load(a.file))
         rowss = []
         for name, _rows in df.groupby('name'):
             rows = df.loc[np.random.choice(_rows.index, a.count)]
@@ -286,10 +291,57 @@ class CLI(BaseMLCLI):
         embedding_x = embedding[:, 0]
         embedding_y = embedding[:, 1]
 
-        for i, label in enumerate('LMGAOB'):
-            needle = labels == label
-            xx, yy = embedding_x[needle], embedding_y[needle]
-            plt.scatter(xx, yy, label=label, c=f'C{i}')
+        knn_graph = umap_model.graph_
+        # グラフをiGraph形式に変換
+        sources, targets = knn_graph.nonzero()
+        weights = knn_graph.data
+        edges = list(zip(sources, targets))
+        graph = ig.Graph(edges=edges, directed=False)
+        graph.es['weight'] = weights
+
+        # グラフをiGraph形式に変換
+        sources, targets = knn_graph.nonzero()
+        weights = knn_graph.data
+        edges = list(zip(sources, targets))
+        graph = ig.Graph(edges=edges, directed=False)
+        graph.es['weight'] = weights
+
+        # Leidenクラスタリングの実行
+        partition = la.find_partition(graph, la.RBConfigurationVertexPartition, weights=weights)
+        clusters = np.array(partition.membership)
+
+        plots = pd.DataFrame({
+            'UMAP1': embedding[:, 0],
+            'UMAP2': embedding[:, 1],
+            'Diagnosis': labels,
+            'Cluster': clusters
+        })
+
+        plt.figure(figsize=(12, 6))
+        plt.subplot(1, 2, 1)
+
+        scatter0 = sns.scatterplot(data=plots, x='UMAP1', y='UMAP2',
+                                   hue='Diagnosis', hue_order=list('LMGAO'),
+                                   palette='tab10', s=10)
+
+        plt.subplot(1, 2, 2)
+        scatter1 = sns.scatterplot(data=plots, x='UMAP1', y='UMAP2',
+                                   hue='Cluster',
+                                   palette='Set2', s=10)
+
+        images = []
+        for i, row in df.iterrows():
+            p = J(os.path.expanduser('~/.cache/endaaman/bt/tiles/enda4_512'),
+                  row['diag_org'], row['name'], row['filename'])
+            images.append(Image.open(p).copy())
+
+        hover_images_on_scatters([scatter0.collections[0]], [images])
+        hover_images_on_scatters([scatter1.collections[0]], [images])
+
+        # for i, label in enumerate('LMGAOB'):
+        #     needle = labels == label
+        #     xx, yy = embedding_x[needle], embedding_y[needle]
+        #     plt.scatter(xx, yy, label=label, c=f'C{i}')
 
         dir = os.path.dirname(a.file)
         plt.savefig(J(dir, a.out or f'umap.png'))
