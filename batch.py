@@ -23,9 +23,11 @@ from sklearn import metrics as skmetrics
 from pydantic import Field
 from torchvision import transforms
 from torchvision.transforms.functional import adjust_gamma
-from umap import UMAP
 import albumentations as A
 from openslide import OpenSlide
+import seaborn as sns
+import leidenalg as la
+import igraph as ig
 
 from endaaman import load_images_from_dir_or_file, with_wrote, grid_split, with_mkdir, n_split
 from endaaman.ml.cli import BaseMLCLI
@@ -486,131 +488,199 @@ class CLI(BaseMLCLI):
             df_by_image.to_excel(writer, sheet_name='images', index=False)
 
 
-    class ClusterArgs(CommonArgs):
-        model_dir: str = Field(..., s='-d')
-        save: str = ''
-        target_file: str = Field('features_test.pt', s='-t')
-        count: int = 10
-        show: bool = False
-        notrained: bool = Field(False, cli=('--notrained', ))
-        export: bool = False
+    #class ClusterArgs(CommonArgs):
+    #    model_dir: str = Field(..., s='-d')
+    #    save: str = ''
+    #    target_file: str = Field('features_test.pt', s='-t')
+    #    count: int = 10
+    #    show: bool = False
+    #    notrained: bool = Field(False, cli=('--notrained', ))
+    #    export: bool = False
+    #    n_neighbors:int = 15
+    #    min_dist:float = 0.1
 
+    #def run_cluster(self, a:ClusterArgs):
+    #    config = TrainerConfig.from_file(J(a.model_dir, 'config.json'))
+    #    unique_code = config.unique_code()
+    #    features_path = J(a.model_dir, a.target_file)
+    #    data_name = os.path.splitext(os.path.split(features_path)[-1])[0]
+    #    df = pd.DataFrame(torch.load(features_path))
+    #    print('loaded', features_path)
+    #    # df = pd.read_excel('cache/enda3_512/tiles.xlsx')
+    #    # df['diag_org'] = df['diag']
+    #    # features = {}
+    #    # for f in range(5):
+    #    #     f = dict(torch.load(f'out/enda3_512/LMGGGB/fold5_{f}/resnetrs50/test_features.pt'))
+    #    #     features.update(f)
+    #    target_features = []
+    #    labels = []
+    #    images = []
+    #    center_crop = transforms.CenterCrop((512, 512))
+    #    corrects = []
+    #    selected_rowss = []
+    #    for name, _rows in df.groupby('name'):
+    #        rows = df.loc[np.random.choice(_rows.index, a.count)]
+    #        selected_features = list(rows['feature'])
+    #        # print(rows)
+    #        # print(selected_features[0].shape)
+    #        # break
+    #        target_features += selected_features
+    #        labels += ['LMGAOB'.index(d) for d in rows['diag_org']]
+    #        corrects += list(rows['pred'] == rows['diag'])
+    #        images += [
+    #            np.array(center_crop(Image.open(f'cache/{config.source}/{diag}/{name}/{fn}')))
+    #            for _, (diag, name, fn) in rows[['diag_org', 'name', 'filename']].iterrows()
+    #        ]
+    #        selected_rowss.append(rows)
+    #    selected_rows = pd.concat(selected_rowss)
+    #    labels = np.array(labels)
+    #    corrects = np.array(corrects)
+    #    images = np.stack(images)
+    #    target_features = np.stack(target_features)
+    #    print(target_features.shape)
+    #    print('Loaded samples.')
+    #    ##* UMAP
+    #    umap_model = UMAP(
+    #        # n_neighbors=15,
+    #        # n_components=2
+    #        n_neighbors=a.n_neighbors,
+    #        min_dist=a.min_dist,
+    #    )
+    #    embedding = umap_model.fit_transform(target_features)
+    #    embedding_x = embedding[:, 0]
+    #    embedding_y = embedding[:, 1]
+    #    ##* Plot
+    #    fig, ax = plt.subplots(1, 1, figsize=(14, 10))
+    #    target_features = np.array(target_features)
+    #    scatters = []
+    #    imagess = []
+    #    # for n in np.unique(labels):
+    #    #     label = unique_code[n] if a.mode == 'pred' else 'LMGAOB'[n]
+    #    #     scs.append(plt.scatter(embedding_x[labels == n], embedding_y[labels == n], label=label, s=10))
+    #    #     dds.append(labels[labels == n])
+    #    #     iis.append([i for (i, d) in zip(images, labels) if d == n])
+    #    for label in np.unique(labels):
+    #        needle = labels == label
+    #        label_str = 'LMGAOB'[label]
+    #        xx, yy, cc, ii = embedding_x[needle], embedding_y[needle], corrects[needle], images[needle]
+    #        for t in [True, False]:
+    #            idx = corrects[needle] == t
+    #            scatters.append(plt.scatter(xx[idx], yy[idx], label=label_str, c=f'C{label}',
+    #                                        marker='o'if t else 'x',
+    #                                        s=5 if t else 10, ))
+    #            imagess.append([cv2.resize(i.squeeze(), (224, 224)) for i in ii[idx]])
+    #    hover_images_on_scatters(scatters, imagess, ax=ax)
+    #    # plt.legend()
+    #    legend_entries = [(scatters[i*2], scatters[i*2+1]) for i in range(len(scatters)//2)]
+    #    ax.legend(legend_entries, 'LMGAOB', handler_map={tuple: HandlerTuple(ndivide=None)})
+    #    d = J(a.model_dir, 'umap')
+    #    os.makedirs(d, exist_ok=True)
+    #    path = a.save or J(d, f'{data_name}_{a.count}.png')
+    #    plt.title(a.model_dir)
+    #    plt.savefig(with_wrote(path))
+    #    plt.subplots_adjust(right=0.75, top=0.75)
+    #    if a.export:
+    #        export_dir = with_mkdir(J(a.model_dir, 'umap', f'{data_name}_{a.count}_{a.n_neighbors}_{a.min_dist}'))
+    #        os.makedirs(J(export_dir, 'images'), exist_ok=True)
+    #        joblib.dump(umap_model, J(export_dir, 'umap_model.joblib'))
+    #        selected_rows['x'] = embedding[:, 0]
+    #        selected_rows['y'] = embedding[:, 1]
+    #        selected_rows.drop(columns=['feature'], inplace=True)
+    #        selected_rows.to_excel(J(export_dir, 'umap.xlsx'))
+    #        # for i, (diag, name, fn) in selected_rows[['diag_org', 'name', 'filename']].iterrows():
+    #        #     shutil.copy(
+    #        #         f'cache/{config.source}/{diag}/{name}/{fn}',
+    #        #         J(export_dir, 'images', f'{diag}_{name}_{fn}')
+    #        #     )
+    #    if a.show:
+    #        plt.show()
+
+    class ClusterArgs(CommonArgs):
+        file: str
+        count: int = 30
+        noshow: bool = False
+        out: str = ''
         n_neighbors:int = 15
         min_dist:float = 0.1
+        no_leiden: bool = False
 
-    def run_cluster(self, a:ClusterArgs):
-        config = TrainerConfig.from_file(J(a.model_dir, 'config.json'))
+    def run_cluster(self, a):
+        from umap import UMAP
 
-        unique_code = config.unique_code()
-
-        features_path = J(a.model_dir, a.target_file)
-        data_name = os.path.splitext(os.path.split(features_path)[-1])[0]
-        df = pd.DataFrame(torch.load(features_path))
-        print('loaded', features_path)
-
-        # df = pd.read_excel('cache/enda3_512/tiles.xlsx')
-        # df['diag_org'] = df['diag']
-        # features = {}
-        # for f in range(5):
-        #     f = dict(torch.load(f'out/enda3_512/LMGGGB/fold5_{f}/resnetrs50/test_features.pt'))
-        #     features.update(f)
-
-        target_features = []
-        labels = []
-        images = []
-
-        center_crop = transforms.CenterCrop((512, 512))
-
-        corrects = []
-        selected_rowss = []
+        df = pd.DataFrame(torch.load(a.file))
+        rowss = []
         for name, _rows in df.groupby('name'):
             rows = df.loc[np.random.choice(_rows.index, a.count)]
-            selected_features = list(rows['feature'])
+            rowss.append(rows)
+        df = pd.concat(rowss)
 
-            # print(rows)
-            # print(selected_features[0].shape)
-            # break
-            target_features += selected_features
-            labels += ['LMGAOB'.index(d) for d in rows['diag_org']]
-            corrects += list(rows['pred'] == rows['diag'])
-            images += [
-                np.array(center_crop(Image.open(f'cache/{config.source}/{diag}/{name}/{fn}')))
-                for _, (diag, name, fn) in rows[['diag_org', 'name', 'filename']].iterrows()
-            ]
-            selected_rowss.append(rows)
+        # unique_codes = list(df['diag_org'].unique())
+        unique_codes = 'LMGAOB'
 
-        selected_rows = pd.concat(selected_rowss)
+        features = np.stack(df['feature'])
+        print('features', features.shape)
 
-        labels = np.array(labels)
-        corrects = np.array(corrects)
-        images = np.stack(images)
-        target_features = np.stack(target_features)
-        print(target_features.shape)
+        labels = df['diag_org'].values
 
-        print('Loaded samples.')
-
-        ##* UMAP
         umap_model = UMAP(
-            # n_neighbors=15,
-            # n_components=2
-            n_neighbors=a.n_neighbors,
-            min_dist=a.min_dist,
+           n_neighbors=a.n_neighbors,
+           min_dist=a.min_dist,
         )
-        embedding = umap_model.fit_transform(target_features)
+        print('Start projection')
+        embedding = umap_model.fit_transform(features)
+        print('Done projection')
         embedding_x = embedding[:, 0]
         embedding_y = embedding[:, 1]
 
-        ##* Plot
-        fig, ax = plt.subplots(1, 1, figsize=(14, 10))
+        knn_graph = umap_model.graph_
+        # グラフをiGraph形式に変換
+        sources, targets = knn_graph.nonzero()
+        weights = knn_graph.data
+        edges = list(zip(sources, targets))
+        graph = ig.Graph(edges=edges, directed=False)
+        graph.es['weight'] = weights
 
-        target_features = np.array(target_features)
-        scatters = []
-        imagess = []
-        # for n in np.unique(labels):
-        #     label = unique_code[n] if a.mode == 'pred' else 'LMGAOB'[n]
-        #     scs.append(plt.scatter(embedding_x[labels == n], embedding_y[labels == n], label=label, s=10))
-        #     dds.append(labels[labels == n])
-        #     iis.append([i for (i, d) in zip(images, labels) if d == n])
+        # グラフをiGraph形式に変換
+        sources, targets = knn_graph.nonzero()
+        weights = knn_graph.data
+        edges = list(zip(sources, targets))
+        graph = ig.Graph(edges=edges, directed=False)
+        graph.es['weight'] = weights
 
-        for label in np.unique(labels):
-            needle = labels == label
-            label_str = 'LMGAOB'[label]
-            xx, yy, cc, ii = embedding_x[needle], embedding_y[needle], corrects[needle], images[needle]
-            for t in [True, False]:
-                idx = corrects[needle] == t
-                scatters.append(plt.scatter(xx[idx], yy[idx], label=label_str, c=f'C{label}',
-                                            marker='o'if t else 'x',
-                                            s=5 if t else 10, ))
-                imagess.append([cv2.resize(i.squeeze(), (224, 224)) for i in ii[idx]])
+        # Leidenクラスタリングの実行
+        partition = la.find_partition(graph, la.RBConfigurationVertexPartition, weights=weights)
+        clusters = np.array(partition.membership)
 
-        hover_images_on_scatters(scatters, imagess, ax=ax)
+        plots = pd.DataFrame({
+            'UMAP1': embedding[:, 0],
+            'UMAP2': embedding[:, 1],
+            'Diagnosis': labels,
+            'Cluster': clusters
+        })
 
-        # plt.legend()
-        legend_entries = [(scatters[i*2], scatters[i*2+1]) for i in range(len(scatters)//2)]
-        ax.legend(legend_entries, 'LMGAOB', handler_map={tuple: HandlerTuple(ndivide=None)})
+        images = []
+        for i, row in df.iterrows():
+            p = J(os.path.expanduser('~/.cache/endaaman/bt/tiles/enda4_512'),
+                  row['diag_org'], row['name'], row['filename'])
+            images.append(Image.open(p).copy())
 
-        d = J(a.model_dir, 'umap')
-        os.makedirs(d, exist_ok=True)
-        path = a.save or J(d, f'{data_name}_{a.count}.png')
-        plt.title(a.model_dir)
-        plt.savefig(with_wrote(path))
-        plt.subplots_adjust(right=0.75, top=0.75)
+        fig = plt.figure(figsize=(12, 6))
+        ax0 = fig.add_subplot(1, 1 if a.no_leiden else 2, 1)
+        scatter0 = sns.scatterplot(data=plots, x='UMAP1', y='UMAP2',
+                                   hue='Diagnosis', hue_order=unique_codes,
+                                   palette='tab10', s=10, ax=ax0)
+        hover_images_on_scatters([scatter0.collections[0]], [images], ax=ax0)
 
-        if a.export:
-            export_dir = with_mkdir(J(a.model_dir, 'umap', f'{data_name}_{a.count}_{a.n_neighbors}_{a.min_dist}'))
-            os.makedirs(J(export_dir, 'images'), exist_ok=True)
-            joblib.dump(umap_model, J(export_dir, 'umap_model.joblib'))
-            selected_rows['x'] = embedding[:, 0]
-            selected_rows['y'] = embedding[:, 1]
-            selected_rows.drop(columns=['feature'], inplace=True)
-            selected_rows.to_excel(J(export_dir, 'umap.xlsx'))
-            # for i, (diag, name, fn) in selected_rows[['diag_org', 'name', 'filename']].iterrows():
-            #     shutil.copy(
-            #         f'cache/{config.source}/{diag}/{name}/{fn}',
-            #         J(export_dir, 'images', f'{diag}_{name}_{fn}')
-            #     )
+        if not a.no_leiden:
+            ax1 = fig.add_subplot(1, 2, 2)
+            scatter1 = sns.scatterplot(data=plots, x='UMAP1', y='UMAP2',
+                                       hue='Cluster',
+                                       palette='Set2', s=10, ax=ax1)
+            hover_images_on_scatters([scatter1.collections[0]], [images], ax=ax1)
 
-        if a.show:
+        dir = os.path.dirname(a.file)
+        plt.savefig(J(dir, a.out or f'umap_{a.count}_{a.n_neighbors}_{a.min_dist}.png'))
+        if not a.noshow:
             plt.show()
 
 
