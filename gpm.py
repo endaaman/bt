@@ -47,18 +47,28 @@ class CLI(BaseMLCLI):
                                       dynamic_img_size=True)
             # transform = create_transform(**resolve_data_config(model.pretrained_cfg, model=model))
             cfg = resolve_data_config(model.pretrained_cfg, model=model)
-            print(cfg)
-            transform = transforms.Compose([
-                transforms.CenterCrop((256, 256)),
-                transforms.Resize((224, 224)),
-                transforms.ToTensor(),
-                transforms.Normalize(mean=cfg['mean'], std=cfg['std']),
-            ])
-            model = model.cuda().eval()
-            eval_fn = lambda model, t: model(t)
-            out_dir = J('out', a.model)
+            mean, std = cfg['mean'], cfg['std']
+        elif a.model == 'gigapath':
+            model = timm.create_model('hf_hub:prov-gigapath/prov-gigapath', pretrained=True)
+            cfg = resolve_data_config(model.pretrained_cfg, model=model)
+            mean, std = cfg['mean'], cfg['std']
+        elif a.model == 'imagenet':
+            model = timm.create_model('resnetrs50', pretrained=True)
+            cfg = resolve_data_config(model.pretrained_cfg, model=model)
+            mean, std = cfg['mean'], cfg['std']
         else:
             raise RuntimeError('Invalid model:', a.model)
+
+        transform = transforms.Compose([
+            transforms.CenterCrop((256, 256)),
+            transforms.Resize((224, 224)),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=mean, std=std),
+        ])
+        eval_fn = lambda model, t: model(t)
+        model = model.cuda().eval()
+        out_dir = J('out', 'gpm', a.model)
+        os.makedirs(out_dir, exist_ok=True)
 
         ds = FoldDataset(
              total_fold=a.total_fold,
