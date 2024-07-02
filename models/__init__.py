@@ -67,6 +67,41 @@ class TimmModel(nn.Module):
         return x
 
 
+class VITModel(nn.Module):
+    def __init__(self, name, num_classes, base='random'):
+        assert base in ['random', 'imagenet', 'uni']
+        super().__init__()
+        self.name = name
+        self.num_classes = num_classes
+        if base == 'random':
+            self.base = timm.create_model('vit_large_patch16_224', pretrained=False, dynamic_img_size=True)
+            self.base.head = nn.Identity()
+        elif base == 'imagenet':
+            self.base = timm.create_model('vit_large_patch16_224', pretrained=True, dynamic_img_size=True)
+            self.base.head = nn.Identity()
+        elif base == 'uni':
+            uni = timm.create_model('hf-hub:MahmoodLab/uni', pretrained=True, init_values=1e-5, dynamic_img_size=True)
+
+        self.fc = nn.Linear(1024, num_classes)
+
+    def get_cam_layers(self):
+        return get_cam_layers(self.base, self.name)
+
+    def forward(self, x, activate=False, with_feautres=False):
+        features = self.base(x)
+        x = self.fc(features)
+
+        if activate:
+            if self.num_classes > 1:
+                x = torch.softmax(x, dim=-1)
+            else:
+                x = torch.sigmoid(x)
+
+        if with_feautres:
+            return x, features
+        return x
+
+
 class IICModel(nn.Module):
     def __init__(self, name, num_classes, num_classes_over, pretrained=True):
         super().__init__()
