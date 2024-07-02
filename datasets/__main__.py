@@ -259,17 +259,20 @@ class CLI(BaseMLCLI):
         if a.show:
             plt.show()
 
-    class ExampleArgs(BaseDatasetArgs):
-        count:int = 10
+    class ExampleArgs(CommonArgs):
+        source: str = 'enda4_512'
+        code: str = 'LMGGGB'
+        show: bool = False
+        count:int = 30
 
     def run_example(self, a):
         ds = FoldDataset(
-            fold=a.fold,
-            total_fold=a.total_fold,
+            fold=0,
+            total_fold=5,
             code=a.code,
-            source_dir=a.source,
-            limit=a.limit,
-            upsample=a.upsample,
+            source=a.source,
+            limit=30,
+            upsample=False,
             target='train',
             augmentation=True,
             normalization=False,
@@ -289,9 +292,10 @@ class CLI(BaseMLCLI):
             row = ds.df.iloc[idx]
             img = ds.load_from_row(row)
 
-            img.save(J(d, f'{i}_a.jpg'))
+            name = f'{i}_{row["diag_org"]}'
+            img.save(J(d, f'{name}_a.jpg'))
             aug = tensor_to_pil(ds.aug(image=np.array(img))['image'])
-            aug.save(J(d, f'{i}_b.jpg'))
+            aug.save(J(d, f'{name}_b.jpg'))
 
     def run_quad_attention(self, a):
         ds = QuadAttentionFoldDataset(source_dir='data/tiles/enda4_512')

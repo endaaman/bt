@@ -54,6 +54,7 @@ class CLI(BaseMLCLI):
             mean, std = cfg['mean'], cfg['std']
         elif a.model == 'imagenet':
             model = timm.create_model('resnetrs50', pretrained=True)
+            model.fc = nn.Identity()
             cfg = resolve_data_config(model.pretrained_cfg, model=model)
             mean, std = cfg['mean'], cfg['std']
         else:
