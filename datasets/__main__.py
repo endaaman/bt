@@ -32,15 +32,22 @@ Image.MAX_IMAGE_PIXELS = None
 
 J = os.path.join
 
+async def asave(image, path):
+    buffer = BytesIO()
+    image.save(buffer, format=os.path.splitext(path)[-1][1:])
+    async with aiofiles.open(path, "wb") as file:
+        await file.write(image)
+
+
+
 class CLI(BaseMLCLI):
     class CommonArgs(BaseMLCLI.CommonArgs):
         pass
 
     class BuildDatasetArgs(CommonArgs):
-        source: str = 'enda3'
+        source: str = 'enda4'
         dest: str = 'cache'
         size: int = 512
-        zip: bool = False
         code: str = 'LMGAOB'
 
     def run_build_dataset(self, a:BuildDatasetArgs):
@@ -111,7 +118,7 @@ class CLI(BaseMLCLI):
 
 
     class SplitDatasetArgs(CommonArgs):
-        source: str = 'cache/enda2_512'
+        source: str = 'cache/enda4_512'
         fold: int
         skf: bool = Field(False, cli=('--skf', ))
 
@@ -344,6 +351,9 @@ class CLI(BaseMLCLI):
             base_dir = J(a.src, diag)
             dest_dir = J(a.dest, diag)
             os.makedirs(dest_dir, exist_ok=True)
+            if not os.path.isdir(base_dir):
+                print(base_dir, 'does not exist. Skipped.')
+                continue
             filenames = os.listdir(base_dir)
             filenames_by_case = {}
             for fn in sorted(filenames):
