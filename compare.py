@@ -55,8 +55,7 @@ class TrainerConfig(BaseTrainerConfig):
     noupsample: bool = False
 
     # training
-    base_lr: float = 1e-6 # ViT for 1e-6 (0.000001)
-    lr: float = -1
+    lr: float = 0.0001
     scheduler: str = 'static'
     encoder = Field('frozen', choices=['frozen', 'unfrozen'])
 
@@ -117,7 +116,6 @@ class Trainer(BaseTrainer):
         return model
 
     def create_optimizer(self):
-        print('LR', self.config.lr)
         return optim.Adam(self.model.parameters(), lr=self.config.lr)
 
     def create_scheduler(self):
@@ -183,9 +181,6 @@ class CLI(BaseMLCLI):
         out: str = 'out/compare/{code}/fold{total_fold}_{fold}/{encoder}_{base}_{limit}{suffix}'
 
     def run_train(self, a:TrainArgs):
-        if a.lr < 0:
-            a.lr = a.base_lr * a.batch_size
-
         config = TrainerConfig(**a.dict())
 
         dss = [
