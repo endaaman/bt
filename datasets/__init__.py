@@ -11,3 +11,6 @@ NUM_TO_DIAG = list(DIAG_TO_NUM.keys())
 # STD = np.array([34, 61, 30]) / 255
 MEAN = 0.7
 STD = 0.2
+
+MEAN=(0.485, 0.456, 0.406)
+SDT=(0.229, 0.224, 0.225)
