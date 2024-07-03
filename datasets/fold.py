@@ -48,13 +48,14 @@ J = os.path.join
 DEFAULT_SIZE = 512
 
 
-def get_augs(image_aug, size, normalization, mean, std):
+def get_augs(image_aug, crop_size, size, normalization, mean, std):
     blur_limit = (3, 5)
 
     if image_aug:
         aa = [
             # A.RandomCrop(width=size, height=size),
-            A.RandomResizedCrop(width=size, height=size, scale=(0.5, 2.0), ratio=(0.8, 1.2), ),
+            A.RandomResizedCrop(width=crop_size, height=crop_size, scale=(0.8, 1.25), ratio=(0.8, 1.2), ),
+            A.Resize(width=size, height=size),
             A.RandomRotate90(p=1),
             A.Flip(p=0.5),
 
@@ -100,8 +101,8 @@ def get_augs(image_aug, size, normalization, mean, std):
         ]
     else:
         aa = [
-            A.CenterCrop(width=size, height=size),
-            # A.Resize(width=size, height=size),
+            A.CenterCrop(width=crop_size, height=crop_size),
+            A.Resize(width=size, height=size),
         ]
 
     if normalization:
@@ -126,6 +127,7 @@ class BaseFoldDataset(Dataset):
                  fold=0,
                  target='train',
                  code='LMGAO_',
+                 crop_size=512,
                  size=512,
                  minimum_area=-1,
                  limit=-1,
@@ -145,6 +147,7 @@ class BaseFoldDataset(Dataset):
         self.cache_dir = J(CACHE_DIR, self.source)
         self.target = target
         self.code = [*code]
+        self.crop_size = crop_size
         self.size = size
         self.minimum_area = minimum_area
         self.limit = limit
@@ -177,7 +180,7 @@ class BaseFoldDataset(Dataset):
                 print(f'Extraction done.')
                 zip_file.close()
 
-        self.aug = get_augs(augmentation, self.size, normalization, mean, std)
+        self.aug = get_augs(augmentation, self.crop_size, self.size, normalization, mean, std)
 
         # process like converting LMGAO to LMGGG
         replacer = []
