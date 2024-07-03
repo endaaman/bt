@@ -173,12 +173,12 @@ class CLI(BaseMLCLI):
 
     class TrainArgs(CommonArgs, TrainerConfig):
         # train param
-        batch_size: int = Field(10, s='-B')
+        batch_size: int = Field(50, s='-B')
         num_workers: int = Field(4, s='-N')
         epoch: int = Field(30, s='-E')
         overwrite:bool = Field(False, s='-O')
         suffix: str = ''
-        out: str = 'out/compare/{code}/fold{total_fold}_{fold}/{encoder}_{base}{suffix}'
+        out: str = 'out/compare/{code}/fold{total_fold}_{fold}/{encoder}_{base}_{limit}{suffix}'
 
     def run_train(self, a:TrainArgs):
         lr = a.lr if a.lr>0 else a.base_lr*a.batch_size
