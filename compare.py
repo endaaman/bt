@@ -49,6 +49,7 @@ class TrainerConfig(BaseTrainerConfig):
     total_fold: int = 5
     fold: int = 0
     code: str = 'LMGAOB'
+    crop_size: int = 512
     size: int = 224
     minimum_area: float = 0.6
     limit: int = 100
@@ -190,6 +191,7 @@ class CLI(BaseMLCLI):
                 source = a.source,
                 target = t,
                 code = a.code,
+                crop_size = a.crop_size,
                 size = a.size,
                 minimum_area = a.minimum_area,
                 limit = a.limit,
