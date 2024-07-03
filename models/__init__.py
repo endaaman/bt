@@ -68,10 +68,9 @@ class TimmModel(nn.Module):
 
 
 class VITModel(nn.Module):
-    def __init__(self, name, num_classes, base='random'):
+    def __init__(self, num_classes, base='random'):
         assert base in ['random', 'imagenet', 'uni']
         super().__init__()
-        self.name = name
         self.num_classes = num_classes
         if base == 'random':
             self.base = timm.create_model('vit_large_patch16_224', pretrained=False, dynamic_img_size=True)
@@ -80,12 +79,16 @@ class VITModel(nn.Module):
             self.base = timm.create_model('vit_large_patch16_224', pretrained=True, dynamic_img_size=True)
             self.base.head = nn.Identity()
         elif base == 'uni':
-            uni = timm.create_model('hf-hub:MahmoodLab/uni', pretrained=True, init_values=1e-5, dynamic_img_size=True)
+            self.base = timm.create_model('hf-hub:MahmoodLab/uni', pretrained=True, init_values=1e-5, dynamic_img_size=True)
 
         self.fc = nn.Linear(1024, num_classes)
 
     def get_cam_layers(self):
         return get_cam_layers(self.base, self.name)
+
+    def freeze_encoder(self):
+        for param in self.base.parameters():
+            param.requires_grad = False
 
     def forward(self, x, activate=False, with_feautres=False):
         features = self.base(x)
