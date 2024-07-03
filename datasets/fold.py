@@ -54,7 +54,7 @@ def get_augs(image_aug, size, normalization, mean, std):
     if image_aug:
         aa = [
             # A.RandomCrop(width=size, height=size),
-            A.RandomResizedCrop(width=size, height=size, scale=(0.666, 1.5), ratio=(0.95, 1.05), ),
+            A.RandomResizedCrop(width=size, height=size, scale=(0.5, 2.0), ratio=(0.8, 1.2), ),
             A.RandomRotate90(p=1),
             A.Flip(p=0.5),
 

@@ -55,7 +55,7 @@ class TrainerConfig(BaseTrainerConfig):
     noupsample: bool = False
 
     # training
-    base_lr: float = 1e-6 # ViT for 1e-6
+    base_lr: float = 1e-6 # ViT for 1e-6 (0.000001)
     lr: float = -1
     scheduler: str = 'static'
     encoder = Field('frozen', choices=['frozen', 'unfrozen'])
@@ -177,7 +177,7 @@ class CLI(BaseMLCLI):
         # train param
         batch_size: int = Field(50, s='-B')
         num_workers: int = Field(4, s='-N')
-        epoch: int = Field(20, s='-E')
+        epoch: int = Field(10, s='-E')
         overwrite:bool = Field(False, s='-O')
         suffix: str = ''
         out: str = 'out/compare/{code}/fold{total_fold}_{fold}/{encoder}_{base}_{limit}{suffix}'
