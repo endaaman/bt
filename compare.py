@@ -57,7 +57,7 @@ class TrainerConfig(BaseTrainerConfig):
     # training
     base_lr: float = 1e-6 # ViT for 1e-6
     lr: float = -1
-    scheduler: str = 'step_10'
+    scheduler: str = 'static'
     encoder = Field('frozen', choices=['frozen', 'unfrozen'])
 
     def unique_code(self):
@@ -117,7 +117,8 @@ class Trainer(BaseTrainer):
         return model
 
     def create_optimizer(self):
-        return optim.RAdam(self.model.parameters())
+        print('LR', self.config.lr)
+        return optim.Adam(self.model.parameters(), lr=self.config.lr)
 
     def eval(self, inputs, gts, i):
         inputs = inputs.to(self.device)
@@ -175,13 +176,14 @@ class CLI(BaseMLCLI):
         # train param
         batch_size: int = Field(50, s='-B')
         num_workers: int = Field(4, s='-N')
-        epoch: int = Field(30, s='-E')
+        epoch: int = Field(20, s='-E')
         overwrite:bool = Field(False, s='-O')
         suffix: str = ''
         out: str = 'out/compare/{code}/fold{total_fold}_{fold}/{encoder}_{base}_{limit}{suffix}'
 
     def run_train(self, a:TrainArgs):
-        a.lr = a.lr if a.lr>0 else a.base_lr*a.batch_size
+        if a.lr < 0:
+            a.lr = a.base_lr * a.batch_size
 
         config = TrainerConfig(**a.dict())
 
