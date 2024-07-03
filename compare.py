@@ -181,7 +181,7 @@ class CLI(BaseMLCLI):
         out: str = 'out/compare/{code}/fold{total_fold}_{fold}/{encoder}_{base}_{limit}{suffix}'
 
     def run_train(self, a:TrainArgs):
-        lr = a.lr if a.lr>0 else a.base_lr*a.batch_size
+        a.lr = a.lr if a.lr>0 else a.base_lr*a.batch_size
 
         config = TrainerConfig(**a.dict())
 
@@ -204,6 +204,7 @@ class CLI(BaseMLCLI):
         ]
 
         out_dir = a.out.format(**a.dict())
+        print('out dir:', out_dir)
 
         trainer = Trainer(
             config = config,
