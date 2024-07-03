@@ -120,6 +120,16 @@ class Trainer(BaseTrainer):
         print('LR', self.config.lr)
         return optim.Adam(self.model.parameters(), lr=self.config.lr)
 
+    def create_scheduler(self):
+        s = self.config.scheduler
+        if s == 'static':
+            return None
+        m = re.match(r'^step_(\d+)$', s)
+        if m:
+            return optim.lr_scheduler.StepLR(self.optimizer, step_size=int(m[1]), gamma=0.1)
+        raise RuntimeError('Invalid scheduler')
+        # return optim.lr_scheduler.ExponentialLR(self.optimizer, gamma=0.1)
+
     def eval(self, inputs, gts, i):
         inputs = inputs.to(self.device)
         gts = gts.to(self.device)
@@ -127,6 +137,17 @@ class Trainer(BaseTrainer):
         preds = torch.softmax(logits, dim=1)
         loss = self.criterion(logits, gts)
         return loss, logits.detach().cpu()
+
+    def get_metrics(self):
+        if self.config.code[:-1] == 'LMGAO':
+            return {
+                'acc5': MultiAccuracy(),
+                'acc4': Acc4(),
+                'acc3': Acc3(),
+            }
+        return {
+            f'acc{len(self.config.unique_code())-1}': MultiAccuracy(),
+        }
 
     def _visualize_confusion(self, ax, label, preds, gts):
         preds = torch.argmax(preds, dim=-1)
@@ -146,26 +167,6 @@ class Trainer(BaseTrainer):
             return
         self._visualize_confusion(ax, 'val', val_preds, val_gts)
 
-    def create_scheduler(self):
-        s = self.config.scheduler
-        if s == 'static':
-            return None
-        m = re.match(r'^step_(\d+)$', s)
-        if m:
-            return optim.lr_scheduler.StepLR(self.optimizer, step_size=int(m[1]), gamma=0.1)
-        raise RuntimeError('Invalid scheduler')
-        # return optim.lr_scheduler.ExponentialLR(self.optimizer, gamma=0.1)
-
-    def get_metrics(self):
-        if self.config.code[:-1] == 'LMGAO':
-            return {
-                'acc5': MultiAccuracy(),
-                'acc4': Acc4(),
-                'acc3': Acc3(),
-            }
-        return {
-            f'acc{len(self.config.unique_code())}': MultiAccuracy(),
-        }
 
 
 class CLI(BaseMLCLI):
