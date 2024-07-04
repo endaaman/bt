@@ -120,54 +120,6 @@ def get_augs(image_aug, crop_size, size, normalization, mean, std):
             ], p=1.0),
         ]
         aa = [a for a in aa if a]
-
-        # aa = [
-        #     # A.RandomCrop(width=size, height=size),
-        #     A.RandomResizedCrop(width=crop_size, height=crop_size, scale=(0.8, 1.25), ratio=(0.8, 1.2), ),
-        #     A.Resize(width=size, height=size),
-        #     A.RandomRotate90(p=1),
-        #     A.Flip(p=0.5),
-
-        #     # Blurs
-        #     A.OneOf([
-        #         # A.MotionBlur(blur_limit=blur_limit),
-        #         # A.MedianBlur(blur_limit=blur_limit),
-        #         # A.Blur(blur_limit=blur_limit),
-        #         A.GaussianBlur(blur_limit=blur_limit),
-        #         A.ElasticTransform(alpha=1, sigma=3, alpha_affine=3),
-        #     ], p=1.0),
-        #     # A.ShiftScaleRotate(shift_limit=0.0625, scale_limit=0.2, rotate_limit=5, p=0.5),
-
-        #     # Brightness
-        #     A.OneOf([
-        #         A.CLAHE(clip_limit=2),
-        #         A.Emboss(),
-        #         # A.RandomBrightnessContrast(brightness_limit=0.1),
-        #         A.RandomToneCurve(),
-        #     ], p=1.0),
-
-        #     # Color
-        #     A.OneOf([
-        #         A.RGBShift(),
-        #         A.HueSaturationValue(sat_shift_limit=20),
-        #     ], p=1.0),
-
-        #     # Noise
-        #     A.OneOf([
-        #         A.ISONoise(),
-        #         A.GaussNoise(),
-        #         A.ImageCompression(quality_lower=50, quality_upper=100),
-        #     ], p=1.0),
-
-        #     # Transform
-        #     A.OneOf([
-        #         A.CoarseDropout(max_holes=16, min_holes=1,
-        #                         max_height=32, max_width=32,
-        #                         min_height=8, min_width=8, fill_value=0),
-        #         A.RandomGridShuffle(grid=(2, 2)),
-        #         A.RandomGridShuffle(grid=(3, 3)),
-        #     ], p=1.0),
-        # ]
     else:
         aa = [
             A.CenterCrop(width=crop_size, height=crop_size),
