@@ -42,7 +42,7 @@ J = os.path.join
 
 class TrainerConfig(BaseTrainerConfig):
     # model
-    base: str = Field('uni', choices=['uni', 'imagenet', 'random'])
+    base: str = Field('uni', choices=['uni', 'imagenet', 'random', 'baseline'])
     source: str = 'enda4_512'
 
     # dataset
@@ -110,7 +110,7 @@ class Acc4(BaseMetrics):
 
 class Trainer(BaseTrainer):
     def prepare(self):
-        model = VITModel(num_classes=self.config.num_classes(), base=self.config.base)
+        model = CompareModel(num_classes=self.config.num_classes(), base=self.config.base)
         if self.config.encoder == 'frozen':
             model.freeze_encoder()
         self.criterion = nn.CrossEntropyLoss()
@@ -200,6 +200,8 @@ class CLI(BaseMLCLI):
                 normalization = True,
                 mean=MEAN,
                 std=STD,
+                # mean = 0.7,
+                # std = 0.2,
             ) for t in ('train', 'test')
         ]
 
@@ -215,7 +217,7 @@ class CLI(BaseMLCLI):
             multi_gpu = True,
             overwrite = a.overwrite,
             experiment_name = a.source,
-            fig_col_count=2,
+            fig_col_count = 2,
         )
 
         trainer.start(a.epoch)

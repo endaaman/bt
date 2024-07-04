@@ -80,11 +80,13 @@ class CompareModel(nn.Module):
             self.base.head = nn.Identity()
         elif base == 'uni':
             self.base = timm.create_model('hf-hub:MahmoodLab/uni', pretrained=True, init_values=1e-5, dynamic_img_size=True)
-        elif base == 'imagenet':
+        elif base == 'baseline':
             self.base = timm.create_model('resnetrs50', pretrained=True)
-            self.base.head = nn.Identity()
+            self.base.fc = nn.Identity()
+        else:
+            raise RuntimeError('Invalid base:', base)
 
-        self.fc = nn.Linear(1024, num_classes)
+        self.fc = nn.Linear(self.base.num_features, num_classes)
 
     def get_cam_layers(self):
         return get_cam_layers(self.base, self.name)
