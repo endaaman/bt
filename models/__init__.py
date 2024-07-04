@@ -81,7 +81,8 @@ class CompareModel(nn.Module):
             self.base = timm.create_model('resnetrs50', pretrained=True)
             self.base.fc = nn.Identity()
         elif base == 'gigapath':
-            self.base = timm.create_model('vit_giant_patch14_dinov2', pretrained=True, dynamic_img_size=True)
+            # 'vit_giant_patch14_dinov2'
+            self.base = timm.create_model('hf_hub:prov-gigapath/prov-gigapath', pretrained=True)
         elif base == 'uni':
             self.base = timm.create_model('hf-hub:MahmoodLab/uni', pretrained=True, init_values=1e-5, dynamic_img_size=True)
         elif base == 'ctranspath':
