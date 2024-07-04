@@ -43,8 +43,8 @@ J = os.path.join
 class TrainerConfig(BaseTrainerConfig):
     # model
     base: str = Field('uni', choices=[
-        'baseline-vit'
-        'baseline-cnn'
+        'baseline-vit',
+        'baseline-cnn',
         'gigapath',
         'uni',
         'ctranspath',
