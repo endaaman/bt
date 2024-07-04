@@ -2,7 +2,6 @@ from . import *
 from .loss import *
 
 
-
 class CLI(BaseMLCLI):
     class CommonArgs(BaseMLCLI.CommonArgs):
         pass
@@ -122,6 +121,10 @@ class CLI(BaseMLCLI):
         loss = c(z0, z1)
         print(loss)
 
+    def run_gpm(self, a):
+        m = CompareModel(6, base='ctranspath')
+        t = torch.rand(4, 3, 224 ,224)
+        print(m(t).shape)
 
 
 if __name__ == '__main__':

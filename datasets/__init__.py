@@ -76,7 +76,7 @@ def get_augs(image_aug, crop_size, size, normalization, mean, std):
         aa = [
             # A.RandomCrop(width=size, height=size),
             A.RandomResizedCrop(width=crop_size, height=crop_size, scale=(0.666, 1.5), ratio=(0.95, 1.05), ),
-            A.Resize(width=size, height=size),
+            A.Resize(width=size, height=size) if crop_size != size else None,
             A.RandomRotate90(p=1),
             A.Flip(p=0.5),
 
@@ -119,6 +119,7 @@ def get_augs(image_aug, crop_size, size, normalization, mean, std):
                 A.RandomGridShuffle(grid=(3, 3)),
             ], p=1.0),
         ]
+        aa = [a for a in aa if a]
 
         # aa = [
         #     # A.RandomCrop(width=size, height=size),
