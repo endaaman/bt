@@ -34,7 +34,7 @@ from endaaman.ml.cli import BaseMLCLI
 from endaaman.ml.utils import hover_images_on_scatters
 import imagesize
 
-from datasets.utils import show_fold_diag
+from datasets import show_fold_diag
 from utils import calc_white_area, draw_frame
 from classification import TrainerConfig
 

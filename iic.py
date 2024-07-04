@@ -32,7 +32,7 @@ from endaaman.ml.metrics import MultiAccuracy
 from endaaman.ml.cli import BaseMLCLI, BaseDLArgs, BaseTrainArgs
 
 from models import IICModel, CrossEntropyLoss
-from datasets.fold import IICFoldDataset
+from datasets import IICFoldDataset
 
 
 

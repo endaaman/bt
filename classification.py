@@ -31,7 +31,7 @@ from endaaman.ml.functional import multi_accuracy
 from endaaman.ml.cli import BaseMLCLI, BaseDLArgs, BaseTrainArgs
 
 from models import TimmModel, NestedCrossEntropyLoss, TimmModelWithGraph, GraphMatrix, TimmModelWithHier, HierMatrixes
-from datasets.fold import FoldDataset, MEAN, STD
+from datasets import FoldDataset, MEAN, STD
 from utils import draw_frame
 
 
