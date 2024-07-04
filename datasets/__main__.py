@@ -23,9 +23,8 @@ from endaaman import with_wrote, grid_split
 from endaaman.ml import tensor_to_pil
 from endaaman.ml.cli import BaseMLCLI
 
-from . import show_fold_diag
-from ..utils import calc_white_area
-from .fold import FoldDataset, QuadAttentionFoldDataset, PairedFoldDataset
+from . import show_fold_diag, FoldDataset, QuadAttentionFoldDataset, PairedFoldDataset
+from utils import calc_white_area
 
 
 
@@ -79,8 +78,10 @@ class CLI(BaseMLCLI):
                         tile_order = data[name]
                         case_dir = J(diag_dir, name)
                         os.makedirs(case_dir, exist_ok=True)
-                        filename = f'{tile_order:04d}.jpg'
-                        g.save(J(case_dir, filename))
+                        file_name = f'{tile_order:04d}.jpg'
+                        path_name = J(case_dir, file_name)
+                        if not os.path.exists(path_name):
+                            g.save(path_name)
                         white_area = calc_white_area(g)
                         ee.append({
                             'name': name,
@@ -88,14 +89,14 @@ class CLI(BaseMLCLI):
                             'order': image_order,
                             'y': y,
                             'x': x,
-                            'filename': filename,
+                            'filename': file_name,
                             'original': image_name,
                             'width': g.width,
                             'height': g.height,
                             'area': 1-white_area,
                         })
         df_tiles = pd.DataFrame(ee)
-        df_tiles.to_excel(with_wrote(J(dest_dir, 'tiles.xlsx')))
+        df_tiles.to_csv(with_wrote(J(dest_dir, 'tiles.csv')))
 
 
     class ZipArgs(CommonArgs):

@@ -67,9 +67,9 @@ class TimmModel(nn.Module):
         return x
 
 
-class VITModel(nn.Module):
+class CompareModel(nn.Module):
     def __init__(self, num_classes, base='random'):
-        assert base in ['random', 'imagenet', 'uni']
+        assert base in ['random', 'imagenet', 'uni', 'baseline']
         super().__init__()
         self.num_classes = num_classes
         if base == 'random':
@@ -80,6 +80,9 @@ class VITModel(nn.Module):
             self.base.head = nn.Identity()
         elif base == 'uni':
             self.base = timm.create_model('hf-hub:MahmoodLab/uni', pretrained=True, init_values=1e-5, dynamic_img_size=True)
+        elif base == 'imagenet':
+            self.base = timm.create_model('resnetrs50', pretrained=True)
+            self.base.head = nn.Identity()
 
         self.fc = nn.Linear(1024, num_classes)
 
