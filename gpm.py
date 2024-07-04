@@ -20,7 +20,7 @@ from timm.data import resolve_data_config
 from timm.data.transforms_factory import create_transform
 
 
-from datasets.fold import FoldDataset, MEAN, STD
+from datasets import FoldDataset, MEAN, STD
 from endaaman.ml.cli import BaseMLCLI, BaseDLArgs, BaseTrainArgs
 
 

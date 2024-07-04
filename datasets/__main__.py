@@ -23,7 +23,8 @@ from endaaman import with_wrote, grid_split
 from endaaman.ml import tensor_to_pil
 from endaaman.ml.cli import BaseMLCLI
 
-from utils import calc_white_area, show_fold_diag
+from . import show_fold_diag
+from ..utils import calc_white_area
 from .fold import FoldDataset, QuadAttentionFoldDataset, PairedFoldDataset
 
 

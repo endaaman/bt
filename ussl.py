@@ -25,7 +25,7 @@ from endaaman.ml.utils import hover_images_on_scatters
 from models import TimmModel, SimSiamModel, BarlowTwinsModel
 from models.loss import SymmetricCosSimLoss, BarlowTwinsLoss
 from datasets import MEAN, STD
-from datasets.fold import PairedFoldDataset, FoldDataset
+from datasets import PairedFoldDataset, FoldDataset
 
 
 J = os.path.join

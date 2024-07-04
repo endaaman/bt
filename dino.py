@@ -34,7 +34,7 @@ from endaaman.ml.metrics import MultiAccuracy
 from endaaman.ml.cli import BaseMLCLI, BaseDLArgs, BaseTrainArgs
 
 from models import TimmModel, CrossEntropyLoss, get_pool
-from datasets.fold import DinoFoldDataset, FoldDataset, MEAN, STD
+from datasets import DinoFoldDataset, FoldDataset, MEAN, STD
 from utils.dino import Dino
 
 
