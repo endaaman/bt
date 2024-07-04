@@ -53,11 +53,11 @@ NUM_TO_DIAG = list(DIAG_TO_NUM.keys())
 # STD = [0.1203, 0.1435, 0.0829]
 # MEAN = np.array([216, 172, 212]) / 255
 # STD = np.array([34, 61, 30]) / 255
-MEAN = 0.7
-STD = 0.2
 
+# MEAN = 0.7
+# STD = 0.2
 MEAN=(0.485, 0.456, 0.406)
-SDT=(0.229, 0.224, 0.225)
+STD=(0.229, 0.224, 0.225)
 
 
 def show_fold_diag(df):
@@ -75,18 +75,17 @@ def get_augs(image_aug, crop_size, size, normalization, mean, std):
     if image_aug:
         aa = [
             # A.RandomCrop(width=size, height=size),
-            A.RandomResizedCrop(width=crop_size, height=crop_size, scale=(0.8, 1.25), ratio=(0.8, 1.2), ),
+            A.RandomResizedCrop(width=crop_size, height=crop_size, scale=(0.666, 1.5), ratio=(0.95, 1.05), ),
             A.Resize(width=size, height=size),
             A.RandomRotate90(p=1),
             A.Flip(p=0.5),
 
             # Blurs
             A.OneOf([
-                # A.MotionBlur(blur_limit=blur_limit),
-                # A.MedianBlur(blur_limit=blur_limit),
-                # A.Blur(blur_limit=blur_limit),
+                A.MotionBlur(blur_limit=blur_limit),
+                A.MedianBlur(blur_limit=blur_limit),
                 A.GaussianBlur(blur_limit=blur_limit),
-                A.ElasticTransform(alpha=1, sigma=3, alpha_affine=3),
+                A.Blur(blur_limit=blur_limit),
             ], p=1.0),
             # A.ShiftScaleRotate(shift_limit=0.0625, scale_limit=0.2, rotate_limit=5, p=0.5),
 
@@ -115,11 +114,59 @@ def get_augs(image_aug, crop_size, size, normalization, mean, std):
             A.OneOf([
                 A.CoarseDropout(max_holes=16, min_holes=1,
                                 max_height=32, max_width=32,
-                                min_height=8, min_width=8, fill_value=0),
+                                min_height=8, min_width=8, fill_value=0, p=1.0),
                 A.RandomGridShuffle(grid=(2, 2)),
                 A.RandomGridShuffle(grid=(3, 3)),
             ], p=1.0),
         ]
+
+        # aa = [
+        #     # A.RandomCrop(width=size, height=size),
+        #     A.RandomResizedCrop(width=crop_size, height=crop_size, scale=(0.8, 1.25), ratio=(0.8, 1.2), ),
+        #     A.Resize(width=size, height=size),
+        #     A.RandomRotate90(p=1),
+        #     A.Flip(p=0.5),
+
+        #     # Blurs
+        #     A.OneOf([
+        #         # A.MotionBlur(blur_limit=blur_limit),
+        #         # A.MedianBlur(blur_limit=blur_limit),
+        #         # A.Blur(blur_limit=blur_limit),
+        #         A.GaussianBlur(blur_limit=blur_limit),
+        #         A.ElasticTransform(alpha=1, sigma=3, alpha_affine=3),
+        #     ], p=1.0),
+        #     # A.ShiftScaleRotate(shift_limit=0.0625, scale_limit=0.2, rotate_limit=5, p=0.5),
+
+        #     # Brightness
+        #     A.OneOf([
+        #         A.CLAHE(clip_limit=2),
+        #         A.Emboss(),
+        #         # A.RandomBrightnessContrast(brightness_limit=0.1),
+        #         A.RandomToneCurve(),
+        #     ], p=1.0),
+
+        #     # Color
+        #     A.OneOf([
+        #         A.RGBShift(),
+        #         A.HueSaturationValue(sat_shift_limit=20),
+        #     ], p=1.0),
+
+        #     # Noise
+        #     A.OneOf([
+        #         A.ISONoise(),
+        #         A.GaussNoise(),
+        #         A.ImageCompression(quality_lower=50, quality_upper=100),
+        #     ], p=1.0),
+
+        #     # Transform
+        #     A.OneOf([
+        #         A.CoarseDropout(max_holes=16, min_holes=1,
+        #                         max_height=32, max_width=32,
+        #                         min_height=8, min_width=8, fill_value=0),
+        #         A.RandomGridShuffle(grid=(2, 2)),
+        #         A.RandomGridShuffle(grid=(3, 3)),
+        #     ], p=1.0),
+        # ]
     else:
         aa = [
             A.CenterCrop(width=crop_size, height=crop_size),
