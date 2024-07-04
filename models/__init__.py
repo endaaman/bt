@@ -5,8 +5,10 @@ from typing import NamedTuple, Callable
 
 import torch
 import timm
+from timm.models.layers import to_2tuple
 from torch import nn
 from torch.nn import functional as F
+import torchvision as tv
 from torchvision import transforms, models
 from pydantic import Field
 
@@ -69,17 +71,40 @@ class TimmModel(nn.Module):
 
 class CompareModel(nn.Module):
     def __init__(self, num_classes, base='random'):
-        assert base in ['random', 'imagenet', 'uni', 'baseline']
         super().__init__()
         self.num_classes = num_classes
+        self.pool = nn.Identity()
         if base == 'random':
             self.base = timm.create_model('vit_large_patch16_224', pretrained=False, dynamic_img_size=True)
             self.base.head = nn.Identity()
-        elif base == 'imagenet':
-            self.base = timm.create_model('vit_large_patch16_224', pretrained=True, dynamic_img_size=True)
-            self.base.head = nn.Identity()
+
         elif base == 'uni':
             self.base = timm.create_model('hf-hub:MahmoodLab/uni', pretrained=True, init_values=1e-5, dynamic_img_size=True)
+        elif base == 'uni-imagenet':
+            self.base = timm.create_model('vit_large_patch16_224', pretrained=True, dynamic_img_size=True)
+            self.base.head = nn.Identity()
+
+        elif base == 'gigapath':
+            self.base = timm.create_model('vit_giant_patch14_dinov2', pretrained=True)
+            self.base.head = nn.Identity()
+        elif base == 'gigapath-imagenet':
+            self.base = timm.create_model('hf_hub:prov-gigapath/prov-gigapath', pretrained=True)
+            self.base.head = nn.Identity()
+
+        elif base == 'ctranspath':
+            self.base = timm.create_model('swin_tiny_patch4_window7_224', pretrained=False)
+            self.base.head = nn.Identity()
+            td = torch.load('./data/weights/ctranspath.pth')
+            self.pool = nn.Sequential(
+                tv.ops.Permute([0, 3, 1, 2]),
+                nn.AdaptiveAvgPool2d((1, 1)),
+                nn.Flatten(start_dim=1),
+            )
+            self.base.load_state_dict(td, strict=False)
+        elif base == 'ctranspath-imagenet':
+            self.base = timm.create_model('swin_tiny_patch4_window7_224', pretrained=False)
+            self.base.fc = nn.Identity()
+
         elif base == 'baseline':
             self.base = timm.create_model('resnetrs50', pretrained=True)
             self.base.fc = nn.Identity()
@@ -97,6 +122,7 @@ class CompareModel(nn.Module):
 
     def forward(self, x, activate=False, with_feautres=False):
         features = self.base(x)
+        features = self.pool(features)
         x = self.fc(features)
 
         if activate:
