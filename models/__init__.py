@@ -74,23 +74,16 @@ class CompareModel(nn.Module):
         super().__init__()
         self.num_classes = num_classes
         self.pool = nn.Identity()
-        if base == 'random':
-            self.base = timm.create_model('vit_large_patch16_224', pretrained=False, dynamic_img_size=True)
+        if base == 'baseline-vit':
+            self.base = timm.create_model('vit_large_patch16_224', pretrained=True)
             self.base.head = nn.Identity()
-
-        elif base == 'uni':
-            self.base = timm.create_model('hf-hub:MahmoodLab/uni', pretrained=True, init_values=1e-5, dynamic_img_size=True)
-        elif base == 'uni-imagenet':
-            self.base = timm.create_model('vit_large_patch16_224', pretrained=True, dynamic_img_size=True)
-            self.base.head = nn.Identity()
-
+        elif base == 'baseline-cnn':
+            self.base = timm.create_model('resnetrs50', pretrained=True)
+            self.base.fc = nn.Identity()
         elif base == 'gigapath':
             self.base = timm.create_model('vit_giant_patch14_dinov2', pretrained=True)
-            self.base.head = nn.Identity()
-        elif base == 'gigapath-imagenet':
-            self.base = timm.create_model('hf_hub:prov-gigapath/prov-gigapath', pretrained=True)
-            self.base.head = nn.Identity()
-
+        elif base == 'uni':
+            self.base = timm.create_model('hf-hub:MahmoodLab/uni', pretrained=True, init_values=1e-5, dynamic_img_size=True)
         elif base == 'ctranspath':
             self.base = timm.create_model('swin_tiny_patch4_window7_224', pretrained=False)
             self.base.head = nn.Identity()
@@ -101,13 +94,6 @@ class CompareModel(nn.Module):
                 nn.Flatten(start_dim=1),
             )
             self.base.load_state_dict(td, strict=False)
-        elif base == 'ctranspath-imagenet':
-            self.base = timm.create_model('swin_tiny_patch4_window7_224', pretrained=False)
-            self.base.fc = nn.Identity()
-
-        elif base == 'baseline':
-            self.base = timm.create_model('resnetrs50', pretrained=True)
-            self.base.fc = nn.Identity()
         else:
             raise RuntimeError('Invalid base:', base)
 

@@ -43,13 +43,11 @@ J = os.path.join
 class TrainerConfig(BaseTrainerConfig):
     # model
     base: str = Field('uni', choices=[
-        'uni',
-        'uni-imagenet',
+        'baseline-vit'
+        'baseline-cnn'
         'gigapath',
-        'gigapath-imagenet',
+        'uni',
         'ctranspath',
-        'ctranspath-imagenet',
-        'baseline'
     ],)
     source: str = 'enda4_512'
 
