@@ -235,14 +235,18 @@ class CLI(BaseMLCLI):
         batch_size: int = Field(16, s='-B')
         use_best: bool = False
         with_features: bool = False
+        skip_checkpoint: bool = False
+        limit: int = -1
 
     def run_validate(self, a:ValidateArgs):
-        chp = 'checkpoint_best.pt' if a.use_best else 'checkpoint_last.pt'
-        checkpoint = Checkpoint.from_file(J(a.model_dir, chp))
         config = TrainerConfig.from_file(J(a.model_dir, 'config.json'))
-        model = CompareModel(num_classes=config.num_classes(), base=config.base)
         print('config:', config)
-        model.load_state_dict(checkpoint.model_state)
+
+        model = CompareModel(num_classes=config.num_classes(), base=config.base)
+        if not a.skip_checkpoint:
+            chp = 'checkpoint_best.pt' if a.use_best else 'checkpoint_last.pt'
+            checkpoint = Checkpoint.from_file(J(a.model_dir, chp))
+            model.load_state_dict(checkpoint.model_state)
         model = model.to(a.device()).eval()
 
         transform = transforms.Compose([
@@ -262,7 +266,7 @@ class CLI(BaseMLCLI):
                 minimum_area=-1,
                 augmentation=False,
                 normalization=True,
-                limit=-1,
+                limit=a.limit,
         )
 
         df = ds.df.copy()
@@ -287,11 +291,11 @@ class CLI(BaseMLCLI):
             with torch.set_grad_enabled(False):
                 i = tt.to(a.device())
                 if a.with_features:
-                    o = model(i, activate=True, with_feautres=False)
-                else:
                     o, f = model(i, activate=True, with_feautres=True)
                     features = f.detach().cpu().numpy()
                     featuress.append(features)
+                else:
+                    o = model(i, activate=True, with_feautres=False)
                 o = o.detach().cpu().numpy()
             df.loc[df.index[i0:i1], ds.unique_code] = o
             preds = pd.Series([ds.unique_code[i] for i in np.argmax(o, axis=1)], index=df.index[i0:i1])
@@ -322,7 +326,6 @@ class CLI(BaseMLCLI):
         if a.with_features:
             features = np.concatenate(featuress)
             features = features.reshape(features.shape[0], features.shape[1])
-
             data = [
                 dict(zip(['name', 'filename', 'diag', 'diag_org', 'pred', 'feature'], values))
                 for values in zip(
@@ -334,7 +337,7 @@ class CLI(BaseMLCLI):
                     features
                 )
             ]
-            torch.save(data, J(a.model_dir, f'features_{target}.pt'))
+            torch.save(data, J(a.model_dir, f'features_{a.target}.pt'))
 
 
     class CalcResultsArgs(CommonArgs):
