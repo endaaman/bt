@@ -224,6 +224,7 @@ class CLI(BaseMLCLI):
             overwrite = a.overwrite,
             experiment_name = a.source,
             fig_col_count = 2,
+            save_best = False,
         )
 
         trainer.start(a.epoch)
@@ -232,47 +233,37 @@ class CLI(BaseMLCLI):
         model_dir: str = Field(..., s='-d')
         target: str = Field('test', choices=['train', 'test', 'all'])
         batch_size: int = Field(16, s='-B')
-        default: bool = False
-        no_features: bool = False
         use_best: bool = False
+        with_features: bool = False
 
     def run_validate(self, a:ValidateArgs):
         chp = 'checkpoint_best.pt' if a.use_best else 'checkpoint_last.pt'
         checkpoint = Checkpoint.from_file(J(a.model_dir, chp))
         config = TrainerConfig.from_file(J(a.model_dir, 'config.json'))
-        model = TimmModel(name=config.model_name, num_classes=config.num_classes)
+        model = CompareModel(num_classes=config.num_classes(), base=config.base)
         print('config:', config)
-        if config.nested in ['graph', 'hier']:
-            model_state = {
-                k.replace('model.', ''): v
-                for k, v in checkpoint.model_state.items()
-                if k.startswith('model.')
-            }
-        else:
-            model_state = checkpoint.model_state
-        model.load_state_dict(model_state)
+        model.load_state_dict(checkpoint.model_state)
         model = model.to(a.device()).eval()
 
         transform = transforms.Compose([
-            transforms.CenterCrop(config.size),
+            transforms.CenterCrop(config.crop_size),
+            transforms.Resize(config.size),
             transforms.ToTensor(),
             transforms.Normalize(mean=MEAN, std=STD),
         ])
 
         ds = FoldDataset(
-             total_fold=config.total_fold,
-             fold=config.fold,
-             source=config.source,
-             target=a.target,
-             code=config.code,
-             size=config.size,
-             minimum_area=-1,
-             augmentation=False,
-             normalization=True,
-             limit=-1,
+                total_fold=config.total_fold,
+                fold=config.fold,
+                source=config.source,
+                target=a.target,
+                code=config.code,
+                size=config.size,
+                minimum_area=-1,
+                augmentation=False,
+                normalization=True,
+                limit=-1,
         )
-
-        target = 'un' + a.target if a.default else a.target
 
         df = ds.df.copy()
         df[ds.unique_code] = -1.0
@@ -288,15 +279,14 @@ class CLI(BaseMLCLI):
             rows = df[i0:i1]
             tt = []
             for i, row in rows.iterrows():
-                fp = J(f'cache', config.source,  row['diag_org'], row['name'], row['filename'])
-                image = Image.open(fp)
+                image = ds.load_from_row(row)
                 tt.append(transform(image))
                 image.close()
 
             tt = torch.stack(tt)
             with torch.set_grad_enabled(False):
                 i = tt.to(a.device())
-                if a.no_features:
+                if a.with_features:
                     o = model(i, activate=True, with_feautres=False)
                 else:
                     o, f = model(i, activate=True, with_feautres=True)
@@ -327,9 +317,9 @@ class CLI(BaseMLCLI):
             tq.set_description(f'{i0} - {i1}: {message}')
             tq.refresh()
 
-        df.to_excel(with_wrote(J(a.model_dir, f'validate_{target}.xlsx')))
+        df.to_excel(with_wrote(J(a.model_dir, f'validate_{a.target}.xlsx')))
 
-        if not a.no_features:
+        if a.with_features:
             features = np.concatenate(featuress)
             features = features.reshape(features.shape[0], features.shape[1])
 
@@ -347,156 +337,92 @@ class CLI(BaseMLCLI):
             torch.save(data, J(a.model_dir, f'features_{target}.pt'))
 
 
-    class PredictArgs(BaseDLArgs):
-        model_dir: str = Field(..., s='-d')
-        src: str = Field(..., s='-s')
-        dest: str = ''
-        cam: bool = Field(False, s='-c')
-        cam_label: str = ''
-        center: int = -1
-        size: int = -1
-        cols: int = 3
-        use_last: bool = False
+    class CalcResultsArgs(CommonArgs):
+        model_dir: str = Field(..., l='--model-dir', s='-d')
+        target: str = Field('test', s='-t')
 
-        plot: bool = False
-        show: bool = False
-
-    def run_predict(self, a:PredictArgs):
-        checkpoint = Checkpoint.from_file(J(a.model_dir, 'checkpoint_last.pt'))
+    def run_calc_results(self, a):
+        dest_dir= J(a.model_dir, a.target)
+        os.makedirs(dest_dir, exist_ok=True)
         config = TrainerConfig.from_file(J(a.model_dir, 'config.json'))
-        model = TimmModel(name=config.model_name, num_classes=config.num_classes)
-        model.load_state_dict(checkpoint.model_state)
-        model = model.to(a.device()).eval()
-
-        d = a.dest or ('cam' if a.cam else 'pred')
-        dest_dir = J(with_mkdir(a.model_dir, d))
-        print('dest:', dest_dir)
-
-        gradcam = CAM.GradCAM(
-            model=model,
-            target_layers=model.get_cam_layers(),
-            use_cuda=not a.cpu) if a.cam else None
-
-        transform = transforms.Compose([v for v in [
-            transforms.ToTensor(),
-            transforms.Normalize(mean=MEAN, std=STD),
-        ] if v])
-
-        if os.path.splitext(a.src)[-1] == '.xlsx':
-            df_report = pd.read_excel(a.src, sheet_name='images')
-            # caseごとの最初の画像と、間違えてえたものを評価
-            selected_rows = []
-            for name, rows in df_report.groupby('name'):
-                # select first
-                selected_rows.append(rows.iloc[:1])
-            selected_rows.append(df_report[df_report['correct'] < 1])
-            selected_rows = pd.concat(selected_rows)
-
-            paths = []
-            dests = []
-            source = config.source.split('_')[0]
-            for i, row in selected_rows.iterrows():
-                paths.append(J('data/images', source, row['diag_org'], row['image_name']))
-                dests.append(J(dest_dir, row['gt']))
-            images = [Image.open(p) for p in paths]
-        else:
-            images, paths  = load_images_from_dir_or_file(a.src, with_path=True)
-            dests = [dest_dir for _ in range(len(images))]
-
-        imagess = []
-        col_counts = []
-        row_counts = []
-        if a.size > 0:
-            for image in images:
-                ggg = grid_split(image, size=a.size,  overwrap=False, flattern=False)
-                ii = []
-                for gg in ggg:
-                    for g in gg:
-                        ii.append(g)
-                col_counts.append(len(ggg[0]))
-                row_counts.append(len(ggg))
-                imagess.append(ii)
-        else:
-            crop = transforms.CenterCrop(a.center) if a.center > 0 else lambda x: x
-            for image in images:
-                imagess.append([crop(image)])
-                col_counts.append(1)
-                row_counts.append(1)
-
-        rows = math.ceil(len(images) / a.cols)
-        cols = min(a.cols, len(images))
-
-        fig = plt.figure(figsize=(cols*6, rows*4))
-
         unique_code = config.unique_code()
+        df = pd.read_excel(J(a.model_dir, f'validate_{a.target}.xlsx'))
 
-        for idx, (
-            path, images, dest, col_count, row_count
-        ) in enumerate(zip(paths, imagess, dests, col_counts, row_counts)):
+        data_by_case = []
+        for name, items in tqdm(df.groupby('name')):
+            diag_org, diag = items.iloc[0][['diag_org', 'diag']]
+            preds = items[unique_code]
 
-            oo = []
-            # drews = [[None]*col_count]*row_count
-            drews = [[None for _ in range(col_count)] for __ in range(row_count)]
+            preds_sum = np.sum(preds, axis=0)
+            preds_sum = preds_sum / np.sum(preds_sum)
+            pred_sum = unique_code[np.argmax(preds_sum)]
 
-            for i, image in enumerate(images):
-                t = transform(image)[None, ...].to(a.device())
-                with torch.set_grad_enabled(False):
-                    o = model(t, activate=True)
-                    o = o.detach().cpu().numpy()[0]
-                oo.append(o)
+            preds_label = np.argmax(preds, axis=1)
 
-                pred_id = np.argmax(o)
-                pred = unique_code[pred_id]
+            unique_values, counts = np.unique(preds_label, return_counts=True)
+            pred_vote = unique_code[unique_values[np.argmax(counts)]]
 
-                if a.cam:
-                    cam_class_id = unique_code.index(a.cam_label) if a.cam_label else pred_id
-                    cam_class = unique_code[cam_class_id]
-                    targets = [ClassifierOutputTarget(cam_class_id)]
+            d = {
+                'name': name,
+                'diag_org': diag_org,
+                'gt': diag,
+                'pred(vote)': pred_vote,
+                'pred(sum)': pred_sum,
+                'correct': int(diag == pred_sum),
+            }
+            for p, code in zip(preds_sum, unique_code):
+                d[code] = p
+            data_by_case.append(d)
 
-                    mask = gradcam(input_tensor=t, targets=targets)[0]
-                    vis = show_cam_on_image(np.array(image)/255, mask, use_rgb=True)
-                    # overwrite variable
-                    image = Image.fromarray(vis)
+        data_by_image = []
+        for image_name, items in tqdm(df.groupby('original')):
+            diag_org, diag, name = items.iloc[0][['diag_org', 'diag', 'name']]
 
-                draw_frame(image, o, unique_code)
-                drews[i // col_count][i % col_count] = image
+            preds = items[unique_code]
+            preds_sum = np.sum(preds, axis=0)
+            pred_sum = unique_code[np.argmax(preds_sum)]
 
-            row_images = []
-            for y, row in enumerate(drews):
-                row_image_list = []
-                for x, d in enumerate(row):
-                    row_image_list.append(np.array(d))
-                h = cv2.hconcat(row_image_list)
-                row_images.append(h)
-            merged_image = Image.fromarray(cv2.vconcat(row_images))
+            preds_label = np.argmax(preds, axis=1)
 
-            o = np.stack(oo).mean(axis=0)
+            unique_values, counts = np.unique(preds_label, return_counts=True)
+            pred_vote = unique_code[unique_values[np.argmax(counts)]]
 
-            pred_id = np.argmax(o)
-            pred = unique_code[pred_id]
-            label = ' '.join([f'{c}:{int(v*100):3d}' for c, v in zip(unique_code, o)])
-            h, w = t.shape[2], t.shape[3]
-            print(f'{path}: ({w}x{h}) {pred} ({label})')
+            d = {
+                'name': name,
+                'image_name': image_name,
+                'diag_org': diag_org,
+                'gt': diag,
+                'pred(vote)': pred_vote,
+                'pred(sum)': pred_sum,
+                'correct': int(diag == pred_sum),
+            }
+            for p, code in zip(preds_sum, unique_code):
+                d[code] = p
+            data_by_image.append(d)
 
-            name = os.path.splitext(os.path.basename(path))[0]
-            merged_image.save(J(with_mkdir(dest), f'{name}.jpg'))
+        df_by_case = pd.DataFrame(data_by_case).sort_values(['diag_org'])
+        df_by_image = pd.DataFrame(data_by_image).sort_values(['diag_org', 'image_name'])
 
-            merged_image.close()
+        print('Acc by case')
+        print(df_by_case['correct'].mean())
+        print('Acc by image')
+        print(df_by_image['correct'].mean())
 
-            if not a.plot:
-                continue
-            ax = fig.add_subplot(rows, cols, idx+1)
-            ax.imshow(merged_image)
-            title = f'{name} {pred} ({label})'
-            if a.cam_label:
-                title += f' CAM: {cam_class}'
-            ax.set_title(title)
-            ax.set(xlabel=None, ylabel=None)
+        for df, t in ((df_by_case, 'case'), (df_by_image, 'image')):
+            for code in unique_code:
+                p = df_by_case[code]
+                gt = df_by_case['gt'] == code
+                fpr, tpr, __t = skmetrics.roc_curve(gt, p)
+                auc = skmetrics.auc(fpr, tpr)
+                plt.plot(fpr, tpr, label=f'{code}: AUC={auc:.3f}')
+                plt.savefig(J(dest_dir, f'{t}_{code}.png'))
+                plt.legend()
+                plt.close()
+                print(t, code, auc)
 
-        if a.plot:
-            plt.savefig()
-            if a.show:
-                plt.show()
+        with pd.ExcelWriter(with_wrote(J(dest_dir, 'report.xlsx')), engine='xlsxwriter') as writer:
+            df_by_case.to_excel(writer, sheet_name='cases', index=False)
+            df_by_image.to_excel(writer, sheet_name='images', index=False)
 
 
 if __name__ == '__main__':
