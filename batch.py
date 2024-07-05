@@ -47,58 +47,6 @@ class CLI(BaseMLCLI):
     class CommonArgs(BaseMLCLI.CommonArgs):
         pass
 
-    def run_aug_one(self, a):
-        blur_limit = (3, 5)
-        aug = A.Compose([
-            # A.RandomCrop(width=size, height=size),
-            A.RandomResizedCrop(width=512, height=512, scale=(0.666, 1.5), ratio=(0.95, 1.05), ),
-            A.RandomRotate90(p=1),
-            A.Flip(p=0.5),
-
-            # Blurs
-            A.OneOf([
-                A.MotionBlur(blur_limit=blur_limit),
-                A.MedianBlur(blur_limit=blur_limit),
-                A.GaussianBlur(blur_limit=blur_limit),
-                A.Blur(blur_limit=blur_limit),
-            ], p=1.0),
-            # A.ShiftScaleRotate(shift_limit=0.0625, scale_limit=0.2, rotate_limit=5, p=0.5),
-
-            # Brightness
-            A.OneOf([
-                A.CLAHE(clip_limit=2),
-                A.Emboss(),
-                # A.RandomBrightnessContrast(brightness_limit=0.1),
-                A.RandomToneCurve(),
-            ], p=1.0),
-
-            # Color
-            A.OneOf([
-                A.RGBShift(),
-                A.HueSaturationValue(sat_shift_limit=20),
-            ], p=1.0),
-
-            # Noise
-            A.OneOf([
-                A.ISONoise(),
-                A.GaussNoise(),
-                A.ImageCompression(quality_lower=50, quality_upper=100),
-            ], p=1.0),
-
-            # Transform
-            # A.OneOf([
-            #     A.CoarseDropout(max_holes=16, min_holes=1,
-            #                     max_height=32, max_width=32,
-            #                     min_height=8, min_width=8, fill_value=0, p=1.0),
-            #     A.RandomGridShuffle(grid=(2, 2)),
-            #     A.RandomGridShuffle(grid=(3, 3)),
-            # ], p=1.0),
-        ])
-
-        image =  np.array(Image.open(',/tile.jpg'))
-        a = aug(image=image)['image']
-        Image.fromarray(a).save(',/aug.png')
-
     def run_balance(self, a):
         df_org = pd.read_excel('data/tiles/enda4_512/folds5.xlsx')
         col_count = 3
@@ -399,12 +347,11 @@ class CLI(BaseMLCLI):
             tq.refresh()
 
 
-
-    class CalcResultArgs(CommonArgs):
+    class CalcResultsArgs(CommonArgs):
         model_dir: str = Field(..., l='--model-dir', s='-d')
-        target: str = 'test'
+        target: str = Field('test', s='-t')
 
-    def run_calc_result(self, a):
+    def run_calc_results(self, a):
         dest_dir= J(a.model_dir, a.target)
         os.makedirs(dest_dir, exist_ok=True)
         config = TrainerConfig.from_file(J(a.model_dir, 'config.json'))
