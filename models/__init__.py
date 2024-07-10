@@ -122,15 +122,50 @@ class CompareModel(nn.Module):
             self.base = timm.create_model('hf-hub:MahmoodLab/uni', pretrained=True, init_values=1e-5, dynamic_img_size=True)
         elif base == 'ctranspath':
             # self.base = timm.create_model('swin_tiny_patch4_window7_224', embed_layer=ConvStem, pretrained=False)
-            self.base = timm.create_model('swin_tiny_patch4_window7_224', pretrained=False)
+            self.base = timm.create_model('swin_tiny_patch4_window7_224', pretrained=False, embed_dim=48)
             self.base.head = nn.Identity()
             td = torch.load('./data/weights/ctranspath.pth')
-            self.base.load_state_dict(td['model'])
+            self.base.load_state_dict(td['model'], strict=False)
             self.pool = nn.Sequential(
                 tv.ops.Permute([0, 3, 1, 2]),
                 nn.AdaptiveAvgPool2d((1, 1)),
                 nn.Flatten(start_dim=1),
             )
+
+            # model_args = dict(patch_size=4, window_size=7, embed_dim=96, depths=(2, 2, 6, 2), num_heads=(3, 6, 12, 24))
+            # return _create_swin_transformer('swin_tiny_patch4_window7_224', pretrained=pretrained, **dict(model_args, **kwargs))
+            # def __init__(
+            #         self,
+            #         img_size: _int_or_tuple_2_t = 224,
+            #         patch_size: int = 4,
+            #         in_chans: int = 3,
+            #         num_classes: int = 1000,
+            #         global_pool: str = 'avg',
+            #         embed_dim: int = 96,
+            #         depths: Tuple[int, ...] = (2, 2, 6, 2),
+            #         num_heads: Tuple[int, ...] = (3, 6, 12, 24),
+            #         head_dim: Optional[int] = None,
+            #         window_size: _int_or_tuple_2_t = 7,
+            #         mlp_ratio: float = 4.,
+            #         qkv_bias: bool = True,
+            #         drop_rate: float = 0.,
+            #         proj_drop_rate: float = 0.,
+            #         attn_drop_rate: float = 0.,
+            #         drop_path_rate: float = 0.1,
+            #         embed_layer: Callable = PatchEmbed,
+            #         norm_layer: Union[str, Callable] = nn.LayerNorm,
+            #         weight_init: str = '',
+            #         **kwargs,
+
+            # self, img_size=224, patch_size=4, in_chans=3, num_classes=1000, global_pool='avg',
+            #  embed_dim=96, depths=(2, 2, 6, 2), num_heads=(3, 6, 12, 24), head_dim=None,
+            #  window_size=7, mlp_ratio=4., qkv_bias=True,
+            #  drop_rate=0., attn_drop_rate=0., drop_path_rate=0.1,
+            #  norm_layer=nn.LayerNorm, ape=False, patch_norm=True, weight_init='', **kwargs):
+            # model_kwargs = dict(
+            #     patch_size=4, window_size=7, embed_dim=96, depths=(2, 2, 6, 2), num_heads=(3, 6, 12, 24), **kwargs)
+            # return _create_swin_transformer('swin_tiny_patch4_window7_224', pretrained=pretrained, **model_kwargs)
+
             print(base)
         else:
             raise RuntimeError('Invalid base:', base)
