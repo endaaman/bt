@@ -217,7 +217,7 @@ class CLI(BaseMLCLI):
 
 
     class BaseDatasetArgs(BaseMLCLI.CommonArgs):
-        source: str = 'data/tiles/enda3_512/'
+        source: str = 'enda4_512'
         code: str = 'LMGGGB'
         fold: int = 0
         total_fold: int = 5
@@ -230,10 +230,10 @@ class CLI(BaseMLCLI):
 
     def run_inspect(self, a):
         ds = FoldDataset(
+            source=a.source,
             fold=a.fold,
             total_fold=a.total_fold,
             code=a.code,
-            source_dir=a.source,
             limit=a.limit,
             upsample=a.upsample,
             target='all',
@@ -248,10 +248,10 @@ class CLI(BaseMLCLI):
 
     def run_hist(self, a):
         ds = FoldDataset(
+            source=a.source,
             fold=a.fold,
             total_fold=a.total_fold,
             code=a.code,
-            source_dir=a.source,
             limit=a.limit,
             upsample=a.upsample,
             target='all',
