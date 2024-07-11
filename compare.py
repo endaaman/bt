@@ -241,7 +241,7 @@ class CLI(BaseMLCLI):
     class ValidateArgs(BaseDLArgs):
         model_dir: str = Field(..., s='-d')
         target: str = Field('test', choices=['train', 'test', 'all'])
-        batch_size: int = Field(16, s='-B')
+        batch_size: int = Field(100, s='-B')
         use_best: bool = False
         with_features: bool = False
         skip_checkpoint: bool = False
