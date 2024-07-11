@@ -116,9 +116,10 @@ class Acc4(BaseMetrics):
 
 class Trainer(BaseTrainer):
     def prepare(self):
-        model = CompareModel(num_classes=self.config.num_classes(), base=self.config.base)
-        if self.config.encoder == 'frozen':
-            model.freeze_encoder()
+        model = CompareModel(
+                base=self.config.base,
+                num_classes=self.config.num_classes(),
+                frozen=self.config.encoder == 'frozen')
         self.criterion = nn.CrossEntropyLoss()
         return model
 
