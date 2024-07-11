@@ -119,7 +119,8 @@ class CompareModel(nn.Module):
             # 'vit_giant_patch14_dinov2'
             self.base = timm.create_model('hf_hub:prov-gigapath/prov-gigapath', pretrained=True)
         elif base == 'uni':
-            self.base = timm.create_model('hf-hub:MahmoodLab/uni', pretrained=True, init_values=1e-5, dynamic_img_size=True)
+            # 'vit_large_patch16_224'
+            self.base = timm.create_model('hf-hub:MahmoodLab/uni', pretrained=True, init_values=1e-5)
         elif base == 'ctranspath':
             # self.base = timm.create_model('swin_tiny_patch4_window7_224', embed_layer=ConvStem, pretrained=False)
             self.base = timm.create_model('swin_tiny_patch4_window7_224', pretrained=False, embed_dim=48)
