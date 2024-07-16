@@ -422,30 +422,35 @@ class CLI(BaseMLCLI):
         y_true_bin = label_binarize(y_true, classes=unique_code)
         fpr, tpr, roc_auc = {}, {}, {}
 
+        print('ROC AUC')
         for code in unique_code:
             p = df_by_case[code]
             gt = df_by_case['gt'] == code
             fpr[code], tpr[code], __t = skmetrics.roc_curve(gt, p)
             roc_auc[code] = skmetrics.auc(fpr[code], tpr[code])
             plt.plot(fpr[code], tpr[code], label=f'{code}: AUC={roc_auc[code]:.3f}')
-            plt.savefig(J(dest_dir, f'{code}.png'))
             plt.legend()
+            plt.savefig(J(dest_dir, f'{code}.png'))
             plt.close()
             print(code, roc_auc[code])
 
-        fpr["micro"], tpr["micro"], _ = skmetrics.roc_curve(y_true_bin.ravel(), y_score.ravel())
-        roc_auc["micro"] = skmetrics.auc(fpr["micro"], tpr["micro"])
+        fpr['micro'], tpr['micro'], _ = skmetrics.roc_curve(y_true_bin.ravel(), y_score.ravel())
+        roc_auc['micro'] = skmetrics.auc(fpr['micro'], tpr['micro'])
 
         all_fpr = np.unique(np.concatenate([fpr[code] for code in unique_code]))
         mean_tpr = np.zeros_like(all_fpr)
         for code in unique_code:
             mean_tpr += np.interp(all_fpr, fpr[code], tpr[code])
         mean_tpr /= len(unique_code)
-        fpr["macro"] = all_fpr
-        tpr["macro"] = mean_tpr
-        roc_auc["macro"] = skmetrics.auc(fpr["macro"], tpr["macro"])
-
-        print(roc_auc)
+        fpr['macro'] = all_fpr
+        tpr['macro'] = mean_tpr
+        roc_auc['macro'] = skmetrics.auc(fpr['macro'], tpr['macro'])
+        print('micro', roc_auc['micro'])
+        print('macro', roc_auc['macro'])
+        plt.plot(fpr['macro'], tpr['macro'], label=f'AUC={roc_auc["macro"]:.3f}')
+        plt.legend()
+        plt.savefig(J(dest_dir, 'roc.png'))
+        plt.close()
 
         with pd.ExcelWriter(with_wrote(J(dest_dir, 'report.xlsx')), engine='xlsxwriter') as writer:
             df_by_case.to_excel(writer, sheet_name='cases', index=False)
