@@ -14,6 +14,7 @@ from torchvision import transforms
 from matplotlib import pyplot as plt
 import seaborn as sns
 from sklearn import metrics as skmetrics
+from sklearn.preprocessing import label_binarize
 from tqdm import tqdm
 import pandas as pd
 from PIL import Image, ImageDraw, ImageFont
@@ -251,7 +252,14 @@ class CLI(BaseMLCLI):
         config = TrainerConfig.from_file(J(a.model_dir, 'config.json'))
         print('config:', config)
 
-        model = CompareModel(num_classes=config.num_classes(), base=config.base)
+        dest_path = J(a.model_dir, f'validate_{a.target}.xlsx')
+        if os.path.exists(dest_path):
+            print(f'Skipping: {dest_path} exists.')
+            return
+
+        model = CompareModel(num_classes=config.num_classes(),
+                             frozen=config.encoder == 'frozen',
+                             base=config.base)
         if not a.skip_checkpoint:
             chp = 'checkpoint_best.pt' if a.use_best else 'checkpoint_last.pt'
             checkpoint = Checkpoint.from_file(J(a.model_dir, chp))
@@ -330,7 +338,7 @@ class CLI(BaseMLCLI):
             tq.set_description(f'{i0} - {i1}: {message}')
             tq.refresh()
 
-        df.to_excel(with_wrote(J(a.model_dir, f'validate_{a.target}.xlsx')))
+        df.to_excel(with_wrote(dest_path))
 
         if a.with_features:
             features = np.concatenate(featuress)
@@ -384,57 +392,63 @@ class CLI(BaseMLCLI):
             }
             for p, code in zip(preds_sum, unique_code):
                 d[code] = p
+            if len(unique_code) == 6:
+                map3 = {'L':'L', 'M':'M', 'G':'G', 'A':'G', 'O':'G', 'B':'B'}
+                map4 = {'L':'L', 'M':'M', 'G':'G', 'A':'I', 'O':'I', 'B':'B'}
+                d['correct3'] = map3[diag_org] == map3[pred_sum]
+                d['correct4'] = map4[diag_org] == map4[pred_sum]
             data_by_case.append(d)
 
-        data_by_image = []
-        for image_name, items in tqdm(df.groupby('original')):
-            diag_org, diag, name = items.iloc[0][['diag_org', 'diag', 'name']]
-
-            preds = items[unique_code]
-            preds_sum = np.sum(preds, axis=0)
-            pred_sum = unique_code[np.argmax(preds_sum)]
-
-            preds_label = np.argmax(preds, axis=1)
-
-            unique_values, counts = np.unique(preds_label, return_counts=True)
-            pred_vote = unique_code[unique_values[np.argmax(counts)]]
-
-            d = {
-                'name': name,
-                'image_name': image_name,
-                'diag_org': diag_org,
-                'gt': diag,
-                'pred(vote)': pred_vote,
-                'pred(sum)': pred_sum,
-                'correct': int(diag == pred_sum),
-            }
-            for p, code in zip(preds_sum, unique_code):
-                d[code] = p
-            data_by_image.append(d)
-
         df_by_case = pd.DataFrame(data_by_case).sort_values(['diag_org'])
-        df_by_image = pd.DataFrame(data_by_image).sort_values(['diag_org', 'image_name'])
 
-        print('Acc by case')
-        print(df_by_case['correct'].mean())
-        print('Acc by image')
-        print(df_by_image['correct'].mean())
+        if len(unique_code) == 6:
+            print('Acc3 by case', df_by_case['correct3'].mean())
+            print('Acc4 by case', df_by_case['correct4'].mean())
 
-        for df, t in ((df_by_case, 'case'), (df_by_image, 'image')):
-            for code in unique_code:
-                p = df_by_case[code]
-                gt = df_by_case['gt'] == code
-                fpr, tpr, __t = skmetrics.roc_curve(gt, p)
-                auc = skmetrics.auc(fpr, tpr)
-                plt.plot(fpr, tpr, label=f'{code}: AUC={auc:.3f}')
-                plt.savefig(J(dest_dir, f'{t}_{code}.png'))
-                plt.legend()
-                plt.close()
-                print(t, code, auc)
+        y_true = df_by_case['gt']
+        y_pred = df_by_case['pred(sum)']
+
+        # F1 score
+        f1_macro = skmetrics.f1_score(y_true, y_pred, average='macro')
+        print(f'Macro F1 Score by: {f1_macro:.3f}')
+
+        # Reports
+        class_report = skmetrics.classification_report(y_true, y_pred)
+        print(f'Classification Report by:')
+        print(class_report)
+
+        y_score = df_by_case[unique_code].values
+        # One-hot encoding
+        y_true_bin = label_binarize(y_true, classes=unique_code)
+        fpr, tpr, roc_auc = {}, {}, {}
+
+        for code in unique_code:
+            p = df_by_case[code]
+            gt = df_by_case['gt'] == code
+            fpr[code], tpr[code], __t = skmetrics.roc_curve(gt, p)
+            roc_auc[code] = skmetrics.auc(fpr[code], tpr[code])
+            plt.plot(fpr[code], tpr[code], label=f'{code}: AUC={roc_auc[code]:.3f}')
+            plt.savefig(J(dest_dir, f'{code}.png'))
+            plt.legend()
+            plt.close()
+            print(code, roc_auc[code])
+
+        fpr["micro"], tpr["micro"], _ = skmetrics.roc_curve(y_true_bin.ravel(), y_score.ravel())
+        roc_auc["micro"] = skmetrics.auc(fpr["micro"], tpr["micro"])
+
+        all_fpr = np.unique(np.concatenate([fpr[code] for code in unique_code]))
+        mean_tpr = np.zeros_like(all_fpr)
+        for code in unique_code:
+            mean_tpr += np.interp(all_fpr, fpr[code], tpr[code])
+        mean_tpr /= len(unique_code)
+        fpr["macro"] = all_fpr
+        tpr["macro"] = mean_tpr
+        roc_auc["macro"] = skmetrics.auc(fpr["macro"], tpr["macro"])
+
+        print(roc_auc)
 
         with pd.ExcelWriter(with_wrote(J(dest_dir, 'report.xlsx')), engine='xlsxwriter') as writer:
             df_by_case.to_excel(writer, sheet_name='cases', index=False)
-            df_by_image.to_excel(writer, sheet_name='images', index=False)
 
 
 if __name__ == '__main__':
