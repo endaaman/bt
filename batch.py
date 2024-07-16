@@ -351,7 +351,7 @@ class CLI(BaseMLCLI):
         model_dir: str = Field(..., l='--model-dir', s='-d')
         target: str = Field('test', s='-t')
 
-    def run_calc_results(self, a):
+    def run_calc_results(self, a: CalcResultsArgs):
         dest_dir= J(a.model_dir, a.target)
         os.makedirs(dest_dir, exist_ok=True)
         config = TrainerConfig.from_file(J(a.model_dir, 'config.json'))
@@ -412,11 +412,6 @@ class CLI(BaseMLCLI):
 
         df_by_case = pd.DataFrame(data_by_case).sort_values(['diag_org'])
         df_by_image = pd.DataFrame(data_by_image).sort_values(['diag_org', 'image_name'])
-
-        print('Acc by case')
-        print(df_by_case['correct'].mean())
-        print('Acc by image')
-        print(df_by_image['correct'].mean())
 
         for df, t in ((df_by_case, 'case'), (df_by_image, 'image')):
             for code in unique_code:
