@@ -369,6 +369,10 @@ class CLI(BaseMLCLI):
         df = pd.read_excel(J(a.model_dir, f'validate_{a.target}.xlsx'))
 
         data_by_case = []
+
+        map3 = {'L':'L', 'M':'M', 'G':'G', 'A':'G', 'O':'G', 'B':'B'}
+        map4 = {'L':'L', 'M':'M', 'G':'G', 'A':'I', 'O':'I', 'B':'B'}
+
         for name, items in tqdm(df.groupby('name')):
             diag_org, diag = items.iloc[0][['diag_org', 'diag']]
             preds = items[unique_code]
@@ -390,42 +394,43 @@ class CLI(BaseMLCLI):
                 'pred(sum)': pred_sum,
                 'correct': int(diag == pred_sum),
             }
+            if len(unique_code) == 6:
+                d['correct3'] = int(map3[diag_org] == map3[pred_sum])
+                d['correct4'] = int(map4[diag_org] == map4[pred_sum])
             for p, code in zip(preds_sum, unique_code):
                 d[code] = p
-            if len(unique_code) == 6:
-                map3 = {'L':'L', 'M':'M', 'G':'G', 'A':'G', 'O':'G', 'B':'B'}
-                map4 = {'L':'L', 'M':'M', 'G':'G', 'A':'I', 'O':'I', 'B':'B'}
-                d['correct3'] = map3[diag_org] == map3[pred_sum]
-                d['correct4'] = map4[diag_org] == map4[pred_sum]
             data_by_case.append(d)
 
-        df_by_case = pd.DataFrame(data_by_case).sort_values(['diag_org'])
+        df = pd.DataFrame(data_by_case).sort_values(['diag_org'])
 
         if len(unique_code) == 6:
-            print('Acc3 by case', df_by_case['correct3'].mean())
-            print('Acc4 by case', df_by_case['correct4'].mean())
+            print('Acc3 by case', df['correct3'].mean())
+            print('Acc4 by case', df['correct4'].mean())
 
-        y_true = df_by_case['gt']
-        y_pred = df_by_case['pred(sum)']
-
-        # F1 score
-        f1_macro = skmetrics.f1_score(y_true, y_pred, average='macro')
-        print(f'Macro F1 Score by: {f1_macro:.3f}')
+        y_true = df['gt']
+        y_pred = df['pred(sum)']
 
         # Reports
-        class_report = skmetrics.classification_report(y_true, y_pred)
+        report = skmetrics.classification_report(y_true, y_pred, output_dict=True)
         print(f'Classification Report by:')
-        print(class_report)
+        df_report = pd.DataFrame(report).T
+        print(df_report)
 
-        y_score = df_by_case[unique_code].values
+        if len(unique_code) == 6:
+            report3 = skmetrics.classification_report(y_true.map(map3), y_pred.map(map3), output_dict=True)
+            df_report3 = pd.DataFrame(report3).T
+            report4 = skmetrics.classification_report(y_true.map(map4), y_pred.map(map4), output_dict=True)
+            df_report4 = pd.DataFrame(report4).T
+
+        y_score = df[unique_code].values
         # One-hot encoding
         y_true_bin = label_binarize(y_true, classes=unique_code)
         fpr, tpr, roc_auc = {}, {}, {}
 
         print('ROC AUC')
         for code in unique_code:
-            p = df_by_case[code]
-            gt = df_by_case['gt'] == code
+            p = df[code]
+            gt = df['gt'] == code
             fpr[code], tpr[code], __t = skmetrics.roc_curve(gt, p)
             roc_auc[code] = skmetrics.auc(fpr[code], tpr[code])
             plt.plot(fpr[code], tpr[code], label=f'{code}: AUC={roc_auc[code]:.3f}')
@@ -453,7 +458,11 @@ class CLI(BaseMLCLI):
         plt.close()
 
         with pd.ExcelWriter(with_wrote(J(dest_dir, 'report.xlsx')), engine='xlsxwriter') as writer:
-            df_by_case.to_excel(writer, sheet_name='cases', index=False)
+            df.to_excel(writer, sheet_name='cases', index=False)
+            df_report.to_excel(writer, sheet_name='report')
+            if len(unique_code) == 6:
+                df_report3.to_excel(writer, sheet_name='report3')
+                df_report4.to_excel(writer, sheet_name='report4')
 
 
 if __name__ == '__main__':
