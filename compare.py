@@ -190,14 +190,6 @@ class CLI(BaseMLCLI):
     def run_train(self, a:TrainArgs):
         config = TrainerConfig(**a.dict())
 
-        a.lr, a.scheduler = {
-            'uni_frozen': (0.0001, 'static'),
-            'gigapath_frozen': (0.0001, 'static'),
-            'uni_unfrozen': (0.00001, 'static'),
-            'baseline-vit_unfrozen': (0.00001, 'static'),
-            'baseline-cnn_unfrozen': (0.001, 'step_10'),
-        }[f'{a.base}_{a.encoder}']
-
         dss = [
             FoldDataset(
                 total_fold = a.total_fold,
