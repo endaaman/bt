@@ -363,13 +363,15 @@ class CLI(BaseMLCLI):
         ],)
         encoder: str = Field('frozen', choices=['frozen', 'unfrozen'])
         limit: int = Field(100, choices=[10, 25, 50, 100, 500])
-        fold: int = Field(-1, choices=[0, 1, 2, 3, 4])
+        fold: int = Field(-1, choices=[-1, 0, 1, 2, 3, 4])
         target: str = Field('test', s='-t')
-
         overwrite: bool = Field(False, s='-O')
 
     def run_calc_results(self, a):
         unique_code = list('LMGAOB')
+        map3 = {'L':'L', 'M':'M', 'G':'G', 'A':'G', 'O':'G', 'B':'B'}
+        map4 = {'L':'L', 'M':'M', 'G':'G', 'A':'I', 'O':'I', 'B':'B'}
+
         if a.fold < 0:
             dest_dir= f'out/compare/results/{a.encoder}_{a.base}_{a.limit}'
             dfs = []
@@ -396,9 +398,6 @@ class CLI(BaseMLCLI):
         print('DEST', dest_dir)
 
         data_by_case = []
-
-        map3 = {'L':'L', 'M':'M', 'G':'G', 'A':'G', 'O':'G', 'B':'B'}
-        map4 = {'L':'L', 'M':'M', 'G':'G', 'A':'I', 'O':'I', 'B':'B'}
 
         for name, items in tqdm(df.groupby('name')):
             diag_org, diag = items.iloc[0][['diag_org', 'diag']]
@@ -490,6 +489,21 @@ class CLI(BaseMLCLI):
             if len(unique_code) == 6:
                 df_report3.to_excel(writer, sheet_name='report3')
                 df_report4.to_excel(writer, sheet_name='report4')
+
+    class CalcMacroArgs(CommonArgs):
+        base: str = Field('uni', choices=[
+            'baseline-vit',
+            'baseline-cnn',
+            'gigapath',
+            'uni',
+        ],)
+        encoder: str = Field('frozen', choices=['frozen', 'unfrozen'])
+
+    def run_calc_macro(self, a):
+        limits = [10, 25, 50, 100, 500]
+        for fold in range(5):
+            report_path = f'out/compare/LMGAOB/fold5_{fold}/{a.base}_{a.base}_{a.limit}/test/report.xlsx'
+            pd.read_excel(report_path)
 
 if __name__ == '__main__':
     cli = CLI()
