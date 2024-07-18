@@ -48,7 +48,6 @@ class TrainerConfig(BaseTrainerConfig):
         'baseline-cnn',
         'gigapath',
         'uni',
-        'ctranspath',
     ],)
     source: str = 'enda4_512'
 
@@ -173,7 +172,6 @@ class Trainer(BaseTrainer):
         if val_preds is None or val_gts is None:
             return
         self._visualize_confusion(ax, 'val', val_preds, val_gts)
-
 
 
 class CLI(BaseMLCLI):
@@ -356,17 +354,46 @@ class CLI(BaseMLCLI):
             ]
             torch.save(data, J(a.model_dir, f'features_{a.target}.pt'))
 
-
     class CalcResultsArgs(CommonArgs):
-        model_dir: str = Field(..., l='--model-dir', s='-d')
+        base: str = Field('uni', choices=[
+            'baseline-vit',
+            'baseline-cnn',
+            'gigapath',
+            'uni',
+        ],)
+        encoder: str = Field('frozen', choices=['frozen', 'unfrozen'])
+        limit: int = Field(100, choices=[10, 25, 50, 100, 500])
+        fold: int = Field(-1, choices=[0, 1, 2, 3, 4])
         target: str = Field('test', s='-t')
 
+        overwrite: bool = Field(False, s='-O')
+
     def run_calc_results(self, a):
-        dest_dir= J(a.model_dir, a.target)
+        unique_code = list('LMGAOB')
+        if a.fold < 0:
+            dest_dir= f'out/compare/results/{a.encoder}_{a.base}_{a.limit}'
+            dfs = []
+            for fold in range(5):
+                model_dir = f'out/compare/LMGAOB/fold5_{fold}/{a.encoder}_{a.base}_{a.limit}/'
+                excel_path = J(model_dir, f'validate_{a.target}.xlsx')
+                dfs.append(pd.read_excel(excel_path))
+                print('loaded', excel_path)
+            df = pd.concat(dfs)
+        else:
+            model_dir = f'out/compare/LMGAOB/fold5_{a.fold}/{a.encoder}_{a.base}_{a.limit}/'
+            dest_dir= J(model_dir, a.target)
+            df = pd.read_excel(J(model_dir, f'validate_{a.target}.xlsx'))
+
+        output_path = J(dest_dir, 'report.xlsx')
+        if os.path.exists(output_path):
+            if a.overwrite:
+                print('Overwriting', output_path)
+            else:
+                print('Skipping, output_path exists:', output_path)
+                return
+
         os.makedirs(dest_dir, exist_ok=True)
-        config = TrainerConfig.from_file(J(a.model_dir, 'config.json'))
-        unique_code = config.unique_code()
-        df = pd.read_excel(J(a.model_dir, f'validate_{a.target}.xlsx'))
+        print('DEST', dest_dir)
 
         data_by_case = []
 
@@ -457,13 +484,12 @@ class CLI(BaseMLCLI):
         plt.savefig(J(dest_dir, 'roc.png'))
         plt.close()
 
-        with pd.ExcelWriter(with_wrote(J(dest_dir, 'report.xlsx')), engine='xlsxwriter') as writer:
+        with pd.ExcelWriter(with_wrote(output_path), engine='xlsxwriter') as writer:
             df.to_excel(writer, sheet_name='cases', index=False)
             df_report.to_excel(writer, sheet_name='report')
             if len(unique_code) == 6:
                 df_report3.to_excel(writer, sheet_name='report3')
                 df_report4.to_excel(writer, sheet_name='report4')
-
 
 if __name__ == '__main__':
     cli = CLI()
