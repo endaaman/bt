@@ -15,6 +15,7 @@ from matplotlib import pyplot as plt
 import seaborn as sns
 from sklearn import metrics as skmetrics
 from sklearn.preprocessing import label_binarize
+from scipy import stats
 from tqdm import tqdm
 import pandas as pd
 from PIL import Image, ImageDraw, ImageFont
@@ -483,19 +484,77 @@ class CLI(BaseMLCLI):
                 df_report4.to_excel(writer, sheet_name='report4')
 
     class CalcMacroArgs(CommonArgs):
-        base: str = Field('uni', choices=[
-            'baseline-vit',
-            'baseline-cnn',
-            'gigapath',
-            'uni',
-        ],)
-        encoder: str = Field('frozen', choices=['frozen', 'unfrozen'])
+        metric: str = 'f1'
+        target: str = 'default'
 
     def run_calc_macro(self, a):
-        limits = [10, 25, 50, 100, 500]
-        for fold in range(5):
-            report_path = f'out/compare/LMGAOB/fold5_{fold}/{a.base}_{a.base}_{a.limit}/test/report.xlsx'
-            pd.read_excel(report_path)
+        conds = [
+            'frozen_uni',
+            'frozen_gigapath',
+            'unfrozen_uni',
+            'unfrozen_baseline-vit',
+        ]
+        labels = [
+            r'UNI(FC)$',
+            r'Prov-GigaPath(FC)$',
+            r'UNI(Enc+FC)',
+            r'VIT-L$\mathrm{_{IN}}$(Enc+FC)',
+        ]
+
+        # colors = [
+        #     'tab:blue',
+        #     'tab:orange',
+        #     'tab:green',
+        #     'tab:red',
+        #     'tab:purple',
+        # ]
+        colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
+
+        limits = [10, 25, 50, 500]
+        alpha = 0.05
+
+        values_by_cond = []
+        for cond in conds:
+            values = []
+            for limit in limits:
+                scores = []
+                for fold in range(5):
+                    report_path = f'out/compare/LMGAOB/fold5_{fold}/{cond}_{limit}/test/report.xlsx'
+                    df = pd.read_excel(report_path, sheet_name='report', index_col=0)
+                    score = df[df.index == 'macro avg'].iloc[0]['f1-score']
+                    scores.append(score)
+                mean = np.mean(scores)
+                n = len(scores)
+                std_err = np.std(scores, ddof=1) / np.sqrt(n)
+                # ci = stats.t.interval(1 - alpha, df=n-1, loc=mean, scale=std_err)
+                ci = [mean-std_err, mean+std_err]
+                values.append([mean, *ci])
+            values_by_cond.append(values)
+
+        values_by_cond = np.array(values_by_cond)
+        print(values_by_cond)
+
+        plt.figure(figsize=(10, 6))
+        x = np.arange(1, 1+len(limits))
+
+        for i in range(len(conds)):
+            ci_l = values_by_cond[i, :, 1]
+            ci_h = values_by_cond[i, :, 2]
+            c = colors[i]
+            plt.plot(x, values_by_cond[i, :, 0], color=c, label=labels[i])
+            plt.fill_between(x, ci_l, ci_h, color=c, alpha=0.2)
+        # plt.plot(x, y1, 'g-', label=labels[1])
+        # plt.fill_between(x, ci1[:, 0], ci1[:, 1], color='g', alpha=0.2)
+
+        plt.xticks(x, limits)
+
+        plt.xlabel('Patch count per case')
+        plt.ylabel('F1-score')
+        plt.legend()
+        plt.grid(True, linestyle='--', alpha=0.7)
+
+        plt.tight_layout()
+        plt.show()
 
 if __name__ == '__main__':
     cli = CLI()
