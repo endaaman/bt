@@ -495,22 +495,15 @@ class CLI(BaseMLCLI):
             'unfrozen_baseline-vit',
         ]
         labels = [
-            r'UNI(FC)$',
-            r'Prov-GigaPath(FC)$',
+            r'UNI(FC)',
+            r'Prov-GigaPath(FC)',
             r'UNI(Enc+FC)',
             r'VIT-L$\mathrm{_{IN}}$(Enc+FC)',
         ]
 
-        # colors = [
-        #     'tab:blue',
-        #     'tab:orange',
-        #     'tab:green',
-        #     'tab:red',
-        #     'tab:purple',
-        # ]
         colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
 
-        limits = [10, 25, 50, 500]
+        limits = [10, 25, 50, 100, 500]
         alpha = 0.05
 
         values_by_cond = []
