@@ -429,24 +429,14 @@ class CLI(BaseMLCLI):
         y_true = df['gt']
         y_pred = df['pred(sum)']
 
-        # Reports
-        report = skmetrics.classification_report(y_true, y_pred, output_dict=True)
-        print(f'Classification Report by:')
-        df_report = pd.DataFrame(report).T
-        print(df_report)
-
-        if len(unique_code) == 6:
-            report3 = skmetrics.classification_report(y_true.map(map3), y_pred.map(map3), output_dict=True)
-            df_report3 = pd.DataFrame(report3).T
-            report4 = skmetrics.classification_report(y_true.map(map4), y_pred.map(map4), output_dict=True)
-            df_report4 = pd.DataFrame(report4).T
-
         y_score = df[unique_code].values
         # One-hot encoding
         y_true_bin = label_binarize(y_true, classes=unique_code)
-        fpr, tpr, roc_auc = {}, {}, {}
 
+        ##* ROC
         print('ROC AUC')
+
+        fpr, tpr, roc_auc = {}, {}, {}
         for code in unique_code:
             p = df[code]
             gt = df['gt'] == code
@@ -475,6 +465,23 @@ class CLI(BaseMLCLI):
         plt.legend()
         plt.savefig(J(dest_dir, 'roc.png'))
         plt.close()
+
+
+        ##* Reports
+        report = skmetrics.classification_report(y_true, y_pred, output_dict=True)
+        print(f'Classification Report by:')
+        print(report)
+        df_report = pd.DataFrame(report)
+        df_report['auc'] = roc_auc["macro"]
+        df_report = df_report.T
+        print(df_report)
+
+        if len(unique_code) == 6:
+            report3 = skmetrics.classification_report(y_true.map(map3), y_pred.map(map3), output_dict=True)
+            df_report3 = pd.DataFrame(report3).T
+            report4 = skmetrics.classification_report(y_true.map(map4), y_pred.map(map4), output_dict=True)
+            df_report4 = pd.DataFrame(report4).T
+
 
         with pd.ExcelWriter(with_wrote(output_path), engine='xlsxwriter') as writer:
             df.to_excel(writer, sheet_name='cases', index=False)
