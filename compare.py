@@ -98,7 +98,7 @@ class Acc4(BaseMetrics):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.mat = torch.tensor([
-            # L, M, G,AO, B
+            # L, M, G, I, B
             [ 1, 0, 0, 0, 0,], # L
             [ 0, 1, 0, 0, 0,], # M
             [ 0, 0, 1, 0, 0,], # G
@@ -359,6 +359,7 @@ class CLI(BaseMLCLI):
         fold: int = Field(-1, choices=[-1, 0, 1, 2, 3, 4])
         target: str = Field('test', s='-t')
         overwrite: bool = Field(False, s='-O')
+        suffix: str = Field('', s='-S')
 
     def run_calc_results(self, a):
         unique_code = list('LMGAOB')
@@ -366,16 +367,20 @@ class CLI(BaseMLCLI):
         map4 = {'L':'L', 'M':'M', 'G':'G', 'A':'I', 'O':'I', 'B':'B'}
 
         if a.fold < 0:
-            dest_dir= f'out/compare/results/{a.encoder}_{a.base}_{a.limit}'
+            dest_dir= f'out/compare/results/{a.encoder}_{a.base}_{a.limit}{a.suffix}'
             dfs = []
             for fold in range(5):
                 model_dir = f'out/compare/LMGAOB/fold5_{fold}/{a.encoder}_{a.base}_{a.limit}/'
+                if a.suffix:
+                    model_dir += a.suffix
                 excel_path = J(model_dir, f'validate_{a.target}.xlsx')
                 dfs.append(pd.read_excel(excel_path))
                 print('loaded', excel_path)
             df = pd.concat(dfs)
         else:
-            model_dir = f'out/compare/LMGAOB/fold5_{a.fold}/{a.encoder}_{a.base}_{a.limit}/'
+            model_dir = f'out/compare/LMGAOB/fold5_{a.fold}/{a.encoder}_{a.base}_{a.limit}'
+            if a.suffix:
+                model_dir += a.suffix
             dest_dir= J(model_dir, a.target)
             df = pd.read_excel(J(model_dir, f'validate_{a.target}.xlsx'))
 
@@ -394,6 +399,9 @@ class CLI(BaseMLCLI):
 
         for name, items in tqdm(df.groupby('name')):
             diag_org, diag = items.iloc[0][['diag_org', 'diag']]
+            if diag != 'B':
+                items = items[items['area'] > 0.6]
+
             preds = items[unique_code]
 
             preds_sum = np.sum(preds, axis=0)
@@ -401,6 +409,9 @@ class CLI(BaseMLCLI):
             pred_sum = unique_code[np.argmax(preds_sum)]
 
             preds_label = np.argmax(preds, axis=1)
+
+            gt_label = unique_code.index(diag)
+            acc = np.mean(preds_label == gt_label)
 
             unique_values, counts = np.unique(preds_label, return_counts=True)
             pred_vote = unique_code[unique_values[np.argmax(counts)]]
@@ -412,6 +423,7 @@ class CLI(BaseMLCLI):
                 'pred(vote)': pred_vote,
                 'pred(sum)': pred_sum,
                 'correct': int(diag == pred_sum),
+                'acc': acc,
             }
             if len(unique_code) == 6:
                 d['correct3'] = int(map3[diag_org] == map3[pred_sum])
@@ -472,7 +484,8 @@ class CLI(BaseMLCLI):
         print(f'Classification Report by:')
         print(report)
         df_report = pd.DataFrame(report)
-        df_report['auc'] = roc_auc["macro"]
+        df_report['auc'] = roc_auc['macro']
+        df_report['patch acc'] = np.mean(df['acc'])
         df_report = df_report.T
         print(df_report)
 
