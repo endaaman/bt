@@ -111,6 +111,15 @@ class CompareModel(nn.Module):
         self.pool = nn.Identity()
         self.frozen = frozen
         if base == 'baseline-vit':
+            # uni_kwargs = {
+            #     'model_name': 'vit_large_patch16_224',
+            #     'img_size': 224,
+            #     'patch_size': 16,
+            #     'init_values': 1e-5,
+            #     'num_classes': 0,
+            #     'dynamic_img_size': True,
+            #     'pretrained': True,
+            # }
             self.base = timm.create_model('vit_large_patch16_224', pretrained=True)
             self.base.head = nn.Identity()
         elif base == 'baseline-cnn':
