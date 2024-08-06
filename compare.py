@@ -49,6 +49,7 @@ class TrainerConfig(BaseTrainerConfig):
         'baseline-cnn',
         'gigapath',
         'uni',
+        'ctranspath',
     ],)
     source: str = 'enda4_512'
 
