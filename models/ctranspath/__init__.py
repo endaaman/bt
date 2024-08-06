@@ -444,8 +444,6 @@ class SwinTransformer(nn.Module):
         # build layers
         layers = []
         for i_layer in range(self.num_layers):
-            print(int(embed_dim * 2 ** i_layer))
-            print((self.patch_grid[0] // (2 ** i_layer), self.patch_grid[1] // (2 ** i_layer)))
             layers += [BasicLayer(
                 dim=int(embed_dim * 2 ** i_layer),
                 input_resolution=(self.patch_grid[0] // (2 ** i_layer), self.patch_grid[1] // (2 ** i_layer)),
