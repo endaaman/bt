@@ -47,6 +47,7 @@ class TrainerConfig(BaseTrainerConfig):
     base: str = Field('uni', choices=[
         'baseline-vit',
         'baseline-cnn',
+        'baseline-swin',
         'gigapath',
         'uni',
         'ctranspath',

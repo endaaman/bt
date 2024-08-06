@@ -571,11 +571,12 @@ class ConvStem(nn.Module):
         x = self.norm(x)
         return x
 
-def ctranspath():
+def ctranspath(pretrained:bool=False):
     m = swin_tiny_patch4_window7_224(pretrained=False, embed_layer=ConvStem)
     m.head = nn.Identity()
-    w = torch.load('data/weights/ctranspath.pth')['model']
-    m.load_state_dict(w)
+    if pretrained:
+        w = torch.load('data/weights/ctranspath.pth')['model']
+        m.load_state_dict(w, strict=True)
     return m
 
 if __name__ == '__main__':
