@@ -355,6 +355,7 @@ class CLI(BaseMLCLI):
             'baseline-cnn',
             'gigapath',
             'uni',
+            'ctranspath',
         ],)
         encoder: str = Field('frozen', choices=['frozen', 'unfrozen'])
         limit: int = Field(100, choices=[10, 25, 50, 100, 500])
