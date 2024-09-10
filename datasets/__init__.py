@@ -138,6 +138,9 @@ def load_zip_file(path):
     with open(p, 'rb') as f:
         return zipfile.ZipFile(BytesIO(f.read()))
 
+def as_unique_code(code):
+    return [c for c in dict.fromkeys([*code]) if c in 'LMGAOB']
+
 
 CACHE_DIR = os.path.expanduser('~/.cache/endaaman/bt/tiles')
 
@@ -177,7 +180,7 @@ class BaseFoldDataset(Dataset):
         self.mean = mean
         self.std = std
 
-        self.unique_code = [c for c in dict.fromkeys(self.code) if c in 'LMGAOB']
+        self.unique_code = as_unique_code(code)
 
         df_tiles = pd.read_csv(J(self.source_dir, 'tiles.csv'), index_col=0)
         df_cases = pd.read_excel(J(self.source_dir, f'folds{total_fold}.xlsx'), index_col=0)
