@@ -11,6 +11,7 @@ import torch
 from torch import nn
 from torch import optim
 from torchvision import transforms
+from torch.utils.data import DataLoader
 from matplotlib import pyplot as plt
 import seaborn as sns
 from sklearn import metrics as skmetrics
@@ -34,6 +35,7 @@ from endaaman.ml.cli import BaseMLCLI, BaseDLArgs
 
 from models import CompareModel
 from datasets import FoldDataset, MEAN, STD
+from datasets.ebrains import EBRAINSDataset
 from utils import draw_frame
 
 
@@ -348,6 +350,52 @@ class CLI(BaseMLCLI):
                 )
             ]
             torch.save(data, J(a.model_dir, f'features_{a.target}.pt'))
+
+
+    class EbrainsArgs(BaseDLArgs):
+        model_dir: str = Field(..., s='-d')
+        batch_size: int = Field(100, s='-B')
+        use_best: bool = False
+        # with_features: bool = False
+
+    def run_ebrains(self, a:EbrainsArgs):
+        config = TrainerConfig.from_file(J(a.model_dir, 'config.json'))
+        print('config:', config)
+
+        model = CompareModel(num_classes=config.num_classes(),
+                             frozen=config.encoder == 'frozen',
+                             base=config.base)
+        checkpoint = Checkpoint.from_file(J(a.model_dir, 'checkpoint_last.pt'))
+        model.load_state_dict(checkpoint.model_state)
+        model = model.to(a.device()).eval()
+
+        ds = EBRAINSDataset(crop_size=config.crop_size, patch_size=config.size, code=config.code)
+
+        loader = DataLoader(ds, a.batch_size, shuffle=False)
+
+        results = []
+        preds = []
+
+        print('Evaluating')
+        for i, (xx, gts, idxs) in tqdm(enumerate(loader), total=len(loader)):
+            items = [ds.items[i] for i in idxs]
+            with torch.set_grad_enabled(False):
+                yy = model(xx.to(a.device()), activate=True).cpu().detach()
+            preds = torch.argmax(yy, dim=1)
+            for item, y, gt, pred in zip(items, yy, gts, preds):
+                values = dict(zip([*config.code], y.tolist()))
+                r = {
+                    **item._asdict(),
+                    'pred': config.unique_code()[pred],
+                    'correct': int(pred == gt),
+                    **values,
+                }
+                del r['image']
+                results.append(r)
+
+        df = pd.DataFrame(results)
+        df.to_excel(with_wrote(J(a.model_dir, 'ebrains.xlsx')), index=False)
+
 
     class CalcResultsArgs(CommonArgs):
         base: str = Field('uni', choices=[

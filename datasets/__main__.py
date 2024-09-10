@@ -23,8 +23,9 @@ from endaaman import with_wrote, grid_split
 from endaaman.ml import tensor_to_pil
 from endaaman.ml.cli import BaseMLCLI
 
-from . import show_fold_diag, FoldDataset, QuadAttentionFoldDataset, PairedFoldDataset
 from utils import calc_white_area
+from . import show_fold_diag, FoldDataset, QuadAttentionFoldDataset, PairedFoldDataset
+from .ebrains import EBRAINSDataset
 
 
 
@@ -411,6 +412,14 @@ class CLI(BaseMLCLI):
             tensor_to_pil(x0).save(f'{D}/{i}_0.png')
             tensor_to_pil(x1).save(f'{D}/{i}_1.png')
             i += 1
+
+
+    def run_ebrains(self, a):
+        ds= EBRAINSDataset(crop_size=512, patch_size=256)
+        for x, y in ds:
+            print(x)
+            print(y)
+            break
 
 if __name__ == '__main__':
     cli = CLI()
