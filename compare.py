@@ -362,6 +362,8 @@ class CLI(BaseMLCLI):
         config = TrainerConfig.from_file(J(a.model_dir, 'config.json'))
         print('config:', config)
 
+        unique_code = config.unique_code()
+
         model = CompareModel(num_classes=config.num_classes(),
                              frozen=config.encoder == 'frozen',
                              base=config.base)
@@ -386,15 +388,67 @@ class CLI(BaseMLCLI):
                 values = dict(zip([*config.code], y.tolist()))
                 r = {
                     **item._asdict(),
-                    'pred': config.unique_code()[pred],
+                    'pred': unique_code[pred],
                     'correct': int(pred == gt),
                     **values,
                 }
                 del r['image']
                 results.append(r)
+        df_patches = pd.DataFrame(results)
 
-        df = pd.DataFrame(results)
-        df.to_excel(with_wrote(J(a.model_dir, 'ebrains.xlsx')), index=False)
+
+        results_cases = []
+        for path, rows in df_patches.groupby('path'):
+            assert rows['label'].nunique() == 1
+            pred = []
+            for c in unique_code:
+                pred.append(rows[c].mean())
+            pred_idx = np.argmax(pred)
+            pred_label = unique_code[pred_idx]
+
+            label = rows.iloc[0]['label']
+            results_cases.append({
+                'path': path,
+                'label': label,
+                'pred': pred_label,
+                'correct': int(label == pred_label),
+                **dict(zip(unique_code, pred))
+            })
+
+        df_cases = pd.DataFrame(results_cases)
+
+        with pd.ExcelWriter(with_wrote(J(a.model_dir, 'ebrains.xlsx'))) as w:
+            df_patches.to_excel(w, sheet_name='patches', index=False)
+            df_cases.to_excel(w, sheet_name='cases', index=False)
+
+
+    def run_calc(self, a):
+        d = 'out/compare/LMGAOB/fold5_0/frozen_uni_100'
+        config = TrainerConfig.from_file(J(d, 'config.json'))
+        df_tiles = pd.read_excel(J(d, 'ebrains.xlsx'))
+
+        unique_code = config.unique_code()
+
+        results_cases = []
+        for path, rows in df_tiles.groupby('path'):
+            assert rows['label'].nunique() == 1
+            pred = []
+            for c in config.unique_code():
+                pred.append(rows[c].mean())
+            pred_idx = np.argmax(pred)
+            pred_label = unique_code[pred_idx]
+
+            label = rows.iloc[0]['label']
+            results_cases.append({
+                'path': path,
+                'label': label,
+                'pred': pred_label,
+                'correct': int(label == pred_label),
+                **dict(zip(unique_code, pred))
+            })
+
+        df_cases = pd.DataFrame(results_cases)
+        df_cases.to_excel(with_wrote(J(d, 'ebrains_cases.xlsx')), index=False)
 
 
     class CalcResultsArgs(CommonArgs):
