@@ -628,36 +628,22 @@ class CLI(BaseMLCLI):
             r'ResNet-RS 50$\mathrm{_{IN}}$(Enc+FC)',
         ]
 
-        def get_metrics(cond, label=True):
-            global cache
-            cache = {}
-            mm = {}
-            for k, fn in metrics.items():
-                m = []
-                for fold in range(5):
-                    p = f'out/compare/LMGAOB/fold5_{fold}/{cond}/test/report.xlsx'
-                    df = load_df(p)
-                    try:
-                        value = fn(df)
-                    except Exception as e:
-                        print('Error in', p)
-                        print(df)
-                        raise e
-                    m.append(value)
-                mm[k] = m
-            return mm
+        metrics_fns = {
+            'Accuracy': lambda df: df[df.index == 'accuracy'].iloc[0, 0],
+            'Accuracy(Patch)': lambda df: df[df.index == 'patch acc'].iloc[0, 0],
+            'F1 score': lambda df: df[df.index == 'macro avg'].iloc[0]['f1-score'],
+            'Precision': lambda df: df[df.index == 'macro avg'].iloc[0]['precision'],
+            'Recall': lambda df: df[df.index == 'macro avg'].iloc[0]['recall'],
+            # 'AUROC ': lambda df: df[df.index == 'auc'].iloc[0, 0],
+        }
 
-
-        def summary_cond(cond, label=None):
-            if label is None:
-                label = cond
-            m = get_metrics(cond)
-            df = pd.DataFrame(m)
-            # df = pd.concat([pd.DataFrame([{'cond': cond}]*5), df])
-            cond_org = remove_suffix(cond, '_1e-5')
-            limit = int(re.match(r'^.*_(\d+)$', cond_org)[1])
-            df = pd.DataFrame([{'cond': cond, 'limit': limit, 'label': label}]*5).join(df)
-            df = df.reset_index().rename(columns={'index': 'fold'})
+        cache = {}
+        def load_df(p):
+            if p in cache:
+                print
+                return cache[p]
+            df = pd.read_excel(p, sheet_name='report', index_col=0)
+            # cache[p] = df
             return df
 
         dfs_to_save = []
@@ -665,13 +651,35 @@ class CLI(BaseMLCLI):
 
         for limit in limits:
             dfs = []
-            for c, l in zip(conds_base, labels):
-                dfs = summary_cond(c.format(limit), l)
-            df = pd.concat(dfs).reset_index(drop=True)
+            for cond, label in zip(conds_base, labels):
+                mm = {}
+                for key, fn in metrics_fns.items():
+                    m = []
+                    for fold in range(5):
+                        p = f'out/compare/LMGAOB/fold5_{fold}/{cond.format(limit)}/test/report.xlsx'
+                        df = load_df(p)
+                        try:
+                            value = fn(df)
+                        except Exception as e:
+                            print('Error in', p)
+                            print(df)
+                            raise e
+                        m.append(value)
+                    mm[key] = m
 
-        with pd.ExcelWriter('out/figs/results_cv.xlsx') as w:
+                df = pd.DataFrame(mm)
+                # df = pd.concat([pd.DataFrame([{'cond': cond}]*5), df])
+                # limit = int(re.match(r'^.*_(\d+)$', cond_org)[1])
+                df = pd.DataFrame([{'cond': cond, 'limit': limit, 'label': label}]*5).join(df)
+                df = df.reset_index().rename(columns={'index': 'fold'})
+                dfs.append(df)
+            df = pd.concat(dfs).reset_index(drop=True)
+            dfs_to_save.append(df)
+
+        with pd.ExcelWriter(with_wrote('out/figs/results_cv.xlsx')) as w:
             for df, limit in zip(dfs_to_save, limits):
                 df.to_excel(w, sheet_name=f'{limit}')
+
 
     def run_summary_ebrains(self, a):
         pass
