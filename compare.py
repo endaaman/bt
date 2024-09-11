@@ -608,71 +608,74 @@ class CLI(BaseMLCLI):
                 df_report3.to_excel(writer, sheet_name='report3')
                 df_report4.to_excel(writer, sheet_name='report4')
 
-    class CalcMacroArgs(CommonArgs):
-        metric: str = 'f1'
-        target: str = 'default'
-
-    def run_calc_macro(self, a):
-        conds = [
-            'frozen_uni',
-            'frozen_gigapath',
-            'unfrozen_uni',
-            'unfrozen_baseline-vit',
+    def run_summary_cv(self, a):
+        conds_base = [
+            'unfrozen_uni_{}',
+            'frozen_uni_{}',
+            'frozen_gigapath_{}',
+            'unfrozen_ctranspath_{}',
+            'frozen_ctranspath_{}',
+            'unfrozen_baseline-vit_{}',
+            'unfrozen_baseline-cnn_{}',
         ]
         labels = [
-            r'UNI(FC)',
-            r'Prov-GigaPath(FC)',
-            r'UNI(Enc+FC)',
+            'UNI(Enc+FC)',
+            'UNI(FC)',
+            'Prov-GigaPath(FC)',
+            'CTransPath(Enc+FC)',
+            'CTransPath(FC)',
             r'VIT-L$\mathrm{_{IN}}$(Enc+FC)',
+            r'ResNet-RS 50$\mathrm{_{IN}}$(Enc+FC)',
         ]
 
-        colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
-
-        limits = [10, 25, 50, 100, 500]
-        alpha = 0.05
-
-        values_by_cond = []
-        for cond in conds:
-            values = []
-            for limit in limits:
-                scores = []
+        def get_metrics(cond, label=True):
+            global cache
+            cache = {}
+            mm = {}
+            for k, fn in metrics.items():
+                m = []
                 for fold in range(5):
-                    report_path = f'out/compare/LMGAOB/fold5_{fold}/{cond}_{limit}/test/report.xlsx'
-                    df = pd.read_excel(report_path, sheet_name='report', index_col=0)
-                    score = df[df.index == 'macro avg'].iloc[0]['f1-score']
-                    scores.append(score)
-                mean = np.mean(scores)
-                n = len(scores)
-                std_err = np.std(scores, ddof=1) / np.sqrt(n)
-                # ci = stats.t.interval(1 - alpha, df=n-1, loc=mean, scale=std_err)
-                ci = [mean-std_err, mean+std_err]
-                values.append([mean, *ci])
-            values_by_cond.append(values)
+                    p = f'out/compare/LMGAOB/fold5_{fold}/{cond}/test/report.xlsx'
+                    df = load_df(p)
+                    try:
+                        value = fn(df)
+                    except Exception as e:
+                        print('Error in', p)
+                        print(df)
+                        raise e
+                    m.append(value)
+                mm[k] = m
+            return mm
 
-        values_by_cond = np.array(values_by_cond)
-        print(values_by_cond)
 
-        plt.figure(figsize=(10, 6))
-        x = np.arange(1, 1+len(limits))
+        def summary_cond(cond, label=None):
+            if label is None:
+                label = cond
+            m = get_metrics(cond)
+            df = pd.DataFrame(m)
+            # df = pd.concat([pd.DataFrame([{'cond': cond}]*5), df])
+            cond_org = remove_suffix(cond, '_1e-5')
+            limit = int(re.match(r'^.*_(\d+)$', cond_org)[1])
+            df = pd.DataFrame([{'cond': cond, 'limit': limit, 'label': label}]*5).join(df)
+            df = df.reset_index().rename(columns={'index': 'fold'})
+            return df
 
-        for i in range(len(conds)):
-            ci_l = values_by_cond[i, :, 1]
-            ci_h = values_by_cond[i, :, 2]
-            c = colors[i]
-            plt.plot(x, values_by_cond[i, :, 0], color=c, label=labels[i])
-            plt.fill_between(x, ci_l, ci_h, color=c, alpha=0.2)
-        # plt.plot(x, y1, 'g-', label=labels[1])
-        # plt.fill_between(x, ci1[:, 0], ci1[:, 1], color='g', alpha=0.2)
+        dfs_to_save = []
+        limits = [10, 25, 100, 500]
 
-        plt.xticks(x, limits)
+        for limit in limits:
+            dfs = []
+            for c, l in zip(conds_base, labels):
+                dfs = summary_cond(c.format(limit), l)
+            df = pd.concat(dfs).reset_index(drop=True)
 
-        plt.xlabel('Patch count per case')
-        plt.ylabel('F1-score')
-        plt.legend()
-        plt.grid(True, linestyle='--', alpha=0.7)
+        with pd.ExcelWriter('out/figs/results_cv.xlsx') as w:
+            for df, limit in zip(dfs_to_save, limits):
+                df.to_excel(w, sheet_name=f'{limit}')
 
-        plt.tight_layout()
-        plt.show()
+    def run_summary_ebrains(self, a):
+        pass
+
 
 if __name__ == '__main__':
     cli = CLI()
