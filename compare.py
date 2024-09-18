@@ -652,11 +652,12 @@ class CLI(BaseMLCLI):
         for limit in limits:
             dfs = []
             for cond, label in zip(conds_base, labels):
+                cond = cond.format(limit)
                 mm = {}
                 for key, fn in metrics_fns.items():
                     m = []
                     for fold in range(5):
-                        p = f'out/compare/LMGAOB/fold5_{fold}/{cond.format(limit)}/test/report.xlsx'
+                        p = f'out/compare/LMGAOB/fold5_{fold}/{cond}/test/report.xlsx'
                         df = load_df(p)
                         try:
                             value = fn(df)
@@ -682,7 +683,51 @@ class CLI(BaseMLCLI):
 
 
     def run_summary_ebrains(self, a):
-        pass
+        # dump out/figs/results_ebrains.xlsx
+
+        conds_base = [
+            'unfrozen_uni_{}',
+            'frozen_uni_{}',
+            'frozen_gigapath_{}',
+            'unfrozen_ctranspath_{}',
+            'frozen_ctranspath_{}',
+            'unfrozen_baseline-vit_{}',
+            'unfrozen_baseline-cnn_{}',
+        ]
+        labels = [
+            'UNI(Enc+FC)',
+            'UNI(FC)',
+            'Prov-GigaPath(FC)',
+            'CTransPath(Enc+FC)',
+            'CTransPath(FC)',
+            r'VIT-L$\mathrm{_{IN}}$(Enc+FC)',
+            r'ResNet-RS 50$\mathrm{_{IN}}$(Enc+FC)',
+        ]
+
+        metrics_fns = {
+            'Accuracy': lambda df: df[df.index == 'accuracy'].iloc[0, 0],
+            'Accuracy(Patch)': lambda df: df[df.index == 'patch acc'].iloc[0, 0],
+            'F1 score': lambda df: df[df.index == 'macro avg'].iloc[0]['f1-score'],
+            'Precision': lambda df: df[df.index == 'macro avg'].iloc[0]['precision'],
+            'Recall': lambda df: df[df.index == 'macro avg'].iloc[0]['recall'],
+            # 'AUROC ': lambda df: df[df.index == 'auc'].iloc[0, 0],
+        }
+
+        limits = [10, 25, 100, 500]
+        for label, cond_base in zip(labels, conds_base):
+            for limit in limits:
+                cond = cond_base.format(limit)
+                for fold in range(5):
+                    df_path = f'out/compare/LMGAOB/fold5_{fold}/{cond}/ebrains.xlsx'
+                    if not os.path.exists(df_path):
+                        continue
+                    df = pd.read_excel(df_path, sheet_name='cases')
+                    y_true = df['label']
+                    y_pred = df['pred']
+                    report = skmetrics.classification_report(y_true, y_pred, output_dict=True, zero_division=0.0)
+                    print(report)
+                    return
+
 
 
 if __name__ == '__main__':
