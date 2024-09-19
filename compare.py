@@ -714,19 +714,39 @@ class CLI(BaseMLCLI):
         }
 
         limits = [10, 25, 100, 500]
-        for label, cond_base in zip(labels, conds_base):
-            for limit in limits:
+        results = []
+        for limit in limits:
+            for label, cond_base in zip(labels, conds_base):
                 cond = cond_base.format(limit)
                 for fold in range(5):
                     df_path = f'out/compare/LMGAOB/fold5_{fold}/{cond}/ebrains.xlsx'
                     if not os.path.exists(df_path):
                         continue
-                    df = pd.read_excel(df_path, sheet_name='cases')
-                    y_true = df['label']
-                    y_pred = df['pred']
-                    report = skmetrics.classification_report(y_true, y_pred, output_dict=True, zero_division=0.0)
-                    print(report)
-                    return
+                    df_cases = pd.read_excel(df_path, sheet_name='cases')
+                    df_patches = pd.read_excel(df_path, sheet_name='cases')
+                    patch_accuracy = df_patches['correct'].mean()
+                    y_true = df_cases['label']
+                    y_pred = df_cases['pred']
+                    report = skmetrics.classification_report(y_true, y_pred, zero_division=0.0, output_dict=True)
+                    df = pd.DataFrame(report)
+                    df['patch acc'] = patch_accuracy
+                    df = df.T
+                    r = {
+                        'fold': fold,
+                        'cond': cond,
+                        'limit': limit,
+                        'label': label,
+                    }
+                    for key, fn in metrics_fns.items():
+                        r[key] = fn(df)
+                    results.append(r)
+
+        df_results = pd.DataFrame(results)
+
+        with pd.ExcelWriter(with_wrote('out/figs/results_ebrains.xlsx')) as w:
+            for limit in limits:
+                df = df_results[df_results['limit'] == limit]
+                df.to_excel(w, sheet_name=f'{limit}')
 
 
 
