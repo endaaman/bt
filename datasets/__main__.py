@@ -415,10 +415,15 @@ class CLI(BaseMLCLI):
 
 
     def run_ebrains(self, a):
-        ds= EBRAINSDataset(crop_size=512, patch_size=256)
-        for x, y in ds:
+        ds= EBRAINSDataset(crop_size=512, patch_size=256, normalization=False)
+        os.makedirs('tmp/ebrains', exist_ok=True)
+        i = 0
+        for x, y, index in ds:
+            img = tensor_to_pil(x)
             print(x)
             print(y)
+            img.save(f'tmp/ebrains/{index}.png')
+            i += 1
             break
 
 if __name__ == '__main__':
