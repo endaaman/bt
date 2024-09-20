@@ -29,7 +29,7 @@ class Item(NamedTuple):
 
 
 class EBRAINSDataset(Dataset):
-    def __init__(self, crop_size, patch_size, code='LMGAO', mean=MEAN, std=STD):
+    def __init__(self, crop_size, patch_size, code='LMGAO', mean=MEAN, std=STD, normalization=True):
         self.items = []
         self.crop_size = crop_size
         self.patch_size = patch_size
@@ -66,12 +66,14 @@ class EBRAINSDataset(Dataset):
                             Y=Y,
                         ))
 
-        self.transform = transforms.Compose([
+        augs = [
             transforms.CenterCrop(self.crop_size),
             transforms.Resize(self.patch_size),
             transforms.ToTensor(),
-            transforms.Normalize(mean=self.mean, std=self.std),
-        ])
+        ]
+        if normalization:
+            augs += [transforms.Normalize(mean=self.mean, std=self.std)]
+        self.transform = transforms.Compose(augs)
 
     def __len__(self):
         return len(self.items)
