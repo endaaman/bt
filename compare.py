@@ -701,13 +701,13 @@ class CLI(BaseMLCLI):
             'unfrozen_baseline-cnn_{}',
         ]
         labels = [
-            'UNI(Enc+FC)',
-            'UNI(FC)',
-            'Prov-GigaPath(FC)',
-            'CTransPath(Enc+FC)',
-            'CTransPath(FC)',
-            r'VIT-L$\mathrm{_{IN}}$(Enc+FC)',
-            r'ResNet-RS 50$\mathrm{_{IN}}$(Enc+FC)',
+            'UNI(FT)',
+            'UNI(LP)',
+            'Prov-GigaPath(LP)',
+            'CTransPath(FT)',
+            'CTransPath(LP)',
+            r'VIT-L$\mathrm{_{IN}}$(FT)',
+            r'ResNet-RS 50$\mathrm{_{IN}}$(FT)',
         ]
 
         metrics_fns = {
