@@ -248,9 +248,15 @@ class CLI(BaseMLCLI):
         print('config:', config)
 
         dest_path = J(a.model_dir, f'validate_{a.target}.xlsx')
+        feature_path = J(a.model_dir, f'features_{a.target}.pt')
         if os.path.exists(dest_path):
-            print(f'Skipping: {dest_path} exists.')
-            return
+            if a.with_features:
+                if not feature_path:
+                    print(f'Skipping: {dest_path} and {feature_path} exist.')
+                    return
+            else:
+                print(f'Skipping: {dest_path} exists.')
+                return
 
         model = CompareModel(num_classes=config.num_classes(),
                              frozen=config.encoder == 'frozen',
@@ -349,7 +355,7 @@ class CLI(BaseMLCLI):
                     features
                 )
             ]
-            torch.save(data, J(a.model_dir, f'features_{a.target}.pt'))
+            torch.save(data, feature_path)
 
 
     class EbrainsArgs(BaseDLArgs):
