@@ -426,6 +426,144 @@ class CLI(BaseMLCLI):
             i += 1
             break
 
+    # Ported from batch.py below
+
+    def grid_arrange(self, ggg, col_count=-1):
+        if col_count > 0:
+            # re-arrange into 2d-list
+            assert (len(ggg) % col_count) == 0
+            row_count = len(ggg) // col_count
+            gg = ggg
+            ggg = [gg[y*col_count:y*col_count+col_count] for y in range(row_count)]
+
+        row_images = []
+        for y, gg in enumerate(ggg):
+            row_image_list = []
+            for x, g in enumerate(gg):
+                row_image_list.append(np.array(g))
+            h = cv2.hconcat(row_image_list)
+            row_images.append(h)
+        merged_image = Image.fromarray(cv2.vconcat(row_images))
+        return merged_image
+
+    class GridArrangeArgs(CommonArgs):
+        dir: str
+        dest: str
+        col: int
+        scale: int = 1
+
+    def run_grid_arrange(self, a):
+        # for p in glob(J(a.dir, '*')):
+        #     name = os.path.splitext(os.path.basename(p))[0]
+        #     m = re.match(r'^' + a.name + r'_(\d+)_(\d+)$', name)
+        #     y = m[1]
+        #     x = m[2]
+        #     print(a.name, x, y)
+
+        images = []
+        for p in tqdm(sorted(glob(J(a.dir, '*')))):
+            i = Image.open(p)
+            r = i.resize((i.width//a.scale, i.height//a.scale))
+            i.close()
+            images.append(r)
+        m = self.grid_arrange(images, col_count=a.col)
+        m.save(a.dest)
+
+    class ConvertToLandscapeArgs(CommonArgs):
+        src: str
+
+    def run_convert_to_landscape(self, a):
+        pp = sorted(glob(J(a.src, '*/*.jpg'), recursive=True))
+        print(len(pp))
+        for p in tqdm(pp):
+            w, h = imagesize.get(p)
+            if (h < w):
+                img = Image.open(p)
+                img.rotate(90).save(p)
+                img.close()
+
+    class GridWsiArgs(CommonArgs):
+        src: str
+        level: int
+
+    def run_grid_wsi(self, a):
+        files = glob(J(a.src, '*.ndpi'))
+        name = os.path.split(a.src)[-1]
+        for file in files:
+            print(file)
+            wsi = OpenSlide(file)
+            wsi_name = os.path.splitext(os.path.basename(file))[0]
+            dest_dir = with_mkdir(f'tmp/B/{wsi_name}')
+            W, H = wsi.level_dimensions[a.level]
+            ww = np.array(n_split(W, W//3000))
+            hh = np.array(n_split(H, H//3000))
+            x = 0
+            y = 0
+            i = 0
+            id = 1
+            total = len(ww)*len(hh)
+            t = tqdm(total=total)
+            for _y, h in enumerate(hh):
+                x = 0
+                for _x, w in enumerate(ww):
+                    tile = wsi.read_region((x, y), a.level, (w, h)).convert('RGB')
+                    white_area = calc_white_area(tile, min=210, max=255)
+                    t.set_description(f'{i}/{total} {_x} {_y} {w} {h} w:{white_area:.3f}')
+                    if white_area < 0.5:
+                        tile = adjust_gamma(tile, gamma=1/1.8)
+                        tile.save(J(dest_dir, f'{wsi_name}_{id:03d}.jpg'))
+                        id += 1
+                    t.update(1)
+                    x += w
+                    i += 1
+                y += h
+            wsi.close()
+            t.close()
+
+
+    class RenumberArgs(CommonArgs):
+        src: str
+
+    def run_renumber(self, a):
+        paths = glob(J(a.src, '*.jpg'))
+        case_name = os.path.split(a.src)[-1]
+        cases = {}
+        for path in paths:
+            m = re.match(r'^(.*)_\d+\.jpg$', os.path.split(path)[1])
+            assert m
+            name = m[1]
+            if name in cases:
+                cases[m[1]].append(path)
+            else:
+                cases[m[1]] = [path]
+
+        print(list(cases.keys()))
+
+        index = 1
+        new_cases = {}
+        for name, paths in cases.items():
+            random.shuffle(paths)
+            print(name, len(paths))
+            num_groups = len(paths)//30
+            counts = n_split(len(paths), num_groups)
+            print(counts)
+            cursor = 0
+            idxs = random.sample(list(range(len(counts))), 3)
+            for idx in idxs:
+                count = counts[idx]
+                new_cases[f'{case_name}-{index:02d}'] = paths[cursor:cursor+count]
+                cursor = cursor+count
+                index += 1
+
+        for name, paths in new_cases.items():
+            index = 1
+            for fn in paths:
+                d = f'tmp/new/{case_name}/'
+                os.makedirs(d, exist_ok=True)
+                shutil.copy(J(fn), J(d, f'{name}_{index:02d}.jpg'))
+                index += 1
+
+
 if __name__ == '__main__':
     cli = CLI()
     cli.run()
