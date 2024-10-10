@@ -267,7 +267,7 @@ class CLI(BaseMLCLI):
 
             tt = torch.stack(tt)
             with torch.set_grad_enabled(False):
-                i = tt.to(a.device())
+                i = tt.to(a.device)
                 if a.no_features:
                     o = model(i, activate=True, with_feautres=False)
                 else:

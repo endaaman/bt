@@ -252,7 +252,7 @@ class CLI(BaseMLCLI):
         checkpoint = Checkpoint.from_file(J(a.model_dir, chp))
         config = TrainerConfig.from_file(J(a.model_dir, 'config.json'))
         model = TimmModel(name=config.model_name, num_classes=config.num_classes)
-        model.to(a.device())
+        model.to(a.device)
         model = model.eval()
 
         transform = transforms.Compose([
@@ -296,7 +296,7 @@ class CLI(BaseMLCLI):
 
             tt = torch.stack(tt)
             with torch.set_grad_enabled(False):
-                i = tt.to(a.device())
+                i = tt.to(a.device)
                 if a.no_features:
                     embs = model(i, activate=False, with_feautres=False)
                 else:
