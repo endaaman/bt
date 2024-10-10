@@ -224,7 +224,7 @@ class CLI(BaseMLCLI):
             out_dir = out_dir,
             train_dataset = dss[0],
             val_dataset = dss[1],
-            use_gpu = not a.cpu,
+            device = a.device,
             multi_gpu = True,
             overwrite = a.overwrite,
             experiment_name = a.source,
@@ -623,15 +623,17 @@ class CLI(BaseMLCLI):
             'frozen_ctranspath_{}',
             'unfrozen_baseline-vit_{}',
             'unfrozen_baseline-cnn_{}',
+            'frozen_baseline-vit_{}',
         ]
         labels = [
-            'UNI(Enc+FC)',
-            'UNI(FC)',
-            'Prov-GigaPath(FC)',
-            'CTransPath(Enc+FC)',
-            'CTransPath(FC)',
-            r'VIT-L$\mathrm{_{IN}}$(Enc+FC)',
-            r'ResNet-RS 50$\mathrm{_{IN}}$(Enc+FC)',
+            'UNI(FT)',
+            'UNI(LP)',
+            'Prov-GigaPath(LP)',
+            'CTransPath(FT)',
+            'CTransPath(LP)',
+            r'VIT-L$\mathrm{_{IN}}$(FT)',
+            r'ResNet-RS 50$\mathrm{_{IN}}$(FT)',
+            r'VIT-L$\mathrm{_{IN}}$(LP)',
         ]
 
         metrics_fns = {
@@ -699,6 +701,7 @@ class CLI(BaseMLCLI):
             'frozen_ctranspath_{}',
             'unfrozen_baseline-vit_{}',
             'unfrozen_baseline-cnn_{}',
+            'frozen_baseline-vit_{}',
         ]
         labels = [
             'UNI(FT)',
@@ -708,6 +711,7 @@ class CLI(BaseMLCLI):
             'CTransPath(LP)',
             r'VIT-L$\mathrm{_{IN}}$(FT)',
             r'ResNet-RS 50$\mathrm{_{IN}}$(FT)',
+            r'VIT-L$\mathrm{_{IN}}$(LP)',
         ]
 
         metrics_fns = {
