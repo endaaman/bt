@@ -335,7 +335,7 @@ class FoldDataset(BaseFoldDataset):
         row = self.df.iloc[idx]
         image = self.load_from_row(row)
         x = self.aug(image=np.array(image))['image']
-        y = torch.tensor(self.unique_code.index(row['diag']))
+        y = self.unique_code.index(row['diag'])
         return x, y
 
 
