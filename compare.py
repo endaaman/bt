@@ -265,7 +265,7 @@ class CLI(BaseMLCLI):
             chp = 'checkpoint_best.pt' if a.use_best else 'checkpoint_last.pt'
             checkpoint = Checkpoint.from_file(J(a.model_dir, chp))
             model.load_state_dict(checkpoint.model_state)
-        model = model.to(a.device()).eval()
+        model = model.to(a.device).eval()
 
         transform = transforms.Compose([
             transforms.CenterCrop(config.crop_size),
@@ -307,7 +307,7 @@ class CLI(BaseMLCLI):
 
             tt = torch.stack(tt)
             with torch.set_grad_enabled(False):
-                i = tt.to(a.device())
+                i = tt.to(a.device)
                 if a.with_features:
                     o, f = model(i, activate=True, with_feautres=True)
                     features = f.detach().cpu().numpy()
@@ -375,7 +375,7 @@ class CLI(BaseMLCLI):
                              base=config.base)
         checkpoint = Checkpoint.from_file(J(a.model_dir, 'checkpoint_last.pt'))
         model.load_state_dict(checkpoint.model_state)
-        model = model.to(a.device()).eval()
+        model = model.to(a.device).eval()
 
         ds = EBRAINSDataset(crop_size=config.crop_size, patch_size=config.size, code=config.code)
 
@@ -388,7 +388,7 @@ class CLI(BaseMLCLI):
         for i, (xx, gts, idxs) in tqdm(enumerate(loader), total=len(loader)):
             items = [ds.items[i] for i in idxs]
             with torch.set_grad_enabled(False):
-                yy = model(xx.to(a.device()), activate=True).cpu().detach()
+                yy = model(xx.to(a.device), activate=True).cpu().detach()
             preds = torch.argmax(yy, dim=1)
             for item, y, gt, pred in zip(items, yy, gts, preds):
                 values = dict(zip([*config.code], y.tolist()))
