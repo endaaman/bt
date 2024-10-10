@@ -413,21 +413,42 @@ class CLI(BaseMLCLI):
             tensor_to_pil(x1).save(f'{D}/{i}_1.png')
             i += 1
 
+    def run_example(self, a):
+        ds= FoldDataset('enda4_512', normalization=False, size=256, target='test', augmentation=True)
+        os.makedirs('tmp/example', exist_ok=True)
+        counts = {c:0 for c in range(5)}
+        total = 0
+        for x, y in ds:
+            i = counts[y]
+            if i > 5:
+                continue
+            img = tensor_to_pil(x)
+            counts[y] += 1
+            img.save(f'tmp/example/{"LMGAOB"[y]}_{i}.png')
+            total += 1
+            if total > 5 * 6:
+                break
+
+
 
     def run_ebrains(self, a):
         ds= EBRAINSDataset(crop_size=512, patch_size=256, normalization=False)
         os.makedirs('tmp/ebrains', exist_ok=True)
-        i = 0
+        counts = {c:0 for c in range(5)}
+        total = 0
         for x, y, index in ds:
+            i = counts[y]
+            if i > 5:
+                continue
             img = tensor_to_pil(x)
-            print(x)
-            print(y)
-            img.save(f'tmp/ebrains/{index}.png')
-            i += 1
-            break
+            counts[y] += 1
+            img.save(f'tmp/ebrains/{"LMGAOB"[y]}_{i}.png')
+            total += 1
+            if total > 5 * 6:
+                break
+
 
     # Ported from batch.py below
-
     def grid_arrange(self, ggg, col_count=-1):
         if col_count > 0:
             # re-arrange into 2d-list

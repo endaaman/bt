@@ -46,14 +46,7 @@ J = os.path.join
 
 class TrainerConfig(BaseTrainerConfig):
     # model
-    base: str = Field('uni', choices=[
-        'baseline-vit',
-        'baseline-cnn',
-        'baseline-swin',
-        'gigapath',
-        'uni',
-        'ctranspath',
-    ],)
+    base: str = 'uni'
     source: str = 'enda4_512'
 
     # dataset
@@ -458,13 +451,7 @@ class CLI(BaseMLCLI):
 
 
     class CalcResultsArgs(CommonArgs):
-        base: str = Field('uni', choices=[
-            'baseline-vit',
-            'baseline-cnn',
-            'gigapath',
-            'uni',
-            'ctranspath',
-        ],)
+        base: str = 'uni'
         encoder: str = Field('frozen', choices=['frozen', 'unfrozen'])
         limit: int = Field(100, choices=[10, 25, 50, 100, 500])
         fold: int = Field(-1, choices=[-1, 0, 1, 2, 3, 4])

@@ -107,7 +107,8 @@ class CompareModel(nn.Module):
                 nn.Flatten(start_dim=1),
             )
         else:
-            raise RuntimeError('Invalid base:', base)
+            self.base = timm.create_model(base, pretrained=True)
+            self.base.fc = nn.Identity()
 
         if self.frozen:
             self.freeze_encoder()
