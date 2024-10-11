@@ -603,24 +603,26 @@ class CLI(BaseMLCLI):
 
     def run_summary_cv(self, a):
         conds_base = [
+            'frozen_gigapath_{}',
             'unfrozen_uni_{}',
             'frozen_uni_{}',
-            'frozen_gigapath_{}',
             'unfrozen_ctranspath_{}',
             'frozen_ctranspath_{}',
             'unfrozen_baseline-vit_{}',
-            'unfrozen_baseline-cnn_{}',
             'frozen_baseline-vit_{}',
+            'unfrozen_baseline-cnn_{}',
+            'frozen_baseline-cnn_{}',
         ]
         labels = [
+            'Prov-GigaPath(LP)',
             'UNI(FT)',
             'UNI(LP)',
-            'Prov-GigaPath(LP)',
             'CTransPath(FT)',
             'CTransPath(LP)',
             r'VIT-L$\mathrm{_{IN}}$(FT)',
-            r'ResNet-RS 50$\mathrm{_{IN}}$(FT)',
             r'VIT-L$\mathrm{_{IN}}$(LP)',
+            r'ResNet-RS 50$\mathrm{_{IN}}$(FT)',
+            r'ResNet-RS 50$\mathrm{_{IN}}$(LP)',
         ]
 
         metrics_fns = {
@@ -681,14 +683,15 @@ class CLI(BaseMLCLI):
         # dump out/figs/results_ebrains.xlsx
 
         conds_base = [
+            'frozen_gigapath_{}',
             'unfrozen_uni_{}',
             'frozen_uni_{}',
-            'frozen_gigapath_{}',
             'unfrozen_ctranspath_{}',
             'frozen_ctranspath_{}',
             'unfrozen_baseline-vit_{}',
-            'unfrozen_baseline-cnn_{}',
             'frozen_baseline-vit_{}',
+            'unfrozen_baseline-cnn_{}',
+            'frozen_baseline-cnn_{}',
         ]
         labels = [
             'UNI(FT)',
@@ -699,6 +702,7 @@ class CLI(BaseMLCLI):
             r'VIT-L$\mathrm{_{IN}}$(FT)',
             r'ResNet-RS 50$\mathrm{_{IN}}$(FT)',
             r'VIT-L$\mathrm{_{IN}}$(LP)',
+            r'ResNet-RS 50$\mathrm{_{IN}}$(LP)',
         ]
 
         metrics_fns = {
