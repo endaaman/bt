@@ -16,6 +16,7 @@ from . import as_unique_code, MEAN, STD, J
 
 J = os.path.join
 EBRAINS_BASE = 'data/EBRAINS'
+EBRAINS_CACHE = 'data/EBRAINS/cache'
 
 
 class Item(NamedTuple):
@@ -38,6 +39,7 @@ class EBRAINSDataset(Dataset):
         self.code = [*code]
 
         self.unique_code = as_unique_code(code)
+        self.using_cahce = os.path.exists(EBRAINS_CACHE)
 
         dirs = os.listdir(EBRAINS_BASE)
         for dir in dirs:
@@ -50,8 +52,11 @@ class EBRAINSDataset(Dataset):
                 # skip if startswith "_"
                 if os.path.basename(path).startswith('_'):
                     continue
-                img = Image.open(path)
-                ggg = grid_split(img, crop_size, overwrap=False, flattern=False)
+
+                if not self.using_cahce:
+                    img = Image.open(path)
+                    ggg = grid_split(img, crop_size, overwrap=False, flattern=False)
+
                 Y = len(ggg)
                 for y, gg in enumerate(ggg):
                     X = len(gg)
