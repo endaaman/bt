@@ -392,7 +392,7 @@ class CLI(BaseMLCLI):
             for item, y, gt, pred in zip(items, yy, gts, preds):
                 values = dict(zip([*config.code], y.tolist()))
                 r = {
-                    **item._asdict(),
+                    **item.asdict(),
                     'pred': unique_code[pred],
                     'correct': int(pred == gt),
                     **values,
@@ -403,12 +403,15 @@ class CLI(BaseMLCLI):
 
 
         results_cases = []
-        for path, rows in df_patches.groupby('path'):
+        for path, rows in df_patches.groupby('name'):
             assert rows['label'].nunique() == 1
             pred = []
             for c in unique_code:
                 pred.append(rows[c].mean())
             pred_idx = np.argmax(pred)
+            # if B is major, yield pred from second choice
+            if unique_code[pred_idx] == 'B':
+                pred_idx = np.argsort(pred)[-2]
             pred_label = unique_code[pred_idx]
 
             label = rows.iloc[0]['label']
@@ -427,7 +430,7 @@ class CLI(BaseMLCLI):
             df_cases.to_excel(w, sheet_name='cases', index=False)
 
 
-    def run_calc(self, a):
+    def run_calc_ebrains(self, a):
         d = 'out/compare/LMGAOB/fold5_0/frozen_uni_100'
         config = TrainerConfig.from_file(J(d, 'config.json'))
         df_tiles = pd.read_excel(J(d, 'ebrains.xlsx'))
