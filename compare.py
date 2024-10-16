@@ -61,6 +61,7 @@ class TrainerConfig(BaseTrainerConfig):
 
     # training
     lr: float = 0.0001
+    lr_scaling_factor: float = 1
     scheduler: str = 'static'
     encoder = Field('frozen', choices=['frozen', 'unfrozen'])
 
@@ -122,7 +123,12 @@ class Trainer(BaseTrainer):
         return model
 
     def create_optimizer(self):
-        return optim.Adam(self.model.parameters(), lr=self.config.lr)
+        params = [
+            {'params': self.model.base.parameters(), 'lr': self.config.lr * self.config.lr_scaling_factor},
+            {'params': self.model.fc.parameters(), 'lr': self.config.lr},
+        ]
+        return optim.Adam(params)
+        # return optim.Adam(self.model.parameters(), lr=self.config.lr)
 
     def create_scheduler(self):
         s = self.config.scheduler
