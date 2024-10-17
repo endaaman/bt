@@ -703,14 +703,14 @@ class CLI(BaseMLCLI):
             'frozen_baseline-cnn_{}',
         ]
         labels = [
+            'Prov-GigaPath(LP)',
             'UNI(FT)',
             'UNI(LP)',
-            'Prov-GigaPath(LP)',
             'CTransPath(FT)',
             'CTransPath(LP)',
             r'VIT-L$\mathrm{_{IN}}$(FT)',
-            r'ResNet-RS 50$\mathrm{_{IN}}$(FT)',
             r'VIT-L$\mathrm{_{IN}}$(LP)',
+            r'ResNet-RS 50$\mathrm{_{IN}}$(FT)',
             r'ResNet-RS 50$\mathrm{_{IN}}$(LP)',
         ]
 
