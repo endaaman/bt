@@ -728,6 +728,8 @@ class CLI(BaseMLCLI):
             for df, limit in zip(dfs_to_save, limits):
                 df.to_excel(w, sheet_name=f'{limit}')
 
+    class SummaryCvArgs(CommonArgs):
+        coarse: bool = False
 
     def run_summary_ebrains(self, a):
         # dump out/figs/results_ebrains.xlsx
@@ -764,6 +766,8 @@ class CLI(BaseMLCLI):
             # 'AUROC ': lambda df: df[df.index == 'auc'].iloc[0, 0],
         }
 
+        target_sheet_name = 'report3' if a.coarse else 'report'
+
         limits = [10, 25, 100, 500]
         results = []
         for limit in limits:
@@ -773,14 +777,16 @@ class CLI(BaseMLCLI):
                     df_path = f'out/compare/LMGAOB/fold5_{fold}/{cond}/ebrains.xlsx'
                     if not os.path.exists(df_path):
                         continue
-                    df_cases = pd.read_excel(df_path, sheet_name='cases')
-                    df_patches = pd.read_excel(df_path, sheet_name='cases')
-                    patch_accuracy = df_patches['correct'].mean()
-                    y_true = df_cases['label']
-                    y_pred = df_cases['pred']
-                    report = skmetrics.classification_report(y_true, y_pred, zero_division=0.0, output_dict=True)
-                    df = pd.DataFrame(report)
-                    df['patch acc'] = patch_accuracy
+                    df_report = pd.read_excel(df_path, sheet_name=target_sheet_name)
+
+                    # TODO: report から読み取り
+                    # patch_accuracy = df_patches['correct'].mean()
+                    # y_true = df_cases['label']
+                    # y_pred = df_cases['pred']
+                    # report = skmetrics.classification_report(y_true, y_pred, zero_division=0.0, output_dict=True)
+                    # df = pd.DataFrame(report)
+                    # df['patch acc'] = patch_accuracy
+
                     df = df.T
                     r = {
                         'fold': fold,
@@ -794,7 +800,9 @@ class CLI(BaseMLCLI):
 
         df_results = pd.DataFrame(results)
 
-        with pd.ExcelWriter(with_wrote('out/figs/results_ebrains.xlsx')) as w:
+        dest_filename = 'results_coarse_ebrains.xlsx' if a.coarse else 'results_ebrains.xlsx'
+
+        with pd.ExcelWriter(with_wrote(f'out/figs/{dest_filename}')) as w:
             for limit in limits:
                 df = df_results[df_results['limit'] == limit]
                 df.to_excel(w, sheet_name=f'{limit}')
