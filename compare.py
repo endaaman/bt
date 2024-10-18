@@ -364,6 +364,8 @@ class CLI(BaseMLCLI):
         # with_features: bool = False
 
     def run_ebrains(self, a:EbrainsArgs):
+        map3 = {'L':'L', 'M':'M', 'G':'G', 'A':'G', 'O':'G', 'B':'B'}
+
         config = TrainerConfig.from_file(J(a.model_dir, 'config.json'))
         print('config:', config)
 
@@ -391,16 +393,17 @@ class CLI(BaseMLCLI):
             preds = torch.argmax(yy, dim=1)
             for item, y, gt, pred in zip(items, yy, gts, preds):
                 values = dict(zip([*config.code], y.tolist()))
+                pred_label = unique_code[pred]
                 r = {
                     **item.asdict(),
-                    'pred': unique_code[pred],
+                    'pred': pred_label,
                     'correct': int(pred == gt),
+                    'correct3': int(map3[item.label] == map3[pred_label]),
                     **values,
                 }
                 del r['image']
                 results.append(r)
         df_patches = pd.DataFrame(results)
-
 
         results_cases = []
         for path, rows in df_patches.groupby('name'):
@@ -410,53 +413,87 @@ class CLI(BaseMLCLI):
                 pred.append(rows[c].mean())
             pred_idx = np.argmax(pred)
             # if B is major, yield pred from second choice
-            if unique_code[pred_idx] == 'B':
-                pred_idx = np.argsort(pred)[-2]
+            # if unique_code[pred_idx] == 'B':
+            #     pred_idx = np.argsort(pred)[-2]
             pred_label = unique_code[pred_idx]
 
-            label = rows.iloc[0]['label']
+            gt_label = rows.iloc[0]['label']
             results_cases.append({
                 'path': path,
-                'label': label,
+                'label': gt_label,
                 'pred': pred_label,
-                'correct': int(label == pred_label),
+                'correct': int(gt_label == pred_label),
+                'correct3': int(map3[gt_label] == map3[pred_label]),
                 **dict(zip(unique_code, pred))
             })
-
         df_cases = pd.DataFrame(results_cases)
+
+        y_true, y_pred = df_cases['label'], df_cases['pred']
+        patch_accuracy = df_patches['correct'].mean()
+        report = skmetrics.classification_report(y_true, y_pred, zero_division=0.0, output_dict=True)
+        report['patch acc'] = patch_accuracy
+        df_report = pd.DataFrame(report).T
+
+        y_true3, y_pred3 = y_true.map(map3), y_pred.map(map3)
+        patch_accuracy3 = df_patches['correct3'].mean()
+        report3 = skmetrics.classification_report(y_true3, y_pred3, zero_division=0.0, output_dict=True)
+        report3['patch acc'] = patch_accuracy3
+        df_report3 = pd.DataFrame(report3).T
 
         with pd.ExcelWriter(with_wrote(J(a.model_dir, 'ebrains.xlsx'))) as w:
             df_patches.to_excel(w, sheet_name='patches', index=False)
             df_cases.to_excel(w, sheet_name='cases', index=False)
+            df_report.to_excel(w, sheet_name='report', index=True)
+            df_report3.to_excel(w, sheet_name='report3', index=True)
 
+#     class CalcEbrainsArgs(BaseDLArgs):
+#         model_dir: str = Field(..., s='-d')
 
-    def run_calc_ebrains(self, a):
-        d = 'out/compare/LMGAOB/fold5_0/frozen_uni_100'
-        config = TrainerConfig.from_file(J(d, 'config.json'))
-        df_tiles = pd.read_excel(J(d, 'ebrains.xlsx'))
+#     def run_calc_ebrains(self, a):
+#         config = TrainerConfig.from_file(J(a.model_dir, 'config.json'))
+#         df_patches = pd.read_excel(J(a.model_dir, 'ebrains.xlsx'), sheet_name='patches')
+#         unique_code = config.unique_code()
 
-        unique_code = config.unique_code()
+#         results_cases = []
+#         for path, rows in df_patches.groupby('path'):
+#             assert rows['label'].nunique() == 1
+#             pred = []
+#             for c in unique_code:
+#                 pred.append(rows[c].mean())
+#             pred_idx = np.argmax(pred)
+#             # if B is major, yield pred from second choice
+#             # if unique_code[pred_idx] == 'B':
+#             #     pred_idx = np.argsort(pred)[-2]
+#             pred_label = unique_code[pred_idx]
 
-        results_cases = []
-        for path, rows in df_tiles.groupby('path'):
-            assert rows['label'].nunique() == 1
-            pred = []
-            for c in config.unique_code():
-                pred.append(rows[c].mean())
-            pred_idx = np.argmax(pred)
-            pred_label = unique_code[pred_idx]
+#             gt_label = rows.iloc[0]['label']
+#             results_cases.append({
+#                 'path': path,
+#                 'label': gt_label,
+#                 'pred': pred_label,
+#                 'correct': int(gt_label == pred_label),
+#                 'correct3': int(map3[gt_label] == map3[pred_label]),
+#                 **dict(zip(unique_code, pred))
+#             })
+#         df_cases = pd.DataFrame(results_cases)
 
-            label = rows.iloc[0]['label']
-            results_cases.append({
-                'path': path,
-                'label': label,
-                'pred': pred_label,
-                'correct': int(label == pred_label),
-                **dict(zip(unique_code, pred))
-            })
+#         y_true, y_pred = df_cases['label'], df_cases['pred']
+#         patch_accuracy = df_patches['correct'].mean()
+#         report = skmetrics.classification_report(y_true, y_pred, zero_division=0.0, output_dict=True)
+#         report['patch acc'] = patch_accuracy
+#         df_report = pd.DataFrame(report).T
 
-        df_cases = pd.DataFrame(results_cases)
-        df_cases.to_excel(with_wrote(J(d, 'ebrains_cases.xlsx')), index=False)
+#         y_true3, y_pred3 = y_true.map(map3), y_pred.map(map3)
+#         patch_accuracy3 = df_patches['correct3'].mean()
+#         report3 = skmetrics.classification_report(y_true3, y_pred3, zero_division=0.0, output_dict=True)
+#         report3['patch acc'] = patch_accuracy3
+#         df_report3 = pd.DataFrame(report3).T
+
+#         with pd.ExcelWriter(with_wrote(J(a.model_dir, 'ebrains2.xlsx'))) as w:
+#             df_patches.to_excel(w, sheet_name='patches', index=False)
+#             df_cases.to_excel(w, sheet_name='cases', index=False)
+#             df_report.to_excel(w, sheet_name='report', index=True)
+#             df_report3.to_excel(w, sheet_name='report3', index=True)
 
 
     class CalcResultsArgs(CommonArgs):
@@ -483,13 +520,13 @@ class CLI(BaseMLCLI):
                 excel_path = J(model_dir, f'validate_{a.target}.xlsx')
                 dfs.append(pd.read_excel(excel_path))
                 print('loaded', excel_path)
-            df = pd.concat(dfs)
+            df_patches = pd.concat(dfs)
         else:
             model_dir = f'out/compare/LMGAOB/fold5_{a.fold}/{a.encoder}_{a.base}_{a.limit}'
             if a.suffix:
                 model_dir += a.suffix
             dest_dir= J(model_dir, a.target)
-            df = pd.read_excel(J(model_dir, f'validate_{a.target}.xlsx'))
+            df_patches = pd.read_excel(J(model_dir, f'validate_{a.target}.xlsx'))
 
         output_path = J(dest_dir, 'report.xlsx')
         if os.path.exists(output_path):
@@ -504,7 +541,7 @@ class CLI(BaseMLCLI):
 
         data_by_case = []
 
-        for name, items in tqdm(df.groupby('name')):
+        for name, items in tqdm(df_patches.groupby('name')):
             diag_org, diag = items.iloc[0][['diag_org', 'diag']]
             if diag != 'B':
                 items = items[items['area'] > 0.6]
@@ -532,18 +569,16 @@ class CLI(BaseMLCLI):
                 'correct': int(diag == pred_sum),
                 'acc': acc,
             }
-            if len(unique_code) == 6:
-                d['correct3'] = int(map3[diag_org] == map3[pred_sum])
-                d['correct4'] = int(map4[diag_org] == map4[pred_sum])
+            d['correct3'] = int(map3[diag_org] == map3[pred_sum])
+            d['correct4'] = int(map4[diag_org] == map4[pred_sum])
             for p, code in zip(preds_sum, unique_code):
                 d[code] = p
             data_by_case.append(d)
 
         df = pd.DataFrame(data_by_case).sort_values(['diag_org'])
 
-        if len(unique_code) == 6:
-            print('Acc3 by case', df['correct3'].mean())
-            print('Acc4 by case', df['correct4'].mean())
+        print('Acc3 by case', df['correct3'].mean())
+        print('Acc4 by case', df['correct4'].mean())
 
         y_true = df['gt']
         y_pred = df['pred(sum)']
@@ -585,30 +620,32 @@ class CLI(BaseMLCLI):
         plt.savefig(J(dest_dir, 'roc.png'))
         plt.close()
 
-
         ##* Reports
         report = skmetrics.classification_report(y_true, y_pred, output_dict=True)
         print(f'Classification Report by:')
         print(report)
         df_report = pd.DataFrame(report)
         df_report['auc'] = roc_auc['macro']
-        df_report['patch acc'] = np.mean(df['acc'])
+        df_report['patch acc'] = np.mean(df_patches['correct'])
         df_report = df_report.T
         print(df_report)
 
-        if len(unique_code) == 6:
-            report3 = skmetrics.classification_report(y_true.map(map3), y_pred.map(map3), output_dict=True)
-            df_report3 = pd.DataFrame(report3).T
-            report4 = skmetrics.classification_report(y_true.map(map4), y_pred.map(map4), output_dict=True)
-            df_report4 = pd.DataFrame(report4).T
+        y_true3, y_pred3 = y_true.map(map3), y_pred.map(map3)
+        report3 = skmetrics.classification_report(y_true3, y_pred3, output_dict=True)
+        report3['patch acc'] = np.mean(df_patches['correct3'])
+        df_report3 = pd.DataFrame(report3).T
 
+        # report4 = skmetrics.classification_report(y_true.map(map4), y_pred.map(map4), output_dict=True)
+        # df_report4 = pd.DataFrame(report4).T
 
         with pd.ExcelWriter(with_wrote(output_path), engine='xlsxwriter') as writer:
             df.to_excel(writer, sheet_name='cases', index=False)
             df_report.to_excel(writer, sheet_name='report')
-            if len(unique_code) == 6:
-                df_report3.to_excel(writer, sheet_name='report3')
-                df_report4.to_excel(writer, sheet_name='report4')
+            df_report3.to_excel(writer, sheet_name='report3')
+            # df_report4.to_excel(writer, sheet_name='report4')
+
+    class SummaryCvArgs(CommonArgs):
+        coarse: bool = False
 
     def run_summary_cv(self, a):
         conds_base = [
@@ -643,12 +680,14 @@ class CLI(BaseMLCLI):
             # 'AUROC ': lambda df: df[df.index == 'auc'].iloc[0, 0],
         }
 
+        target_sheet_name = 'report3' if a.coarse else 'report'
+
         cache = {}
         def load_df(p):
             if p in cache:
                 print
                 return cache[p]
-            df = pd.read_excel(p, sheet_name='report', index_col=0)
+            df = pd.read_excel(p, sheet_name=target_sheet_name, index_col=0)
             # cache[p] = df
             return df
 
@@ -683,7 +722,9 @@ class CLI(BaseMLCLI):
             df = pd.concat(dfs).reset_index(drop=True)
             dfs_to_save.append(df)
 
-        with pd.ExcelWriter(with_wrote('out/figs/results_cv.xlsx')) as w:
+        dest_path = 'out/figs/results_coarse_cv.xlsx' if a.coarse else 'out/figs/results_cv.xlsx'
+
+        with pd.ExcelWriter(with_wrote(dest_path)) as w:
             for df, limit in zip(dfs_to_save, limits):
                 df.to_excel(w, sheet_name=f'{limit}')
 
