@@ -722,9 +722,8 @@ class CLI(BaseMLCLI):
             df = pd.concat(dfs).reset_index(drop=True)
             dfs_to_save.append(df)
 
-        dest_path = 'out/figs/results_coarse_cv.xlsx' if a.coarse else 'out/figs/results_cv.xlsx'
-
-        with pd.ExcelWriter(with_wrote(dest_path)) as w:
+        grains = 'coarse' if a.coarse else 'fine'
+        with pd.ExcelWriter(with_wrote(f'out/figs/results_{grains}_cv.xlsx')) as w:
             for df, limit in zip(dfs_to_save, limits):
                 df.to_excel(w, sheet_name=f'{limit}')
 
@@ -789,9 +788,8 @@ class CLI(BaseMLCLI):
 
         df_results = pd.DataFrame(results)
 
-        dest_filename = 'results_coarse_ebrains.xlsx' if a.coarse else 'results_ebrains.xlsx'
-
-        with pd.ExcelWriter(with_wrote(f'out/figs/{dest_filename}')) as w:
+        grains = 'coarse' if a.coarse else 'fine'
+        with pd.ExcelWriter(with_wrote(f'out/figs/results_{grains}_ebrains.xlsx')) as w:
             for limit in limits:
                 df = df_results[df_results['limit'] == limit]
                 df.to_excel(w, sheet_name=f'{limit}')
