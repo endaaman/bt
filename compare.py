@@ -728,33 +728,32 @@ class CLI(BaseMLCLI):
             for df, limit in zip(dfs_to_save, limits):
                 df.to_excel(w, sheet_name=f'{limit}')
 
-    class SummaryCvArgs(CommonArgs):
+    class SummaryEbrainsArgs(CommonArgs):
         coarse: bool = False
 
     def run_summary_ebrains(self, a):
         # dump out/figs/results_ebrains.xlsx
-
-        conds_base = [
-            'frozen_gigapath_{}',
-            'unfrozen_uni_{}',
-            'frozen_uni_{}',
-            'unfrozen_ctranspath_{}',
-            'frozen_ctranspath_{}',
-            'unfrozen_baseline-vit_{}',
-            'frozen_baseline-vit_{}',
-            'unfrozen_baseline-cnn_{}',
-            'frozen_baseline-cnn_{}',
-        ]
-        labels = [
-            'Prov-GigaPath(LP)',
-            'UNI(FT)',
-            'UNI(LP)',
-            'CTransPath(FT)',
-            'CTransPath(LP)',
-            r'VIT-L$\mathrm{_{IN}}$(FT)',
-            r'VIT-L$\mathrm{_{IN}}$(LP)',
-            r'ResNet-RS 50$\mathrm{_{IN}}$(FT)',
-            r'ResNet-RS 50$\mathrm{_{IN}}$(LP)',
+        conds = [
+            (
+                'frozen_gigapath_{}', 'Prov-GigaPath(LP)',
+            ),
+            (
+                'unfrozen_uni_{}', 'UNI(FT)',
+            ), (
+                'frozen_uni_{}', 'UNI(LP)',
+            ), (
+                'unfrozen_ctranspath_{}', 'CTransPath(FT)',
+            ), (
+                'frozen_ctranspath_{}', 'CTransPath(LP)',
+            ), (
+                'unfrozen_baseline-vit_{}', r'VIT-L$\mathrm{_{IN}}$(FT)',
+            ), (
+                'frozen_baseline-vit_{}', r'VIT-L$\mathrm{_{IN}}$(LP)',
+            ),(
+                'unfrozen_baseline-cnn_{}', r'ResNet-RS 50$\mathrm{_{IN}}$(FT)',
+            ), (
+                'frozen_baseline-cnn_{}', r'ResNet-RS 50$\mathrm{_{IN}}$(LP)',
+            ),
         ]
 
         metrics_fns = {
@@ -771,23 +770,13 @@ class CLI(BaseMLCLI):
         limits = [10, 25, 100, 500]
         results = []
         for limit in limits:
-            for label, cond_base in zip(labels, conds_base):
+            for cond_base, label in conds:
                 cond = cond_base.format(limit)
                 for fold in range(5):
                     df_path = f'out/compare/LMGAOB/fold5_{fold}/{cond}/ebrains.xlsx'
                     if not os.path.exists(df_path):
-                        continue
-                    df_report = pd.read_excel(df_path, sheet_name=target_sheet_name)
-
-                    # TODO: report から読み取り
-                    # patch_accuracy = df_patches['correct'].mean()
-                    # y_true = df_cases['label']
-                    # y_pred = df_cases['pred']
-                    # report = skmetrics.classification_report(y_true, y_pred, zero_division=0.0, output_dict=True)
-                    # df = pd.DataFrame(report)
-                    # df['patch acc'] = patch_accuracy
-
-                    df = df.T
+                        raise RuntimeError('Invalid path', df_path)
+                    df = pd.read_excel(df_path, sheet_name=target_sheet_name, index_col=0)
                     r = {
                         'fold': fold,
                         'cond': cond,
