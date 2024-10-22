@@ -53,7 +53,7 @@ class TimmModel(nn.Module):
     def get_cam_layers(self):
         return get_cam_layers(self.base, self.name)
 
-    def forward(self, x, activate=False, with_feautres=False):
+    def forward(self, x, activate=False, with_feature=False):
         features = self.base.forward_features(x)
         x = self.base.forward_head(features)
 
@@ -63,7 +63,7 @@ class TimmModel(nn.Module):
             else:
                 x = torch.sigmoid(x)
 
-        if with_feautres:
+        if with_features:
             pool = get_pool(self.base)
             features = pool(features)
             return x, features
@@ -140,7 +140,7 @@ class CompareModel(nn.Module):
         for param in self.base.parameters():
             param.requires_grad = False
 
-    def forward(self, x, activate=False, with_feautres=False):
+    def forward(self, x, activate=False, with_features=False):
         features = self.base(x)
         features = self.pool(features)
         x = self.fc(features)
@@ -151,7 +151,7 @@ class CompareModel(nn.Module):
             else:
                 x = torch.sigmoid(x)
 
-        if with_feautres:
+        if with_features:
             return x, features
         return x
 
@@ -176,7 +176,7 @@ class IICModel(nn.Module):
     def get_cam_layers(self):
         return get_cam_layers(self.base, self.name)
 
-    def forward(self, x, activate=False, with_feautres=False):
+    def forward(self, x, activate=False, with_features=False):
         features = self.base.forward_features(x)
         features = self.pool(features).flatten(1)
 
@@ -191,7 +191,7 @@ class IICModel(nn.Module):
                 x = torch.sigmoid(x)
                 x_over = torch.sigmoid(x_over)
 
-        if with_feautres:
+        if with_features:
             return x, x_over, features
         return x, x_over
 

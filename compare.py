@@ -308,11 +308,11 @@ class CLI(BaseMLCLI):
             with torch.set_grad_enabled(False):
                 i = tt.to(a.device)
                 if a.with_features:
-                    o, f = model(i, activate=True, with_feautres=True)
+                    o, f = model(i, activate=True, with_features=True)
                     features = f.detach().cpu().numpy()
                     featuress.append(features)
                 else:
-                    o = model(i, activate=True, with_feautres=False)
+                    o = model(i, activate=True, with_features=False)
                 o = o.detach().cpu().numpy()
             df.loc[df.index[i0:i1], ds.unique_code] = o
             preds = pd.Series([ds.unique_code[i] for i in np.argmax(o, axis=1)], index=df.index[i0:i1])
@@ -361,7 +361,9 @@ class CLI(BaseMLCLI):
         model_dir: str = Field(..., s='-d')
         batch_size: int = Field(100, s='-B')
         use_best: bool = False
-        # with_features: bool = False
+        with_features: bool = False
+
+        count: int = -1
 
     def run_ebrains(self, a:EbrainsArgs):
         map3 = {'L':'L', 'M':'M', 'G':'G', 'A':'G', 'O':'G', 'B':'B'}
@@ -384,12 +386,20 @@ class CLI(BaseMLCLI):
 
         results = []
         preds = []
+        featuress = []
 
         print('Evaluating')
         for i, (xx, gts, idxs) in tqdm(enumerate(loader), total=len(loader)):
             items = [ds.items[i] for i in idxs]
             with torch.set_grad_enabled(False):
-                yy = model(xx.to(a.device), activate=True).cpu().detach()
+                if a.with_features:
+                    yy, features = model(xx.to(a.device), activate=True, with_features=True)
+                    yy = yy.detach().cpu()
+                    features = features.detach().cpu().numpy()
+                    featuress.append(features)
+                else:
+                    yy = model(xx.to(a.device), activate=True).cpu().detach()
+
             preds = torch.argmax(yy, dim=1)
             for item, y, gt, pred in zip(items, yy, gts, preds):
                 values = dict(zip([*config.code], y.tolist()))
@@ -403,7 +413,27 @@ class CLI(BaseMLCLI):
                 }
                 del r['image']
                 results.append(r)
+
+            if (a.count > 0) and (i >= a.count):
+                break
+
         df_patches = pd.DataFrame(results)
+
+        if a.with_features:
+            feature_path = J(a.model_dir, 'features_ebrains.pt')
+            features = np.concatenate(featuress)
+            features = features.reshape(features.shape[0], features.shape[1])
+            data = [
+                dict(zip(['name', 'path', 'diag_org', 'pred', 'feature'], values))
+                for values in zip(
+                    df_patches['name'],
+                    df_patches['path'],
+                    df_patches['label'],
+                    df_patches['pred'],
+                    features
+                )
+            ]
+            torch.save(data, with_wrote(feature_path))
 
         results_cases = []
         for path, rows in df_patches.groupby('name'):
