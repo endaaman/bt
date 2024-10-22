@@ -398,9 +398,9 @@ class CLI(BaseMLCLI):
             with torch.set_grad_enabled(False):
                 i = tt.to(a.device())
                 if a.no_features:
-                    o = model(i, activate=True, with_feautres=False)
+                    o = model(i, activate=True, with_features=False)
                 else:
-                    o, f = model(i, activate=True, with_feautres=True)
+                    o, f = model(i, activate=True, with_features=True)
                     features = f.detach().cpu().numpy()
                     featuress.append(features)
                 o = o.detach().cpu().numpy()

@@ -48,7 +48,7 @@ class CLI(BaseMLCLI):
 
         model = IICModel(name=a.name, num_classes=3, num_classes_over=10)
         x = torch.rand([4, 3, 512, 512])
-        y, y_over, f = model(x, with_feautres=True)
+        y, y_over, f = model(x, with_features=True)
         print('y', y.shape)
         print('y_over', y_over.shape)
         print('f', f.shape)
