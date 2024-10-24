@@ -123,12 +123,13 @@ class Trainer(BaseTrainer):
         return model
 
     def create_optimizer(self):
+        if self.config.lr_scaling_factor == 1.0:
+            return optim.Adam(self.model.parameters(), lr=self.config.lr)
         params = [
             {'params': self.model.base.parameters(), 'lr': self.config.lr * self.config.lr_scaling_factor},
             {'params': self.model.fc.parameters(), 'lr': self.config.lr},
         ]
         return optim.Adam(params)
-        # return optim.Adam(self.model.parameters(), lr=self.config.lr)
 
     def create_scheduler(self):
         s = self.config.scheduler
