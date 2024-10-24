@@ -436,7 +436,7 @@ class CLI(BaseMLCLI):
             torch.save(data, with_wrote(feature_path))
 
         results_cases = []
-        for path, rows in df_patches.groupby('name'):
+        for name, rows in df_patches.groupby('name'):
             assert rows['label'].nunique() == 1
             pred = []
             for c in unique_code:
@@ -449,7 +449,7 @@ class CLI(BaseMLCLI):
 
             gt_label = rows.iloc[0]['label']
             results_cases.append({
-                'path': path,
+                'name': name,
                 'label': gt_label,
                 'pred': pred_label,
                 'correct': int(gt_label == pred_label),
@@ -678,27 +678,38 @@ class CLI(BaseMLCLI):
         coarse: bool = False
 
     def run_summary_cv(self, a):
-        conds_base = [
-            'frozen_gigapath_{}',
-            'unfrozen_uni_{}',
-            'frozen_uni_{}',
-            'unfrozen_ctranspath_{}',
-            'frozen_ctranspath_{}',
-            'unfrozen_baseline-vit_{}',
-            'frozen_baseline-vit_{}',
-            'unfrozen_baseline-cnn_{}',
-            'frozen_baseline-cnn_{}',
-        ]
-        labels = [
-            'Prov-GigaPath(LP)',
-            'UNI(FT)',
-            'UNI(LP)',
-            'CTransPath(FT)',
-            'CTransPath(LP)',
-            r'VIT-L$\mathrm{_{IN}}$(FT)',
-            r'VIT-L$\mathrm{_{IN}}$(LP)',
-            r'ResNet-RS 50$\mathrm{_{IN}}$(FT)',
-            r'ResNet-RS 50$\mathrm{_{IN}}$(LP)',
+        conds = [
+            (
+                'frozen_gigapath_{}', 'Prov-GigaPath(LP)',
+                [10, 25, 100, 500],
+            ), (
+                'unfrozen_uni_{}', 'UNI(FT)',
+                [10, 25, 100, 500],
+            ), (
+                'frozen_uni_{}', 'UNI(LP)',
+                [10, 25, 100, 500],
+            ), (
+                'unfrozen_ctranspath_{}', 'CTransPath(FT)',
+                [10, 25, 100, 500],
+            ), (
+                'frozen_ctranspath_{}', 'CTransPath(LP)',
+                [10, 25, 100, 500],
+            ), (
+                'unfrozen_baseline-vit_{}', r'VIT-L$\mathrm{_{IN}}$(FT)',
+                [10, 25, 100, 500],
+            ), (
+                'frozen_baseline-vit_{}', r'VIT-L$\mathrm{_{IN}}$(LP)',
+                [10, 25, 100, 500],
+            # ), (
+            #     'frozen_random-vit_{}', r'VIT-L(BS)',
+            #     [100],
+            ),(
+                'unfrozen_baseline-cnn_{}', r'ResNet-RS 50$\mathrm{_{IN}}$(FT)',
+                [10, 25, 100, 500],
+            ), (
+                'frozen_baseline-cnn_{}', r'ResNet-RS 50$\mathrm{_{IN}}$(LP)',
+                [10, 25, 100, 500],
+            ),
         ]
 
         metrics_fns = {
@@ -721,13 +732,12 @@ class CLI(BaseMLCLI):
             # cache[p] = df
             return df
 
-        dfs_to_save = []
-        limits = [10, 25, 100, 500]
+        results = []
 
-        for limit in limits:
+        for (cond_base, label, limits) in conds:
             dfs = []
-            for cond, label in zip(conds_base, labels):
-                cond = cond.format(limit)
+            for limit in limits:
+                cond = cond_base.format(limit)
                 mm = {}
                 for key, fn in metrics_fns.items():
                     m = []
@@ -744,44 +754,53 @@ class CLI(BaseMLCLI):
                     mm[key] = m
 
                 df = pd.DataFrame(mm)
-                # df = pd.concat([pd.DataFrame([{'cond': cond}]*5), df])
-                # limit = int(re.match(r'^.*_(\d+)$', cond_org)[1])
                 df = pd.DataFrame([{'cond': cond, 'limit': limit, 'label': label}]*5).join(df)
                 df = df.reset_index().rename(columns={'index': 'fold'})
                 dfs.append(df)
             df = pd.concat(dfs).reset_index(drop=True)
             dfs_to_save.append(df)
 
+        df_to_save = pd.concat(dfs_to_save).reset_index(drop=True)
         grains = 'coarse' if a.coarse else 'fine'
         with pd.ExcelWriter(with_wrote(f'out/figs/results_{grains}_cv.xlsx')) as w:
-            for df, limit in zip(dfs_to_save, limits):
+            for limit, df in df_to_save.groupby('limit'):
                 df.to_excel(w, sheet_name=f'{limit}')
 
     class SummaryEbrainsArgs(CommonArgs):
         coarse: bool = False
 
     def run_summary_ebrains(self, a):
-        # dump out/figs/results_ebrains.xlsx
         conds = [
             (
                 'frozen_gigapath_{}', 'Prov-GigaPath(LP)',
-            ),
-            (
+                [10, 25, 100, 500],
+            ), (
                 'unfrozen_uni_{}', 'UNI(FT)',
+                [10, 25, 100, 500],
             ), (
                 'frozen_uni_{}', 'UNI(LP)',
+                [10, 25, 100, 500],
             ), (
                 'unfrozen_ctranspath_{}', 'CTransPath(FT)',
+                [10, 25, 100, 500],
             ), (
                 'frozen_ctranspath_{}', 'CTransPath(LP)',
+                [10, 25, 100, 500],
             ), (
                 'unfrozen_baseline-vit_{}', r'VIT-L$\mathrm{_{IN}}$(FT)',
+                [10, 25, 100, 500],
             ), (
                 'frozen_baseline-vit_{}', r'VIT-L$\mathrm{_{IN}}$(LP)',
+                [10, 25, 100, 500],
             ),(
                 'unfrozen_baseline-cnn_{}', r'ResNet-RS 50$\mathrm{_{IN}}$(FT)',
+                [10, 25, 100, 500],
             ), (
                 'frozen_baseline-cnn_{}', r'ResNet-RS 50$\mathrm{_{IN}}$(LP)',
+                [10, 25, 100, 500],
+            ), (
+                'unfrozen_random-vit_{}', r'VIT-L(BS)',
+                [100],
             ),
         ]
 
@@ -796,10 +815,9 @@ class CLI(BaseMLCLI):
 
         target_sheet_name = 'report3' if a.coarse else 'report'
 
-        limits = [10, 25, 100, 500]
         results = []
-        for limit in limits:
-            for cond_base, label in conds:
+        for cond_base, label, limits in conds:
+            for limit in limits:
                 cond = cond_base.format(limit)
                 for fold in range(5):
                     df_path = f'out/compare/LMGAOB/fold5_{fold}/{cond}/ebrains.xlsx'
@@ -820,8 +838,7 @@ class CLI(BaseMLCLI):
 
         grains = 'coarse' if a.coarse else 'fine'
         with pd.ExcelWriter(with_wrote(f'out/figs/results_{grains}_ebrains.xlsx')) as w:
-            for limit in limits:
-                df = df_results[df_results['limit'] == limit]
+            for limit, df in df_results.groupby('limit'):
                 df.to_excel(w, sheet_name=f'{limit}')
 
 

@@ -469,8 +469,10 @@ class CLI(BaseMLCLI):
         labels = df['diag_org'].values
 
         umap_model = UMAP(
-           n_neighbors=a.n_neighbors,
-           min_dist=a.min_dist,
+            n_neighbors=a.n_neighbors,
+            min_dist=a.min_dist,
+            n_jobs=1,
+            random_state=42,
         )
         print('Start projection')
         embedding = umap_model.fit_transform(features)
@@ -479,19 +481,13 @@ class CLI(BaseMLCLI):
         embedding_y = embedding[:, 1]
 
         knn_graph = umap_model.graph_
-        # グラフをiGraph形式に変換
-        sources, targets = knn_graph.nonzero()
-        weights = knn_graph.data
-        edges = list(zip(sources, targets))
-        graph = ig.Graph(edges=edges, directed=False)
-        graph.es['weight'] = weights
 
         # グラフをiGraph形式に変換
-        sources, targets = knn_graph.nonzero()
-        weights = knn_graph.data
         edges = list(zip(sources, targets))
         graph = ig.Graph(edges=edges, directed=False)
         graph.es['weight'] = weights
+        sources, targets = knn_graph.nonzero()
+        weights = knn_graph.data
 
         # Leidenクラスタリングの実行
         partition = la.find_partition(graph, la.RBConfigurationVertexPartition, weights=weights)
