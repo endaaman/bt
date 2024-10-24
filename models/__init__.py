@@ -101,6 +101,9 @@ class CompareModel(nn.Module):
         elif base == 'random-vit':
             self.base = timm.create_model('vit_large_patch16_224', pretrained=False)
             self.base.head = nn.Identity()
+        elif base == 'random-cnn':
+            self.base = timm.create_model('resnetrs50', pretrained=False)
+            self.base.head = nn.Identity()
         elif base == 'baseline-swin':
             self.base = timm.create_model('swin_tiny_patch4_window7_224', pretrained=True)
             self.base.head = nn.Identity()
