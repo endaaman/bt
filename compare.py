@@ -701,9 +701,9 @@ class CLI(BaseMLCLI):
             ), (
                 'frozen_baseline-vit_{}', r'VIT-L$\mathrm{_{IN}}$(LP)',
                 [10, 25, 100, 500],
-            # ), (
-            #     'frozen_random-vit_{}', r'VIT-L(BS)',
-            #     [100],
+            ), (
+                'unfrozen_random-vit_{}', r'VIT-L(RI)',
+                [10, 25, 100, 500],
             ),(
                 'unfrozen_baseline-cnn_{}', r'ResNet-RS 50$\mathrm{_{IN}}$(FT)',
                 [10, 25, 100, 500],
@@ -733,7 +733,7 @@ class CLI(BaseMLCLI):
             # cache[p] = df
             return df
 
-        results = []
+        dfs_to_save = []
 
         for (cond_base, label, limits) in conds:
             dfs = []
@@ -793,15 +793,15 @@ class CLI(BaseMLCLI):
             ), (
                 'frozen_baseline-vit_{}', r'VIT-L$\mathrm{_{IN}}$(LP)',
                 [10, 25, 100, 500],
+            ), (
+                'unfrozen_random-vit_{}', r'VIT-L(RI)',
+                [10, 25, 100, 500],
             ),(
                 'unfrozen_baseline-cnn_{}', r'ResNet-RS 50$\mathrm{_{IN}}$(FT)',
                 [10, 25, 100, 500],
             ), (
                 'frozen_baseline-cnn_{}', r'ResNet-RS 50$\mathrm{_{IN}}$(LP)',
                 [10, 25, 100, 500],
-            ), (
-                'unfrozen_random-vit_{}', r'VIT-L(BS)',
-                [100],
             ),
         ]
 
