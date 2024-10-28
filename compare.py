@@ -857,6 +857,7 @@ class CLI(BaseMLCLI):
         from umap import UMAP
 
         df_meta_origins = pd.read_excel('data/meta_origin.xlsx')
+        df_meta_origins['origin'] = df_meta_origins['origin'].str.capitalize()
 
         cv_data = torch.load(J(a.model_dir, a.cv_file))
         eb_data = torch.load(J(a.model_dir, a.eb_file))
