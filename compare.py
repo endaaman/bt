@@ -843,6 +843,76 @@ class CLI(BaseMLCLI):
                 df.to_excel(w, sheet_name=f'{limit}')
 
 
+    class PreClusterArgs(CommonArgs):
+        model_dir: str = Field(..., s='-d')
+        cv_file: str = 'features_test.pt'
+        eb_file: str = 'features_ebrains.pt'
+        cv_count: int = 30
+        eb_count: int = 15
+        n_neighbors: int = 60
+        min_dist: float = 0.1
+
+
+    def run_pre_cluster(self, a):
+        from umap import UMAP
+
+        df_meta_origins = pd.read_excel('data/meta_origin.xlsx')
+
+        cv_data = torch.load(J(a.model_dir, a.cv_file))
+        eb_data = torch.load(J(a.model_dir, a.eb_file))
+
+        cols = ['name', 'diag_org', 'pred', 'feature']
+
+        df = pd.DataFrame([])
+        df = pd.DataFrame(cv_data)[cols]
+        df['Dataset'] = 'Local'
+        df = pd.merge(df, df_meta_origins, on='name', how='left')
+        df.fillna('', inplace=True)
+
+        df_ebrains = pd.DataFrame(eb_data)[cols]
+        df_ebrains['Dataset'] = 'EBRAINS'
+        df_ebrains['origin'] = ''
+        df_ebrains.loc[df_ebrains['diag_org'] == 'M', 'origin'] = 'Meta(EBRAINS)'
+
+        df = pd.concat([df_ebrains, df])
+
+        unique_codes = df['diag_org'].unique()
+
+        rowss = []
+        rng = np.random.default_rng(42)
+        for name, _rows in df.groupby('name'):
+            count = a.cv_count if _rows.iloc[0]['Dataset'] == 'Local' else a.eb_count
+            # rows = df.loc[np.random.choice(_rows.index, count)]
+            # rows = df.iloc[:count]
+            # ii = rng.choice(_rows.index, count)
+            ii = _rows.index[:count]
+            rows = df.loc[ii]
+            rowss.append(rows)
+        df = pd.concat(rowss)
+
+
+        print('cv count', (df['Dataset'] == 'Local').sum())
+        print('ebrains count', (df['Dataset'] == 'EBRAINS').sum())
+
+        features = np.stack(df['feature'])
+        print('Start projection')
+
+        reducer = UMAP(
+            n_neighbors=a.n_neighbors,
+            min_dist=a.min_dist,
+            n_components=2,
+            n_jobs=1,
+            random_state=42,
+        )
+        embedding = reducer.fit_transform(features)
+
+        df['UMAP1'] = embedding[:, 0]
+        df['UMAP2'] = embedding[:, 1]
+        df = df.rename(columns={'diag_org': 'Diagnosis'})
+        df = df.drop(columns='feature')
+        df.to_excel(with_wrote(J(a.model_dir, 'integrated_umap_embeddings.xlsx')))
+
+
 
 if __name__ == '__main__':
     cli = CLI()
