@@ -32,6 +32,7 @@ from endaaman.ml import BaseTrainerConfig, BaseTrainer, Checkpoint, pil_to_tenso
 from endaaman.ml.metrics import MultiAccuracy, BaseMetrics
 from endaaman.ml.functional import multi_accuracy
 from endaaman.ml.cli import BaseMLCLI, BaseDLArgs
+from endaaman.ml.utils import hover_images_on_scatters
 
 from models import CompareModel
 from datasets import FoldDataset, MEAN, STD
@@ -847,11 +848,14 @@ class CLI(BaseMLCLI):
         model_dir: str = Field(..., s='-d')
         cv_file: str = 'features_test.pt'
         eb_file: str = 'features_ebrains.pt'
-        cv_count: int = 30
-        eb_count: int = 15
+        cv_count: int = Field(50, l='--cv')
+        eb_count: int = Field(10, l='--eb')
+        target: str = Field('both', s='-t', choices=['both', 'cv', 'eb'])
         n_neighbors: int = 60
-        min_dist: float = 0.1
-
+        min_dist: float = 0.2
+        spread: float = 1.0
+        show: bool = False
+        hover: bool = False
 
     def run_pre_cluster(self, a):
         from umap import UMAP
@@ -862,19 +866,24 @@ class CLI(BaseMLCLI):
         cv_data = torch.load(J(a.model_dir, a.cv_file))
         eb_data = torch.load(J(a.model_dir, a.eb_file))
 
-        cols = ['name', 'diag_org', 'pred', 'feature']
+        cols = ['name', 'diag_org', 'pred', 'feature', 'path']
 
         df = pd.DataFrame([])
-        df = pd.DataFrame(cv_data)[cols]
+        df = pd.DataFrame(cv_data)
+        df['path'] = [
+            os.path.abspath(f'cache/tiles/enda4_512/{r.diag_org}/{r['name']}/{r.filename}')
+            for i, r in df.iterrows()
+        ]
+        df = df[cols]
         df['Dataset'] = 'Local'
         df = pd.merge(df, df_meta_origins, on='name', how='left')
         df.fillna('', inplace=True)
 
-        df_ebrains = pd.DataFrame(eb_data)[cols]
+        df_ebrains = pd.DataFrame(eb_data)
+        df_ebrains = df_ebrains[cols]
         df_ebrains['Dataset'] = 'EBRAINS'
         df_ebrains['origin'] = ''
         df_ebrains.loc[df_ebrains['diag_org'] == 'M', 'origin'] = 'Meta(EBRAINS)'
-
         df = pd.concat([df_ebrains, df])
 
         unique_codes = df['diag_org'].unique()
@@ -882,36 +891,83 @@ class CLI(BaseMLCLI):
         rowss = []
         rng = np.random.default_rng(42)
         for name, _rows in df.groupby('name'):
-            count = a.cv_count if _rows.iloc[0]['Dataset'] == 'Local' else a.eb_count
+            row = _rows.iloc[0]
+            count = a.cv_count if row['Dataset'] == 'Local' else a.eb_count
             # rows = df.loc[np.random.choice(_rows.index, count)]
             # rows = df.iloc[:count]
             # ii = rng.choice(_rows.index, count)
-            ii = _rows.index[:count]
-            rows = df.loc[ii]
+            # ii = _rows.index[:count]
+            # rows = df.loc[ii]
+            rows = _rows.head(count)
+            if count != len(rows):
+                print(name, row['diag_org'], count, len(rows))
             rowss.append(rows)
         df = pd.concat(rowss)
+        df = df.reset_index(drop=True)
 
-
-        print('cv count', (df['Dataset'] == 'Local').sum())
-        print('ebrains count', (df['Dataset'] == 'EBRAINS').sum())
-
-        features = np.stack(df['feature'])
-        print('Start projection')
+        df_cv = df[df['Dataset'] == 'Local']
+        df_eb = df[df['Dataset'] == 'EBRAINS']
+        assert len(df_cv) + len(df_eb) == len(df)
+        print('cv count', len(df_cv))
+        print('ebrains count', len(df_eb))
 
         reducer = UMAP(
             n_neighbors=a.n_neighbors,
             min_dist=a.min_dist,
+            spread=a.spread,
             n_components=2,
             n_jobs=1,
             random_state=42,
         )
-        embedding = reducer.fit_transform(features)
 
-        df['UMAP1'] = embedding[:, 0]
-        df['UMAP2'] = embedding[:, 1]
+        print('Start projection')
+        if a.target == 'both':
+            features = np.stack(df['feature'])
+            embedding = reducer.fit_transform(features)
+            df['UMAP1'] = embedding[:, 0]
+            df['UMAP2'] = embedding[:, 1]
+        else:
+            if a.target == 'cv':
+                df_x, df_y = df_cv, df_eb
+            elif a.target == 'eb':
+                df_x, df_y = df_eb, df_cv
+            else:
+                raise RuntimeError()
+            features = np.stack(df_x['feature'])
+            x_embedding = reducer.fit_transform(features)
+            y_embedding = reducer.transform(np.stack(df_y['feature']))
+            df.loc[df_x.index, 'UMAP1'] = x_embedding[:, 0]
+            df.loc[df_x.index, 'UMAP2'] = x_embedding[:, 1]
+            df.loc[df_y.index, 'UMAP1'] = y_embedding[:, 0]
+            df.loc[df_y.index, 'UMAP2'] = y_embedding[:, 1]
+
         df = df.rename(columns={'diag_org': 'Diagnosis'})
         df = df.drop(columns='feature')
         df.to_excel(with_wrote(J(a.model_dir, 'integrated_umap_embeddings.xlsx')))
+
+        if a.show:
+            fig = plt.figure(figsize=(12, 10))
+            ax = fig.add_subplot(111)
+            fig.suptitle(a.model_dir)
+            g = sns.scatterplot(
+                data=df,
+                x='UMAP1', y='UMAP2',
+                hue='Diagnosis',
+                style='Dataset',
+                markers={'Local': 'o', 'EBRAINS': 'X'},
+                hue_order=unique_codes,
+                palette='tab10',
+                s=30,
+                alpha=0.8,
+                ax=ax,
+            )
+            if a.hover:
+                import resource
+                soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+                resource.setrlimit(resource.RLIMIT_NOFILE, (100000, hard))
+                ii = [Image.open(v).copy() for v in df['path']]
+                hover_images_on_scatters([g.collections[0]], [ii], ax=ax)
+            plt.show()
 
 
 
