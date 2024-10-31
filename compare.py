@@ -364,7 +364,7 @@ class CLI(BaseMLCLI):
         batch_size: int = Field(100, s='-B')
         use_best: bool = False
         with_features: bool = False
-
+        skip_evaluation: bool = False
         count: int = -1
 
     def run_ebrains(self, a:EbrainsArgs):
@@ -375,67 +375,67 @@ class CLI(BaseMLCLI):
 
         unique_code = config.unique_code()
 
-        model = CompareModel(num_classes=config.num_classes(),
-                             frozen=config.encoder == 'frozen',
-                             base=config.base)
-        checkpoint = Checkpoint.from_file(J(a.model_dir, 'checkpoint_last.pt'))
-        model.load_state_dict(checkpoint.model_state)
-        model = model.to(a.device).eval()
+        if a.skip_evaluation:
+            df_patches = pd.read_excel(J(a.model_dir, 'ebrains.xlsx'), sheet_name='patches')
+        else:
+            model = CompareModel(num_classes=config.num_classes(),
+                                 frozen=config.encoder == 'frozen',
+                                 base=config.base)
+            checkpoint = Checkpoint.from_file(J(a.model_dir, 'checkpoint_last.pt'))
+            model.load_state_dict(checkpoint.model_state)
+            model = model.to(a.device).eval()
 
-        ds = EBRAINSDataset(crop_size=config.crop_size, patch_size=config.size, code=config.code)
+            ds = EBRAINSDataset(crop_size=config.crop_size, patch_size=config.size, code=config.code)
+            loader = DataLoader(ds, a.batch_size, shuffle=False)
+            results = []
+            preds = []
+            featuress = []
 
-        loader = DataLoader(ds, a.batch_size, shuffle=False)
+            print('Evaluating')
+            for i, (xx, gts, idxs) in tqdm(enumerate(loader), total=len(loader)):
+                items = [ds.items[i] for i in idxs]
+                with torch.set_grad_enabled(False):
+                    if a.with_features:
+                        yy, features = model(xx.to(a.device), activate=True, with_features=True)
+                        yy = yy.detach().cpu()
+                        features = features.detach().cpu().numpy()
+                        featuress.append(features)
+                    else:
+                        yy = model(xx.to(a.device), activate=True).cpu().detach()
 
-        results = []
-        preds = []
-        featuress = []
+                preds = torch.argmax(yy, dim=1)
+                for item, y, gt, pred in zip(items, yy, gts, preds):
+                    values = dict(zip([*config.code], y.tolist()))
+                    pred_label = unique_code[pred]
+                    r = {
+                        **item.asdict(),
+                        'pred': pred_label,
+                        'correct': int(pred == gt),
+                        'correct3': int(map3[item.label] == map3[pred_label]),
+                        **values,
+                    }
+                    del r['image']
+                    results.append(r)
 
-        print('Evaluating')
-        for i, (xx, gts, idxs) in tqdm(enumerate(loader), total=len(loader)):
-            items = [ds.items[i] for i in idxs]
-            with torch.set_grad_enabled(False):
-                if a.with_features:
-                    yy, features = model(xx.to(a.device), activate=True, with_features=True)
-                    yy = yy.detach().cpu()
-                    features = features.detach().cpu().numpy()
-                    featuress.append(features)
-                else:
-                    yy = model(xx.to(a.device), activate=True).cpu().detach()
+                if (a.count > 0) and (i >= a.count):
+                    break
+            df_patches = pd.DataFrame(results)
 
-            preds = torch.argmax(yy, dim=1)
-            for item, y, gt, pred in zip(items, yy, gts, preds):
-                values = dict(zip([*config.code], y.tolist()))
-                pred_label = unique_code[pred]
-                r = {
-                    **item.asdict(),
-                    'pred': pred_label,
-                    'correct': int(pred == gt),
-                    'correct3': int(map3[item.label] == map3[pred_label]),
-                    **values,
-                }
-                del r['image']
-                results.append(r)
-
-            if (a.count > 0) and (i >= a.count):
-                break
-
-        df_patches = pd.DataFrame(results)
-
-        if a.with_features:
-            feature_path = J(a.model_dir, 'features_ebrains.pt')
-            features = np.concatenate(featuress)
-            features = features.reshape(features.shape[0], features.shape[1])
-            data = [
-                dict(zip(['name', 'path', 'diag_org', 'pred', 'feature'], values))
-                for values in zip(
-                    df_patches['name'],
-                    df_patches['path'],
-                    df_patches['label'],
-                    df_patches['pred'],
-                    features
-                )
-            ]
-            torch.save(data, with_wrote(feature_path))
+            if a.with_features:
+                feature_path = J(a.model_dir, 'features_ebrains.pt')
+                features = np.concatenate(featuress)
+                features = features.reshape(features.shape[0], features.shape[1])
+                data = [
+                    dict(zip(['name', 'path', 'diag_org', 'pred', 'feature'], values))
+                    for values in zip(
+                        df_patches['name'],
+                        df_patches['path'],
+                        df_patches['label'],
+                        df_patches['pred'],
+                        features
+                    )
+                ]
+                torch.save(data, with_wrote(feature_path))
 
         results_cases = []
         for name, rows in df_patches.groupby('name'):
@@ -445,8 +445,8 @@ class CLI(BaseMLCLI):
                 pred.append(rows[c].mean())
             pred_idx = np.argmax(pred)
             # if B is major, yield pred from second choice
-            # if unique_code[pred_idx] == 'B':
-            #     pred_idx = np.argsort(pred)[-2]
+            if unique_code[pred_idx] == 'B':
+                pred_idx = np.argsort(pred)[-2]
             pred_label = unique_code[pred_idx]
 
             gt_label = rows.iloc[0]['label']
@@ -462,13 +462,13 @@ class CLI(BaseMLCLI):
 
         y_true, y_pred = df_cases['label'], df_cases['pred']
         patch_accuracy = df_patches['correct'].mean()
-        report = skmetrics.classification_report(y_true, y_pred, zero_division=0.0, output_dict=True)
+        report = skmetrics.classification_report(y_true, y_pred, zero_division=1.0, output_dict=True)
         report['patch acc'] = patch_accuracy
         df_report = pd.DataFrame(report).T
 
         y_true3, y_pred3 = y_true.map(map3), y_pred.map(map3)
         patch_accuracy3 = df_patches['correct3'].mean()
-        report3 = skmetrics.classification_report(y_true3, y_pred3, zero_division=0.0, output_dict=True)
+        report3 = skmetrics.classification_report(y_true3, y_pred3, zero_division=1.0, output_dict=True)
         report3['patch acc'] = patch_accuracy3
         df_report3 = pd.DataFrame(report3).T
 
@@ -807,12 +807,14 @@ class CLI(BaseMLCLI):
         ]
 
         metrics_fns = {
-            'Accuracy': lambda df: df[df.index == 'accuracy'].iloc[0, 0],
-            'Accuracy(Patch)': lambda df: df[df.index == 'patch acc'].iloc[0, 0],
-            'F1 score': lambda df: df[df.index == 'macro avg'].iloc[0]['f1-score'],
-            'Precision': lambda df: df[df.index == 'macro avg'].iloc[0]['precision'],
-            'Recall': lambda df: df[df.index == 'macro avg'].iloc[0]['recall'],
+            'Accuracy': lambda df: df.loc['accuracy'].iloc[0],
+            'Accuracy(Patch)': lambda df: df.loc['patch acc'].iloc[0],
+            'F1 score': lambda df: df.loc['macro avg', 'f1-score'],
+            'Precision': lambda df: df.loc['macro avg', 'precision'],
+            'Recall': lambda df: df.loc['macro avg', 'recall'],
             # 'AUROC ': lambda df: df[df.index == 'auc'].iloc[0, 0],
+
+            'G Recall': lambda df: df[df.index == 'G'].iloc[0]['recall'],
         }
 
         target_sheet_name = 'report3' if a.coarse else 'report'
