@@ -454,6 +454,7 @@ class CLI(BaseMLCLI):
                 'name': name,
                 'label': gt_label,
                 'pred': pred_label,
+                'count': len(rows),
                 'correct': int(gt_label == pred_label),
                 'correct3': int(map3[gt_label] == map3[pred_label]),
                 **dict(zip(unique_code, pred))
