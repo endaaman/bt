@@ -716,14 +716,20 @@ class CLI(BaseMLCLI):
         ]
 
         metrics_fns = {
-            'Accuracy': lambda df: df[df.index == 'accuracy'].iloc[0, 0],
-            'Accuracy(Patch)': lambda df: df[df.index == 'patch acc'].iloc[0, 0],
-            'F1 score': lambda df: df[df.index == 'macro avg'].iloc[0]['f1-score'],
-            'Precision': lambda df: df[df.index == 'macro avg'].iloc[0]['precision'],
-            'Recall': lambda df: df[df.index == 'macro avg'].iloc[0]['recall'],
+            'Accuracy(Patch)': lambda df: df.loc['patch acc'].iloc[0],
+            'Accuracy': lambda df: df.loc['accuracy'].iloc[0],
+            'Recall': lambda df: df.loc['macro avg', 'recall'],
+            'Precision': lambda df: df.loc['macro avg', 'precision'],
+            'F1 score': lambda df: df.loc['macro avg', 'f1-score'],
             # 'AUROC ': lambda df: df[df.index == 'auc'].iloc[0, 0],
+            'G Recall': lambda df: df.loc['G', 'recall'],
+            'A Recall': lambda df: df.loc['A', 'recall'],
+            'O Recall': lambda df: df.loc['O', 'recall'],
+            'M Recall': lambda df: df.loc['M', 'recall'],
+            'L Recall': lambda df: df.loc['L', 'recall'],
         }
 
+        skip_when_coarse = ['A Recall', 'O Recall']
         target_sheet_name = 'report3' if a.coarse else 'report'
 
         cache = {}
@@ -743,6 +749,8 @@ class CLI(BaseMLCLI):
                 cond = cond_base.format(limit)
                 mm = {}
                 for key, fn in metrics_fns.items():
+                    if a.coarse and key in skip_when_coarse:
+                        continue
                     m = []
                     for fold in range(5):
                         p = f'out/compare/LMGAOB/fold5_{fold}/{cond}/test/report.xlsx'
@@ -808,16 +816,19 @@ class CLI(BaseMLCLI):
         ]
 
         metrics_fns = {
-            'Accuracy': lambda df: df.loc['accuracy'].iloc[0],
             'Accuracy(Patch)': lambda df: df.loc['patch acc'].iloc[0],
-            'F1 score': lambda df: df.loc['macro avg', 'f1-score'],
-            'Precision': lambda df: df.loc['macro avg', 'precision'],
+            'Accuracy': lambda df: df.loc['accuracy'].iloc[0],
             'Recall': lambda df: df.loc['macro avg', 'recall'],
+            'Precision': lambda df: df.loc['macro avg', 'precision'],
+            'F1 score': lambda df: df.loc['macro avg', 'f1-score'],
             # 'AUROC ': lambda df: df[df.index == 'auc'].iloc[0, 0],
-
-            'G Recall': lambda df: df[df.index == 'G'].iloc[0]['recall'],
+            'G Recall': lambda df: df.loc['G', 'recall'],
+            'A Recall': lambda df: df.loc['A', 'recall'],
+            'O Recall': lambda df: df.loc['O', 'recall'],
+            'M Recall': lambda df: df.loc['M', 'recall'],
+            'L Recall': lambda df: df.loc['L', 'recall'],
         }
-
+        skip_when_coarse = ['A Recall', 'O Recall']
         target_sheet_name = 'report3' if a.coarse else 'report'
 
         results = []
@@ -836,6 +847,8 @@ class CLI(BaseMLCLI):
                         'label': label,
                     }
                     for key, fn in metrics_fns.items():
+                        if a.coarse and key in skip_when_coarse:
+                            continue
                         r[key] = fn(df)
                     results.append(r)
 
