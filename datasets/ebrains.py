@@ -55,7 +55,9 @@ class EBRAINSDataset(Dataset):
             for group in groups:
                 m = re.search(r'[LMGAO]', group)
                 if m is None:
-                    raise RuntimeError('Invalid dir detected:', f'{EBRAINS_BASE}/{group}')
+                    print('Skip', f'{EBRAINS_BASE}/{group}')
+                    # raise RuntimeError('Invalid dir detected:', f'{EBRAINS_BASE}/{group}')
+                    continue
                 label = m.group()
                 print(f'loading {label}')
                 for path in tqdm(glob(J(EBRAINS_BASE, group, '*.jpg'))):

@@ -730,16 +730,6 @@ class CLI(BaseMLCLI):
         }
 
         skip_when_coarse = ['A Recall', 'O Recall']
-        target_sheet_name = 'report3' if a.coarse else 'report'
-
-        cache = {}
-        def load_df(p):
-            if p in cache:
-                print
-                return cache[p]
-            df = pd.read_excel(p, sheet_name=target_sheet_name, index_col=0)
-            # cache[p] = df
-            return df
 
         dfs_to_save = []
 
@@ -747,26 +737,29 @@ class CLI(BaseMLCLI):
             dfs = []
             for limit in limits:
                 cond = cond_base.format(limit)
-                mm = {}
-                for key, fn in metrics_fns.items():
-                    if a.coarse and key in skip_when_coarse:
-                        continue
-                    m = []
-                    for fold in range(5):
-                        p = f'out/compare/LMGAOB/fold5_{fold}/{cond}/test/report.xlsx'
-                        df = load_df(p)
+                mm = []
+                for fold in range(5):
+                    p = f'out/compare/LMGAOB/fold5_{fold}/{cond}/test/report.xlsx'
+                    df = pd.read_excel(p, 'report3' if a.coarse else 'report', index_col=0)
+                    m = {
+                        'fold': fold,
+                        'cond': cond,
+                        'limit': limit,
+                        'label': label
+                    }
+                    for key, fn in metrics_fns.items():
+                        if a.coarse and key in skip_when_coarse:
+                            continue
                         try:
                             value = fn(df)
                         except Exception as e:
                             print('Error in', p)
                             print(df)
                             raise e
-                        m.append(value)
-                    mm[key] = m
+                        m[key] = fn(df)
+                    mm.append(m)
 
                 df = pd.DataFrame(mm)
-                df = pd.DataFrame([{'cond': cond, 'limit': limit, 'label': label}]*5).join(df)
-                df = df.reset_index().rename(columns={'index': 'fold'})
                 dfs.append(df)
             df = pd.concat(dfs).reset_index(drop=True)
             dfs_to_save.append(df)
@@ -776,6 +769,123 @@ class CLI(BaseMLCLI):
         with pd.ExcelWriter(with_wrote(f'out/figs/results_{grains}_cv.xlsx')) as w:
             for limit, df in df_to_save.groupby('limit'):
                 df.to_excel(w, sheet_name=f'{limit}')
+
+    class CmCvArgs(CommonArgs):
+        base: str = 'uni'
+        encoder: str = Field('frozen', choices=['frozen', 'unfrozen'])
+        coarse: bool = False
+        limit: int = 500
+
+    def run_cm_cv(self, a):
+        map3 = {'L':'L', 'M':'M', 'G':'G', 'A':'G', 'O':'G', 'B':'B'}
+        unique_code = list('LMGAOB')
+
+        mm = []
+        for fold in range(5):
+            p = f'out/compare/LMGAOB/fold5_{fold}/{a.encoder}_{a.base}_{a.limit}/test/report.xlsx'
+            df = pd.read_excel(p, 'cases', index_col=0)
+            # drop B
+            df = df[df['gt'] != 'B']
+            m = df[['diag_org']].rename(columns={'diag_org': 'gt'}).copy()
+            y_pred = []
+            for i, row in df.iterrows():
+                p = row['pred(sum)']
+                if p == 'B':
+                    print('pred B')
+                    print(row)
+                    p = row[unique_code].argsort()[-2]
+                    print('select second', p)
+                y_pred.append(p)
+            m['pred'] = y_pred
+            if coarse:
+                m['gt'] = m['gt'].map(map3)
+                m['pred'] = m['pred'].map(map3)
+            mm.append(m)
+        labels = list('GAOML')
+        df = pd.concat(mm)
+        cm = skmetrics.confusion_matrix(df['gt'], df['pred'], labels=labels)
+
+        plt.figure(figsize=(4, 3))
+        sns.heatmap(cm,
+                    annot=True,
+                    fmt='d',
+                    cmap='Blues',
+                    xticklabels=labels,
+                    yticklabels=labels,
+                    square=True)
+        plt.xlabel('Predicted')
+        plt.ylabel('True')
+        plt.title('Confusion Matrix')
+        plt.xticks(rotation=0)
+        plt.yticks(rotation=0)
+        plt.tight_layout()
+        plt.show()
+
+
+
+    class CmArgs(CommonArgs):
+        target = 'cv'
+        base: str = 'uni'
+        encoder: str = Field('frozen', choices=['frozen', 'unfrozen'])
+        coarse: bool = False
+        limit: int = 500
+        with_b: bool= False
+
+    def run_cm(self, a):
+        if a.target == 'cv':
+            gt_key = 'diag_org'
+            pred_key = 'pred(sum)'
+            base_path = 'out/compare/LMGAOB/fold5_{fold}/{cond}/test/report.xlsx'
+        else:
+            gt_key = 'label'
+            pred_key = 'pred'
+            base_path = 'out/compare/LMGAOB/fold5_{fold}/{cond}/ebrains.xlsx'
+
+        unique_code = list('LMGAOB')
+
+        mm = []
+        for fold in range(5):
+            cond = f'{a.encoder}_{a.base}_{a.limit}'
+            # p = f'out/compare/LMGAOB/fold5_{fold}/{a.encoder}_{a.base}_{a.limit}/ebrains.xlsx'
+            p = base_path.format(
+                fold=fold,
+                cond=cond,
+            )
+            df = pd.read_excel(p, 'cases', index_col=0)
+            # drop B
+            df = df[df[gt_key] != 'B']
+            m = df[[gt_key]].rename(columns={gt_key: 'gt'}).copy()
+            y_pred = []
+            for i, row in df.iterrows():
+                p = row[pred_key]
+                if not a.with_b and p == 'B':
+                    print('pred B', row[unique_code])
+                    p = unique_code[row[unique_code].argsort().iloc[-2]]
+                    print('select second', p)
+                y_pred.append(p)
+            m['pred'] = y_pred
+            mm.append(m)
+        labels = list('GAOML')
+        if a.with_b:
+            labels += ['B']
+        df = pd.concat(mm)
+        cm = skmetrics.confusion_matrix(df['gt'], df['pred'], labels=labels)
+
+        plt.figure(figsize=(4, 3))
+        sns.heatmap(cm,
+                    annot=True,
+                    fmt='d',
+                    cmap='Blues',
+                    xticklabels=labels,
+                    yticklabels=labels,
+                    square=True)
+        plt.xlabel('Predicted')
+        plt.ylabel('True')
+        plt.title('Confusion Matrix')
+        plt.xticks(rotation=0)
+        plt.yticks(rotation=0)
+        plt.tight_layout()
+        plt.show()
 
     class SummaryEbrainsArgs(CommonArgs):
         coarse: bool = False
