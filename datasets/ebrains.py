@@ -51,7 +51,7 @@ class EBRAINSDataset(Dataset):
             print('Using cache:', EBRAINS_BASE)
         else:
             print('Extracting cache to', EBRAINS_BASE)
-            groups = os.listdir(EBRAINS_BASE)
+            groups = sorted(os.listdir(EBRAINS_BASE))
             for group in groups:
                 m = re.search(r'[LMGAO]', group)
                 if m is None:
@@ -59,7 +59,7 @@ class EBRAINSDataset(Dataset):
                     # raise RuntimeError('Invalid dir detected:', f'{EBRAINS_BASE}/{group}')
                     continue
                 label = m.group()
-                print(f'loading {label}')
+                print(f'loading {group} for {label}')
                 for path in tqdm(glob(J(EBRAINS_BASE, group, '*.jpg'))):
                     # skip if startswith "_"
                     if os.path.basename(path).startswith('_'):
@@ -73,13 +73,14 @@ class EBRAINSDataset(Dataset):
                     for y, gg in enumerate(ggg):
                         X = len(gg)
                         for x, g in enumerate(gg):
-                            g.save(J(EBRAINS_CACHE, label, name, f'{Y}-{y}_{X}-{x}.png'))
+                            g.save(J(EBRAINS_CACHE, label, name, f'{Y}-{y}_{X}-{x}.jpg'),
+                                   quality=100, optimize=True, progressive=True)
 
         has_file = False
         for label in self.code:
-            paths = glob(J(EBRAINS_CACHE, label, '*/*.png'))
+            paths = glob(J(EBRAINS_CACHE, label, '*/*.jpg'))
             for path in paths:
-                m = re.match(r'^(\d+)-(\d+)_(\d+)-(\d+)\.png$', os.path.basename(path))
+                m = re.match(r'^(\d+)-(\d+)_(\d+)-(\d+)\.jpg$', os.path.basename(path))
                 if m is None or len(m.groups()) != 4:
                     raise RuntimeError('Invalid patch name detected:', path)
                 Y, y, X, x = [int(v) for v in m.groups()]

@@ -1095,6 +1095,82 @@ class CLI(BaseMLCLI):
                 hover_images_on_scatters([g.collections[0]], [ii], ax=ax)
             plt.show()
 
+    class PredictArgs(CommonArgs):
+        model_dir: str = Field(..., s='-d')
+        src: str
+        dest: str = 'tmp'
+        batch_size: int = Field(500, s='-B')
+
+    def run_predict(self, a:PredictArgs):
+        checkpoint = Checkpoint.from_file(J(a.model_dir, 'checkpoint_last.pt'))
+        config = TrainerConfig.from_file(J(a.model_dir, 'config.json'))
+
+        model = CompareModel(num_classes=config.num_classes(),
+                             frozen=config.encoder == 'frozen',
+                             base=config.base)
+        model.load_state_dict(checkpoint.model_state)
+        model = model.to(a.device).eval()
+
+        images, paths = load_images_from_dir_or_file(a.src, with_path=True)
+        names = [os.path.basename(p) for p in paths]
+
+        transform = transforms.Compose([
+            transforms.CenterCrop(config.crop_size),
+            transforms.Resize(config.size),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=MEAN, std=STD),
+        ])
+
+        data = []
+        for name, image, path in zip(names, images, paths):
+            gg = grid_split(image, size=512,  overwrap=False, flattern=True)
+            for g in gg:
+                t = transform(g)
+                data.append({
+                    'name': name,
+                    'path': path,
+                    'image': g,
+                    'tensor': t,
+                })
+
+        df = pd.DataFrame(data)
+        df[['pred', 'L', 'M', 'G', 'A', 'O', 'B']] = '_'
+
+        num_chunks = math.ceil(len(df) / a.batch_size)
+        tq = tqdm(range(num_chunks))
+
+        featuress = []
+        for chunk in tq:
+            i0 = chunk*a.batch_size
+            i1 = (chunk+1)*a.batch_size
+            rows = df[i0:i1]
+            tt = torch.stack(rows['tensor'].tolist())
+            preds = model(tt.to(a.device), activate=True).cpu().detach()
+            pred_labels = np.array(list('LMGAOB'))[torch.argmax(preds, dim=1)]
+            df.loc[df.index[i0:i1], 'pred'] = pred_labels
+            df.loc[df.index[i0:i1], list('LMGAOB')] = preds.numpy()
+
+        df.drop('tensor', axis=1, inplace=True)
+
+        results = []
+        for name, rows in df.groupby('name'):
+            pred = ''.join(rows['pred'])
+            results.append({
+                'name': name,
+                'path': rows['path'].iloc[0],
+                'pred': pred,
+                'pred_aggr': max(list(set(pred)), key=pred.count),
+                **{
+                    k: rows[k].mean() for k in list('LMGAOB')
+                }
+            })
+
+
+        df = pd.DataFrame(results)
+        print(df)
+        df.to_excel(with_wrote('tmp/out.xlsx'))
+
+
 
 
 if __name__ == '__main__':
