@@ -972,13 +972,16 @@ class CLI(BaseMLCLI):
 
     class PreClusterArgs(CommonArgs):
         model_dir: str = Field(..., s='-d')
-        cv_file: str = 'features_test.pt'
+        train_file: str = 'features_train.pt'
+        val_file: str = 'features_test.pt'
         eb_file: str = 'features_ebrains.pt'
-        cv_count: int = Field(50, l='--cv')
-        eb_count: int = Field(10, l='--eb')
+        train_count: int = Field(30, l='--cv')
+        val_count: int = Field(30, l='--cv')
+        eb_count: int = Field(5, l='--eb')
         target: str = Field('both', s='-t', choices=['both', 'cv', 'eb'])
-        n_neighbors: int = 60
-        min_dist: float = 0.2
+        with_train: bool = False
+        n_neighbors: int = 50
+        min_dist: float = 0.5
         spread: float = 1.0
         show: bool = False
         hover: bool = False
@@ -989,19 +992,24 @@ class CLI(BaseMLCLI):
         df_meta_origins = pd.read_excel('data/meta_origin.xlsx')
         df_meta_origins['origin'] = df_meta_origins['origin'].str.capitalize()
 
-        cv_data = torch.load(J(a.model_dir, a.cv_file))
+        val_data = torch.load(J(a.model_dir, a.val_file))
         eb_data = torch.load(J(a.model_dir, a.eb_file))
 
         cols = ['name', 'diag_org', 'pred', 'feature', 'path']
 
-        df = pd.DataFrame([])
-        df = pd.DataFrame(cv_data)
+        df = pd.DataFrame(val_data)
+        df['Dataset'] = 'Local(Val)'
+        if a.with_train:
+            train_data = torch.load(J(a.model_dir, a.train_file))
+            df_train = pd.DataFrame(train_data)
+            df_train['Dataset'] = 'Local(Train)'
+            pd.concat([df, df_train])
+
         df['path'] = [
             os.path.abspath(f'cache/tiles/enda4_512/{r.diag_org}/{r['name']}/{r.filename}')
             for i, r in df.iterrows()
         ]
         df = df[cols]
-        df['Dataset'] = 'Local'
         df = pd.merge(df, df_meta_origins, on='name', how='left')
         df.fillna('', inplace=True)
 
@@ -1018,7 +1026,14 @@ class CLI(BaseMLCLI):
         rng = np.random.default_rng(42)
         for name, _rows in df.groupby('name'):
             row = _rows.iloc[0]
-            count = a.cv_count if row['Dataset'] == 'Local' else a.eb_count
+            if row['diag_org'] == 'B':
+                count = 10
+            else:
+                count = {
+                    'Local(Train)': a.train_count,
+                    'Local(Val)': a.val_count,
+                    'EBRAINS': a.eb_count,
+                }[row['Dataset']]
             # rows = df.loc[np.random.choice(_rows.index, count)]
             # rows = df.iloc[:count]
             # ii = rng.choice(_rows.index, count)
@@ -1031,11 +1046,13 @@ class CLI(BaseMLCLI):
         df = pd.concat(rowss)
         df = df.reset_index(drop=True)
 
-        df_cv = df[df['Dataset'] == 'Local']
+        df_val = df[df['Dataset'] == 'Local(Val)']
+        df_train = df[df['Dataset'] == 'Local(Train)']
         df_eb = df[df['Dataset'] == 'EBRAINS']
-        assert len(df_cv) + len(df_eb) == len(df)
-        print('cv count', len(df_cv))
-        print('ebrains count', len(df_eb))
+        print('total:', len(df))
+        print('train:', len(df_train))
+        print('val:', len(df_val))
+        print('ebrains:', len(df_eb))
 
         reducer = UMAP(
             n_neighbors=a.n_neighbors,
@@ -1047,25 +1064,24 @@ class CLI(BaseMLCLI):
         )
 
         print('Start projection')
-        if a.target == 'both':
-            features = np.stack(df['feature'])
-            embedding = reducer.fit_transform(features)
-            df['UMAP1'] = embedding[:, 0]
-            df['UMAP2'] = embedding[:, 1]
-        else:
-            if a.target == 'cv':
-                df_x, df_y = df_cv, df_eb
-            elif a.target == 'eb':
-                df_x, df_y = df_eb, df_cv
-            else:
-                raise RuntimeError()
-            features = np.stack(df_x['feature'])
-            x_embedding = reducer.fit_transform(features)
-            y_embedding = reducer.transform(np.stack(df_y['feature']))
-            df.loc[df_x.index, 'UMAP1'] = x_embedding[:, 0]
-            df.loc[df_x.index, 'UMAP2'] = x_embedding[:, 1]
-            df.loc[df_y.index, 'UMAP1'] = y_embedding[:, 0]
-            df.loc[df_y.index, 'UMAP2'] = y_embedding[:, 1]
+        features = np.stack(df['feature'])
+        embedding = reducer.fit_transform(features)
+        df['UMAP1'] = embedding[:, 0]
+        df['UMAP2'] = embedding[:, 1]
+        # if False:
+        #     if a.target == 'val':
+        #         df_x, df_y = df_val, df_eb
+        #     elif a.target == 'eb':
+        #         df_x, df_y = df_eb, df_cv
+        #     else:
+        #         raise RuntimeError()
+        #     features = np.stack(df_x['feature'])
+        #     x_embedding = reducer.fit_transform(features)
+        #     y_embedding = reducer.transform(np.stack(df_y['feature']))
+        #     df.loc[df_x.index, 'UMAP1'] = x_embedding[:, 0]
+        #     df.loc[df_x.index, 'UMAP2'] = x_embedding[:, 1]
+        #     df.loc[df_y.index, 'UMAP1'] = y_embedding[:, 0]
+        #     df.loc[df_y.index, 'UMAP2'] = y_embedding[:, 1]
 
         df = df.rename(columns={'diag_org': 'Diagnosis'})
         df = df.drop(columns='feature')
@@ -1080,7 +1096,7 @@ class CLI(BaseMLCLI):
                 x='UMAP1', y='UMAP2',
                 hue='Diagnosis',
                 style='Dataset',
-                markers={'Local': 'o', 'EBRAINS': 'X'},
+                markers={'Local(Val)': 'o', 'Local(Train)': '^', 'EBRAINS': 'X'},
                 hue_order=unique_codes,
                 palette='tab10',
                 s=30,
