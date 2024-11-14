@@ -13,6 +13,7 @@ from torch import optim
 from torchvision import transforms
 from torch.utils.data import DataLoader
 from matplotlib import pyplot as plt
+import matplotlib
 import seaborn as sns
 from sklearn import metrics as skmetrics
 from sklearn.preprocessing import label_binarize
@@ -975,19 +976,18 @@ class CLI(BaseMLCLI):
         train_file: str = 'features_train.pt'
         val_file: str = 'features_test.pt'
         eb_file: str = 'features_ebrains.pt'
-        train_count: int = Field(30, l='--train')
-        val_count: int = Field(30, l='--val')
-        eb_count: int = Field(5, l='--eb')
-        target: str = Field('both', s='-t', choices=['both', 'cv', 'eb'])
-        with_train: bool = False
-        n_neighbors: int = 50
-        min_dist: float = 0.5
+        train_count: int = 5
+        val_count: int = 20
+        eb_count: int = 10
+        n_neighbors: int = 40
+        min_dist: float = 0.2
         spread: float = 1.0
         show: bool = False
         hover: bool = False
 
     def run_pre_cluster(self, a):
         from umap import UMAP
+        # matplotlib.use('QtAgg')
 
         df_meta_origins = pd.read_excel('data/meta_origin.xlsx')
         df_meta_origins['origin'] = df_meta_origins['origin'].str.capitalize()
@@ -999,17 +999,20 @@ class CLI(BaseMLCLI):
 
         df = pd.DataFrame(val_data)
         df['Dataset'] = 'Local(Val)'
-        if a.with_train:
-            train_data = torch.load(J(a.model_dir, a.train_file))
+        train_data_path = J(a.model_dir, a.train_file)
+        if os.path.exists(train_data_path):
+            train_data = torch.load(train_data_path)
             df_train = pd.DataFrame(train_data)
             df_train['Dataset'] = 'Local(Train)'
-            pd.concat([df, df_train])
+            df = pd.concat([df, df_train])
+        else:
+            print(f'info: train data does not exist {train_data_path}')
 
         df['path'] = [
             os.path.abspath(f'cache/tiles/enda4_512/{r.diag_org}/{r['name']}/{r.filename}')
             for i, r in df.iterrows()
         ]
-        df = df[cols]
+        df = df[cols + ['Dataset']]
         df = pd.merge(df, df_meta_origins, on='name', how='left')
         df.fillna('', inplace=True)
 
@@ -1026,14 +1029,19 @@ class CLI(BaseMLCLI):
         rng = np.random.default_rng(42)
         for name, _rows in df.groupby('name'):
             row = _rows.iloc[0]
-            if row['diag_org'] == 'B':
-                count = 10
+            ds = row['Dataset']
+            if ds == 'EBRAINS':
+                count = a.eb_count
             else:
-                count = {
-                    'Local(Train)': a.train_count,
-                    'Local(Val)': a.val_count,
-                    'EBRAINS': a.eb_count,
-                }[row['Dataset']]
+                if ds == 'Local(Train)':
+                    count = a.train_count
+                elif ds == 'Local(Val)':
+                    count = a.val_count
+                else:
+                    raise RuntimeError('Invalid dataset', ds)
+                if row['diag_org'] == 'B':
+                    count = 5
+
             # rows = df.loc[np.random.choice(_rows.index, count)]
             # rows = df.iloc[:count]
             # ii = rng.choice(_rows.index, count)
@@ -1059,8 +1067,8 @@ class CLI(BaseMLCLI):
             min_dist=a.min_dist,
             spread=a.spread,
             n_components=2,
-            n_jobs=1,
-            random_state=42,
+            # n_jobs=1,
+            # random_state=42,
         )
 
         print('Start projection')
@@ -1068,20 +1076,6 @@ class CLI(BaseMLCLI):
         embedding = reducer.fit_transform(features)
         df['UMAP1'] = embedding[:, 0]
         df['UMAP2'] = embedding[:, 1]
-        # if False:
-        #     if a.target == 'val':
-        #         df_x, df_y = df_val, df_eb
-        #     elif a.target == 'eb':
-        #         df_x, df_y = df_eb, df_cv
-        #     else:
-        #         raise RuntimeError()
-        #     features = np.stack(df_x['feature'])
-        #     x_embedding = reducer.fit_transform(features)
-        #     y_embedding = reducer.transform(np.stack(df_y['feature']))
-        #     df.loc[df_x.index, 'UMAP1'] = x_embedding[:, 0]
-        #     df.loc[df_x.index, 'UMAP2'] = x_embedding[:, 1]
-        #     df.loc[df_y.index, 'UMAP1'] = y_embedding[:, 0]
-        #     df.loc[df_y.index, 'UMAP2'] = y_embedding[:, 1]
 
         df = df.rename(columns={'diag_org': 'Diagnosis'})
         df = df.drop(columns='feature')
@@ -1096,7 +1090,7 @@ class CLI(BaseMLCLI):
                 x='UMAP1', y='UMAP2',
                 hue='Diagnosis',
                 style='Dataset',
-                markers={'Local(Val)': 'o', 'Local(Train)': '^', 'EBRAINS': 'X'},
+                markers={'Local(Train)': 'o', 'Local(Val)': '^', 'EBRAINS': 'X'},
                 hue_order=unique_codes,
                 palette='tab10',
                 s=30,
@@ -1104,6 +1098,7 @@ class CLI(BaseMLCLI):
                 ax=ax,
             )
             if a.hover:
+            # if True:
                 import resource
                 soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
                 resource.setrlimit(resource.RLIMIT_NOFILE, (100000, hard))
