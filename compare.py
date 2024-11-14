@@ -975,8 +975,8 @@ class CLI(BaseMLCLI):
         train_file: str = 'features_train.pt'
         val_file: str = 'features_test.pt'
         eb_file: str = 'features_ebrains.pt'
-        train_count: int = Field(30, l='--cv')
-        val_count: int = Field(30, l='--cv')
+        train_count: int = Field(30, l='--train')
+        val_count: int = Field(30, l='--val')
         eb_count: int = Field(5, l='--eb')
         target: str = Field('both', s='-t', choices=['both', 'cv', 'eb'])
         with_train: bool = False
