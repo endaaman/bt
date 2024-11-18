@@ -38,7 +38,7 @@ from endaaman.ml.utils import hover_images_on_scatters
 from models import CompareModel
 from datasets import FoldDataset, MEAN, STD
 from datasets.ebrains import EBRAINSDataset
-from utils import draw_frame
+from utils import draw_frame, pad16
 
 
 torch.multiprocessing.set_sharing_strategy('file_system')
@@ -480,54 +480,81 @@ class CLI(BaseMLCLI):
             df_report.to_excel(w, sheet_name='report', index=True)
             df_report3.to_excel(w, sheet_name='report3', index=True)
 
-#     class CalcEbrainsArgs(BaseDLArgs):
-#         model_dir: str = Field(..., s='-d')
 
-#     def run_calc_ebrains(self, a):
-#         config = TrainerConfig.from_file(J(a.model_dir, 'config.json'))
-#         df_patches = pd.read_excel(J(a.model_dir, 'ebrains.xlsx'), sheet_name='patches')
-#         unique_code = config.unique_code()
 
-#         results_cases = []
-#         for path, rows in df_patches.groupby('path'):
-#             assert rows['label'].nunique() == 1
-#             pred = []
-#             for c in unique_code:
-#                 pred.append(rows[c].mean())
-#             pred_idx = np.argmax(pred)
-#             # if B is major, yield pred from second choice
-#             # if unique_code[pred_idx] == 'B':
-#             #     pred_idx = np.argsort(pred)[-2]
-#             pred_label = unique_code[pred_idx]
+    class DrawSamplesArgs(CommonArgs):
+        model_dir: str = Field(..., s='-d')
+        batch_size: int = Field(500, s='-B')
+        target: str = Field('test', choices=['train', 'test', 'ebrains'])
 
-#             gt_label = rows.iloc[0]['label']
-#             results_cases.append({
-#                 'path': path,
-#                 'label': gt_label,
-#                 'pred': pred_label,
-#                 'correct': int(gt_label == pred_label),
-#                 'correct3': int(map3[gt_label] == map3[pred_label]),
-#                 **dict(zip(unique_code, pred))
-#             })
-#         df_cases = pd.DataFrame(results_cases)
+    def run_draw_samples(self, a):
+        checkpoint = Checkpoint.from_file(J(a.model_dir, 'checkpoint_last.pt'))
+        config = TrainerConfig.from_file(J(a.model_dir, 'config.json'))
 
-#         y_true, y_pred = df_cases['label'], df_cases['pred']
-#         patch_accuracy = df_patches['correct'].mean()
-#         report = skmetrics.classification_report(y_true, y_pred, zero_division=0.0, output_dict=True)
-#         report['patch acc'] = patch_accuracy
-#         df_report = pd.DataFrame(report).T
+        model = CompareModel(num_classes=config.num_classes(),
+                             frozen=config.encoder == 'frozen',
+                             base=config.base)
+        model.load_state_dict(checkpoint.model_state)
+        model = model.to(a.device).eval()
 
-#         y_true3, y_pred3 = y_true.map(map3), y_pred.map(map3)
-#         patch_accuracy3 = df_patches['correct3'].mean()
-#         report3 = skmetrics.classification_report(y_true3, y_pred3, zero_division=0.0, output_dict=True)
-#         report3['patch acc'] = patch_accuracy3
-#         df_report3 = pd.DataFrame(report3).T
+        items = []
 
-#         with pd.ExcelWriter(with_wrote(J(a.model_dir, 'ebrains2.xlsx'))) as w:
-#             df_patches.to_excel(w, sheet_name='patches', index=False)
-#             df_cases.to_excel(w, sheet_name='cases', index=False)
-#             df_report.to_excel(w, sheet_name='report', index=True)
-#             df_report3.to_excel(w, sheet_name='report3', index=True)
+        if a.target in ['train', 'test']:
+            df = pd.read_excel('data/tiles/enda4_512/folds5.xlsx')
+            if a.target == 'test':
+                df = df[df['fold'] == config.fold]
+            else:
+                df = df[df['fold'] != config.fold]
+            for i, row in df.iterrows():
+                name, diag = row['name'], row['diag']
+                items.append({
+                    'diag': diag,
+                    'name': name,
+                    'path': f'data/images/enda4/{diag}/{name}_01.jpg',
+                })
+        elif a.target == 'ebrains':
+            for d in sorted(os.listdir('data/EBRAINS/')):
+                m = re.search(r'[LMGAO]', d)
+                if m is None:
+                    print('Skip', f'data/EBRAINS/{d}')
+                    continue
+                diag = m.group()
+                for filename in sorted(os.listdir(f'data/EBRAINS/{d}/')):
+                    name = os.path.splitext(filename)[0]
+                    items.append({
+                        'diag': diag,
+                        'name': name,
+                        'path': f'data/EBRAINS/{d}/{filename}',
+                    })
+        else:
+            raise RuntimeError(f'Invalid target', a.target)
+
+        # df = pd.DataFrame(items)
+        # print(df)
+
+        transform = transforms.Compose([
+            # transforms.Resize(224),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=MEAN, std=STD),
+        ])
+
+        for item in items:
+            image = Image.open(item['path'])
+            ggg = grid_split(image, 512, overwrap=False, flattern=False)
+            H = len(ggg)
+            W = len(ggg[0])
+            scale = 224/512
+            for y, gg in enumerate(ggg):
+                for x, g in enumerate(gg):
+                    orig_size = g.size
+                    img, pos = pad16(g.resize((round(g.width*scale), round(g.height*scale))), with_dimension=True)
+                    t = transform(img)[None, ...]
+                    print(t.shape)
+                    p = model(t.to(a.device), activate=True).cpu().detach()[0]
+                    print(orig_size, pos)
+                    print(p)
+                    print(p.shape)
+                    return
 
 
     class CalcResultsArgs(CommonArgs):
@@ -982,6 +1009,7 @@ class CLI(BaseMLCLI):
         n_neighbors: int = 40
         min_dist: float = 0.2
         spread: float = 1.0
+        with_suffix: bool = False
         show: bool = False
         hover: bool = False
 
@@ -1040,7 +1068,7 @@ class CLI(BaseMLCLI):
                 else:
                     raise RuntimeError('Invalid dataset', ds)
                 if row['diag_org'] == 'B':
-                    count = 5
+                    count = 2
 
             # rows = df.loc[np.random.choice(_rows.index, count)]
             # rows = df.iloc[:count]
@@ -1079,7 +1107,9 @@ class CLI(BaseMLCLI):
 
         df = df.rename(columns={'diag_org': 'Diagnosis'})
         df = df.drop(columns='feature')
-        df.to_excel(with_wrote(J(a.model_dir, 'integrated_umap_embeddings.xlsx')))
+        suffix = f'_{a.n_neighbors}_{a.min_dist}_{a.spread}' if a.with_suffix else ''
+        os.makedirs(J(a.model_dir, 'umap'), exist_ok=True)
+        df.to_excel(with_wrote(J(a.model_dir, 'umap', f'integrated_embeddings{suffix}.xlsx')))
 
         if a.show:
             fig = plt.figure(figsize=(12, 10))
