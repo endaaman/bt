@@ -53,30 +53,30 @@ def pad16(image: ImageType, with_dimension:bool=False) -> ImageType:
 def get_font():
     return ImageFont.truetype('/usr/share/fonts/ubuntu/Ubuntu-R.ttf', size=36)
 
-def draw_frame(i, pred, unique_code):
+def draw_frame(size: [int, int], text, bg_color, fg_color='#fff'):
     font = get_font()
-    d = unique_code[np.argmax(pred)]
-    bg = COLORS[d]
-    fg = FG_COLORS[d]
 
-    draw = ImageDraw.Draw(i)
+    image = Image.new('RGBA', (size[0], size[1]), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(image)
     draw.rectangle(
-        xy=((0, 0), (i.width, i.height)),
-        outline=bg,
+        xy=((0, 0), (size[0]-1, size[1]-1)),
+        outline=bg_color,
+        width=1,
     )
-    text = ' '.join([f'{k}:{round(pred[i])*100}' for i, k in enumerate(unique_code)])
     # text = item['pred'] + ' '+ text
     bb = draw.textbbox(xy=(0, 0), text=text, font=font, spacing=8)
     draw.rectangle(
         xy=(0, 0, bb[2]+4, bb[3]+4),
-        fill=bg,
+        fill=bg_color,
     )
     draw.text(
         xy=(0, 0),
         text=text,
         font=font,
-        fill=fg
+        fill=fg_color,
     )
+    return image
+
 
 def show_fold_diag(df):
     for fold, df0 in df.groupby('fold'):
@@ -173,6 +173,26 @@ def test_grid2():
     ii = grid_split(i, 500, overwrap=False, flattern=True)
     tt = [pil_to_tensor(i) for i in ii]
     tensor_to_pil(make_grid(tt, nrow=2, padding=0)).save('grid.png')
+
+def grid_compose_image(image_grid: list[list[Image.Image]]) -> Image.Image:
+    cell_width = image_grid[0][0].width
+    cell_height = image_grid[0][0].height
+    rows = len(image_grid)
+    cols = len(image_grid[0])
+
+    grid_width = cell_width * cols
+    grid_height = cell_height * rows
+    grid_image = Image.new('RGBA', (grid_width, grid_height), (0, 0, 0, 0))
+
+    for i in range(rows):
+        for j in range(cols):
+            x = j * cell_width
+            y = i * cell_height
+            grid_image.paste(
+                image_grid[i][j],
+                (x, y, x + cell_width, y + cell_height)
+            )
+    return grid_image
 
 
 if __name__ == '__main__':

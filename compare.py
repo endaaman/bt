@@ -38,12 +38,31 @@ from endaaman.ml.utils import hover_images_on_scatters
 from models import CompareModel
 from datasets import FoldDataset, MEAN, STD
 from datasets.ebrains import EBRAINSDataset
-from utils import draw_frame, pad16
+from utils import draw_frame, pad16, grid_compose_image
 
 
 torch.multiprocessing.set_sharing_strategy('file_system')
 np.set_printoptions(suppress=True, floatmode='fixed')
 J = os.path.join
+
+COLORS = {
+    'L': '#1f77b4',
+    'M': '#ff7f0e',
+    'G': '#2ca02c',
+    'A': '#d62728',
+    'O': '#9467bd',
+    'B': '#AC64AD',
+}
+
+FG_COLORS = {
+    'L': 'white',
+    'M': 'white',
+    'G': 'white',
+    'A': 'white',
+    'O': 'white',
+    'B': 'white',
+}
+
 
 
 class TrainerConfig(BaseTrainerConfig):
@@ -529,8 +548,7 @@ class CLI(BaseMLCLI):
         else:
             raise RuntimeError(f'Invalid target', a.target)
 
-        # df = pd.DataFrame(items)
-        # print(df)
+        unique_code = config.unique_code()
 
         transform = transforms.Compose([
             # transforms.Resize(224),
@@ -538,23 +556,33 @@ class CLI(BaseMLCLI):
             transforms.Normalize(mean=MEAN, std=STD),
         ])
 
+
         for item in items:
             image = Image.open(item['path'])
             ggg = grid_split(image, 512, overwrap=False, flattern=False)
             H = len(ggg)
             W = len(ggg[0])
             scale = 224/512
+
+            ttt = []
             for y, gg in enumerate(ggg):
+                tt = []
                 for x, g in enumerate(gg):
+                    tile = g.convert('RGBA')
                     orig_size = g.size
                     img, pos = pad16(g.resize((round(g.width*scale), round(g.height*scale))), with_dimension=True)
                     t = transform(img)[None, ...]
-                    print(t.shape)
-                    p = model(t.to(a.device), activate=True).cpu().detach()[0]
-                    print(orig_size, pos)
-                    print(p)
-                    print(p.shape)
-                    return
+                    pred = model(t.to(a.device), activate=True).cpu().detach()[0].numpy()
+                    pred_label = unique_code[np.argmax(pred)]
+                    pred_dict = {k: pred[i] for i, k in enumerate(unique_code) }
+                    text = ' '.join([f'{k}:{round(pred_dict[k])*100}' for k in 'GAOLMB'])
+                    frame = draw_frame(g.size, text, COLORS[pred_label], FG_COLORS[pred_label])
+                    tile.paste(frame, (0, 0, frame.width, frame.height), mask=frame)
+                    tt.append(tile)
+                ttt.append(tt)
+            image = grid_compose_image(ttt)
+            image.save('tmp.png')
+            return
 
 
     class CalcResultsArgs(CommonArgs):
