@@ -29,6 +29,26 @@ FG_COLORS = {
     'B': 'white',
 }
 
+def pad16(image: ImageType, with_dimension:bool=False) -> ImageType:
+    width, height = image.size
+    # 16の倍数となる最小サイズを計算
+    new_width = ((width + 15) // 16) * 16
+    new_height = ((height + 15) // 16) * 16
+    # 新しい黒い背景画像を作成
+    if image.mode in ('RGBA', 'LA'):
+        # アルファチャンネルがある場合は透明な黒背景
+        background = Image.new(image.mode, (new_width, new_height), (0, 0, 0, 0))
+    else:
+        # アルファチャンネルがない場合は黒背景
+        background = Image.new(image.mode, (new_width, new_height), 0)
+    # 画像を中央に配置するための座標を計算
+    x = (new_width - width) // 2
+    y = (new_height - height) // 2
+    background.paste(image, (x, y))
+    if with_dimension:
+        return background, (x, y, new_width, new_height)
+    return background
+
 @lru_cache
 def get_font():
     return ImageFont.truetype('/usr/share/fonts/ubuntu/Ubuntu-R.ttf', size=36)

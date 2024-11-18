@@ -77,10 +77,10 @@ class CompareModel(nn.Module):
         self.frozen = frozen
         if base == 'uni':
             # 'vit_large_patch16_224'
-            self.base = timm.create_model('hf-hub:MahmoodLab/uni', pretrained=True, init_values=1e-5)
+            self.base = timm.create_model('hf-hub:MahmoodLab/uni', pretrained=True, init_values=1e-5, dynamic_img_size=True)
         elif base == 'gigapath':
             # 'vit_giant_patch14_dinov2'
-            self.base = timm.create_model('hf_hub:prov-gigapath/prov-gigapath', pretrained=True)
+            self.base = timm.create_model('hf_hub:prov-gigapath/prov-gigapath', pretrained=True, dynamic_img_size=True)
         elif base == 'ctranspath':
             self.base = ctranspath(pretrained=True)
         elif base == 'baseline-cnn':
@@ -96,10 +96,10 @@ class CompareModel(nn.Module):
             #     'dynamic_img_size': True,
             #     'pretrained': True,
             # }
-            self.base = timm.create_model('vit_large_patch16_224', pretrained=True)
+            self.base = timm.create_model('vit_large_patch16_224', pretrained=True, dynamic_img_size=True)
             self.base.head = nn.Identity()
         elif base == 'random-vit':
-            self.base = timm.create_model('vit_large_patch16_224', pretrained=False)
+            self.base = timm.create_model('vit_large_patch16_224', pretrained=False, dynamic_img_size=True)
             self.base.head = nn.Identity()
         elif base == 'random-cnn':
             self.base = timm.create_model('resnetrs50', pretrained=False)
