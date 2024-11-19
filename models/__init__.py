@@ -70,11 +70,12 @@ class TimmModel(nn.Module):
         return x
 
 class CompareModel(nn.Module):
-    def __init__(self, num_classes, frozen=False, base='random'):
+    def __init__(self, num_classes, frozen=False, base_name='random'):
         super().__init__()
         self.num_classes = num_classes
         self.pool = nn.Identity()
         self.frozen = frozen
+        self.base_name = base
         if base == 'uni':
             # 'vit_large_patch16_224'
             self.base = timm.create_model('hf-hub:MahmoodLab/uni', pretrained=True, init_values=1e-5, dynamic_img_size=True)
@@ -136,7 +137,16 @@ class CompareModel(nn.Module):
         super().load_state_dict(w, strict, assign)
 
     def get_cam_layers(self):
-        return get_cam_layers(self.base, self.name)
+        match self.base_name:
+            case 'uni' | 'baseline-vit' | 'random-vit':
+                # VIT-L, VIT
+                return [self.base.blocks[-1].attn]
+            case 'gigapath':
+                return [self.base.blocks[-1].attn]
+            case 'baseline-vit':
+                return [self.base.layer4[-1]]
+        # return get_cam_layers(self.base, self.name)
+        return
 
     def freeze_encoder(self):
         self.frozen = True
