@@ -556,6 +556,10 @@ class CLI(BaseMLCLI):
             transforms.Normalize(mean=MEAN, std=STD),
         ])
 
+        gradcam = CAM.GradCAMPlusPlus(
+            model=model,
+            target_layers=model.get_cam_layers(),
+        )
 
         for item in items:
             image = Image.open(item['path'])
@@ -573,12 +577,28 @@ class CLI(BaseMLCLI):
                     img, pos = pad16(g.resize((round(g.width*scale), round(g.height*scale))), with_dimension=True)
                     t = transform(img)[None, ...]
                     pred = model(t.to(a.device), activate=True).cpu().detach()[0].numpy()
-                    pred_label = unique_code[np.argmax(pred)]
+                    pred_index = np.argmax(pred)
+                    pred_label = unique_code[pred_index]
                     pred_dict = {k: pred[i] for i, k in enumerate(unique_code) }
                     text = ' '.join([f'{k}:{round(pred_dict[k])*100}' for k in 'GAOLMB'])
                     frame = draw_frame(g.size, text, COLORS[pred_label], FG_COLORS[pred_label])
-                    tile.paste(frame, (0, 0, frame.width, frame.height), mask=frame)
-                    tt.append(tile)
+
+                    targets =  [ClassifierOutputTarget(pred_index)]
+                    grayscale_cam = gradcam(
+                        input_tensor=t,
+                        targets=targets,
+                        eigen_smooth=True  # より滑らかな結果を得る
+                    )[0]
+
+                    masked_tile = show_cam_on_image(
+                        np.array(tile),
+                        attention_map,
+                        use_rgb=True,
+                        image_weight=0.7  # 元画像とヒートマップの混合比
+                    )
+                    masked_tile = Image.fromarray(masked_tile)
+                    masked_tile.paste(frame, (0, 0, frame.width, frame.height), mask=frame)
+                    tt.append(masked_tile)
                 ttt.append(tt)
             image = grid_compose_image(ttt)
             image.save('tmp.png')

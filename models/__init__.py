@@ -70,7 +70,7 @@ class TimmModel(nn.Module):
         return x
 
 class CompareModel(nn.Module):
-    def __init__(self, num_classes, frozen=False, base_name='random'):
+    def __init__(self, num_classes, frozen=False, base='random'):
         super().__init__()
         self.num_classes = num_classes
         self.pool = nn.Identity()
@@ -145,8 +145,9 @@ class CompareModel(nn.Module):
                 return [self.base.blocks[-1].attn]
             case 'baseline-vit':
                 return [self.base.layer4[-1]]
-        # return get_cam_layers(self.base, self.name)
-        return
+            # case _:
+            #     raise RuntimeError('Invalid', _)
+        return get_cam_layers(self.base, self.base_name)
 
     def freeze_encoder(self):
         self.frozen = True
