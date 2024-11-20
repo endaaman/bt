@@ -175,24 +175,27 @@ def test_grid2():
     tensor_to_pil(make_grid(tt, nrow=2, padding=0)).save('grid.png')
 
 def grid_compose_image(image_grid: list[list[Image.Image]]) -> Image.Image:
-    cell_width = image_grid[0][0].width
-    cell_height = image_grid[0][0].height
-    rows = len(image_grid)
-    cols = len(image_grid[0])
+    row_heights = [max(img.height for img in row) for row in image_grid]
+    col_widths = [max(img.width for img in col) for col in zip(*image_grid)]
 
-    grid_width = cell_width * cols
-    grid_height = cell_height * rows
-    grid_image = Image.new('RGBA', (grid_width, grid_height), (0, 0, 0, 0))
+    # 結果画像のサイズを計算
+    total_width = sum(col_widths)
+    total_height = sum(row_heights)
 
-    for i in range(rows):
-        for j in range(cols):
-            x = j * cell_width
-            y = i * cell_height
-            grid_image.paste(
-                image_grid[i][j],
-                (x, y, x + cell_width, y + cell_height)
-            )
-    return grid_image
+    # 新しい画像を作成
+    result = Image.new('RGBA', (total_width, total_height), (0, 0, 0, 0))
+
+    # 画像を配置
+    y_offset = 0
+    for row_idx, row in enumerate(image_grid):
+        x_offset = 0
+        for col_idx, img in enumerate(row):
+            result.paste(img, (x_offset, y_offset))
+            x_offset += col_widths[col_idx]
+        y_offset += row_heights[row_idx]
+
+    return result
+
 
 
 if __name__ == '__main__':

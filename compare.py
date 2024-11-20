@@ -12,7 +12,7 @@ from torch import nn
 from torch import optim
 from torchvision import transforms
 from torch.utils.data import DataLoader
-from matplotlib import pyplot as plt
+from matplotlib import pyplot as plt, cm as colormap
 import matplotlib
 import seaborn as sns
 from sklearn import metrics as skmetrics
@@ -51,7 +51,8 @@ COLORS = {
     'G': '#2ca02c',
     'A': '#d62728',
     'O': '#9467bd',
-    'B': '#AC64AD',
+    # 'B': '#ac64ad',
+    'B': '#8c564b',
 }
 
 FG_COLORS = {
@@ -62,6 +63,46 @@ FG_COLORS = {
     'O': 'white',
     'B': 'white',
 }
+
+
+def find_closest_pair(x, r):
+    closest_diff = float('inf')
+    closest_a = None
+    closest_b = None
+    for a in range(1, x + 1):
+        if x % a != 0:
+            continue
+        b = x // a
+        current_r = a / b
+        diff = abs(current_r - r)
+        if diff < closest_diff:
+            closest_diff = diff
+            closest_a = a
+            closest_b = b
+    return closest_a, closest_b
+
+
+def get_reshaper(name, width, height):
+    if 'cnn' in name:
+        return None
+
+    feature_size = 1024
+
+    def reshape_transform(tensor):
+        tensor = tensor[:, 1:, :]
+        w, h = find_closest_pair(tensor.numel()//feature_size, width/height)
+        result = tensor.reshape(
+            tensor.size(0),
+            h,
+            w,
+            tensor.size(-1)
+        )
+        # ABCD -> ABDC -> ADBC
+        result = result.transpose(2, 3).transpose(1, 2)
+        return result
+
+    return reshape_transform
+
 
 
 
@@ -506,7 +547,7 @@ class CLI(BaseMLCLI):
         batch_size: int = Field(500, s='-B')
         target: str = Field('test', choices=['train', 'test', 'ebrains'])
 
-    def run_draw_samples(self, a):
+    def run_draw_samples(self, a:DrawSamplesArgs):
         checkpoint = Checkpoint.from_file(J(a.model_dir, 'checkpoint_last.pt'))
         config = TrainerConfig.from_file(J(a.model_dir, 'config.json'))
 
@@ -515,6 +556,7 @@ class CLI(BaseMLCLI):
                              base=config.base)
         model.load_state_dict(checkpoint.model_state)
         model = model.to(a.device).eval()
+        model.unfreeze_encoder()
 
         items = []
 
@@ -539,7 +581,9 @@ class CLI(BaseMLCLI):
                     continue
                 diag = m.group()
                 for filename in sorted(os.listdir(f'data/EBRAINS/{d}/')):
-                    name = os.path.splitext(filename)[0]
+                    name, ext = os.path.splitext(filename)
+                    if ext != '.jpg':
+                        continue
                     items.append({
                         'diag': diag,
                         'name': name,
@@ -556,53 +600,71 @@ class CLI(BaseMLCLI):
             transforms.Normalize(mean=MEAN, std=STD),
         ])
 
-        gradcam = CAM.GradCAMPlusPlus(
-            model=model,
-            target_layers=model.get_cam_layers(),
-        )
 
-        for item in items:
-            image = Image.open(item['path'])
-            ggg = grid_split(image, 512, overwrap=False, flattern=False)
+        tq = tqdm(items, position=0)
+        for item in tq:
+            name, diag = item['name'], item['diag']
+            orig_image = Image.open(item['path'])
+            ggg = grid_split(orig_image, 512, overwrap=False, flattern=False)
             H = len(ggg)
             W = len(ggg[0])
             scale = 224/512
-
+            # scale = 1
+            gt_index = unique_code.index(diag)
             ttt = []
+            tq2 = tqdm(total=H*W, leave=False, position=1)
             for y, gg in enumerate(ggg):
                 tt = []
                 for x, g in enumerate(gg):
-                    tile = g.convert('RGBA')
-                    orig_size = g.size
-                    img, pos = pad16(g.resize((round(g.width*scale), round(g.height*scale))), with_dimension=True)
-                    t = transform(img)[None, ...]
-                    pred = model(t.to(a.device), activate=True).cpu().detach()[0].numpy()
+                    tile_orig = g.convert('RGBA')
+                    tile_resized, pos = pad16(g.resize((round(g.width*scale), round(g.height*scale))), with_dimension=True)
+
+                    gradcam = CAM.GradCAMPlusPlus(
+                    # gradcam = CAM.GradCAM(
+                        model=model,
+                        target_layers=model.get_cam_layers(),
+                        reshape_transform=get_reshaper(config.base, tile_resized.width, tile_resized.height),
+                    )
+
+                    t = transform(tile_resized)[None, ...]
+                    with torch.no_grad():
+                        pred = model(t.to(a.device), activate=True).cpu().detach()[0].numpy()
                     pred_index = np.argmax(pred)
                     pred_label = unique_code[pred_index]
                     pred_dict = {k: pred[i] for i, k in enumerate(unique_code) }
-                    text = ' '.join([f'{k}:{round(pred_dict[k])*100}' for k in 'GAOLMB'])
+                    text = ' '.join([f'{k}:{round(pred_dict[k]*100)}' for k in 'GAOLMB'])
                     frame = draw_frame(g.size, text, COLORS[pred_label], FG_COLORS[pred_label])
 
+                    # print(pred_index, pred_label, pred)
                     targets =  [ClassifierOutputTarget(pred_index)]
-                    grayscale_cam = gradcam(
+                    # targets =  [ClassifierOutputTarget(gt_index)]
+
+                    cam_mask = gradcam(
                         input_tensor=t,
                         targets=targets,
-                        eigen_smooth=True  # より滑らかな結果を得る
+                        eigen_smooth=True
                     )[0]
+                    # mask = Image.fromarray((grayscale_cam * 255).astype(np.uint8))
+                    cam_base = Image.fromarray(np.uint8(colormap.jet(cam_mask)*255))
 
-                    masked_tile = show_cam_on_image(
-                        np.array(tile),
-                        attention_map,
-                        use_rgb=True,
-                        image_weight=0.7  # 元画像とヒートマップの混合比
-                    )
-                    masked_tile = Image.fromarray(masked_tile)
-                    masked_tile.paste(frame, (0, 0, frame.width, frame.height), mask=frame)
-                    tt.append(masked_tile)
+                    cam_resized = cam_base.crop((pos[0], pos[1], tile_resized.width, tile_resized.height))
+                    cam_orig = cam_resized.resize(tile_orig.size)
+                    tile_orig = Image.blend(tile_orig, cam_orig, alpha=0.5)
+                    tile_orig.paste(frame, (0, 0, frame.width, frame.height), mask=frame)
+                    tt.append(tile_orig)
+                    tq2.update(1)
                 ttt.append(tt)
-            image = grid_compose_image(ttt)
-            image.save('tmp.png')
-            return
+            grid_image = grid_compose_image(ttt)
+            grid_path = J(a.model_dir, 'pred', a.target, diag, f'{name}.jpg')
+            os.makedirs(os.path.dirname(grid_path), exist_ok=True)
+            grid_image.convert('RGB').save(grid_path)
+
+            orig_path = J('tmp/cam_origs', a.target, diag, f'{name}.jpg')
+            os.makedirs(os.path.dirname(orig_path), exist_ok=True)
+            orig_image.save(orig_path)
+
+            tq.set_description(grid_path)
+
 
 
     class CalcResultsArgs(CommonArgs):
