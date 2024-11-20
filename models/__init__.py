@@ -138,12 +138,9 @@ class CompareModel(nn.Module):
 
     def get_cam_layers(self):
         match self.base_name:
-            case 'uni' | 'baseline-vit' | 'random-vit':
-                # VIT-L, VIT
-                return [self.base.blocks[-1].attn]
-            case 'gigapath':
-                return [self.base.blocks[-1].attn]
-            case 'baseline-vit':
+            case 'uni' | 'baseline-vit' | 'random-vit' | 'gigapath':
+                return [self.base.blocks[-1].norm1]
+            case 'baseline-cnn':
                 return [self.base.layer4[-1]]
             # case _:
             #     raise RuntimeError('Invalid', _)
@@ -153,6 +150,11 @@ class CompareModel(nn.Module):
         self.frozen = True
         for param in self.base.parameters():
             param.requires_grad = False
+
+    def unfreeze_encoder(self):
+        self.frozen = False
+        for param in self.base.parameters():
+            param.requires_grad = True
 
     def forward(self, x, activate=False, with_features=False):
         features = self.base(x)
