@@ -546,6 +546,7 @@ class CLI(BaseMLCLI):
         model_dir: str = Field(..., s='-d')
         batch_size: int = Field(500, s='-B')
         target: str = Field('test', choices=['train', 'test', 'ebrains'])
+        nocrop: bool = False
 
     def run_draw_samples(self, a:DrawSamplesArgs):
         checkpoint = Checkpoint.from_file(J(a.model_dir, 'checkpoint_last.pt'))
@@ -605,6 +606,10 @@ class CLI(BaseMLCLI):
         for item in tq:
             name, diag = item['name'], item['diag']
             orig_image = Image.open(item['path'])
+            if not a.nocrop:
+                crop_width = (orig_image.width//512)*512
+                crop_height = (orig_image.height//512)*512
+                orig_image = orig_image.crop((0, 0, crop_width, crop_height))
             ggg = grid_split(orig_image, 512, overwrap=False, flattern=False)
             H = len(ggg)
             W = len(ggg[0])
@@ -617,8 +622,11 @@ class CLI(BaseMLCLI):
                 tt = []
                 for x, g in enumerate(gg):
                     tile_orig = g.convert('RGBA')
-                    tile_resized, pos = pad16(g.resize((round(g.width*scale), round(g.height*scale))), with_dimension=True)
-
+                    if not a.nocrop:
+                        tile_resized, pos = pad16(g.resize((round(g.width*scale), round(g.height*scale))), with_dimension=True)
+                    else:
+                        tile_resized = g.resize((224, 224))
+                        pos = (0, 0)
                     gradcam = CAM.GradCAMPlusPlus(
                     # gradcam = CAM.GradCAM(
                         model=model,
@@ -654,12 +662,15 @@ class CLI(BaseMLCLI):
                     tt.append(tile_orig)
                     tq2.update(1)
                 ttt.append(tt)
+
+            dir_suffix = '_nocrop' if a.nocrop else '_crop'
+
             grid_image = grid_compose_image(ttt)
-            grid_path = J(a.model_dir, 'pred', a.target, diag, f'{name}.jpg')
+            grid_path = J(a.model_dir, f'pred{dir_suffix}', a.target, diag, f'{name}.jpg')
             os.makedirs(os.path.dirname(grid_path), exist_ok=True)
             grid_image.convert('RGB').save(grid_path)
 
-            orig_path = J('tmp/cam_origs', a.target, diag, f'{name}.jpg')
+            orig_path = J(f'tmp/cam{dir_suffix}', a.target, diag, f'{name}.jpg')
             os.makedirs(os.path.dirname(orig_path), exist_ok=True)
             orig_image.save(orig_path)
 
