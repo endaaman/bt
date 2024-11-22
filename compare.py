@@ -672,7 +672,8 @@ class CLI(BaseMLCLI):
 
             orig_path = J(f'tmp/cam{dir_suffix}', a.target, diag, f'{name}.jpg')
             os.makedirs(os.path.dirname(orig_path), exist_ok=True)
-            orig_image.save(orig_path)
+            if not os.path.exists(orig_path):
+                orig_image.save(orig_path)
 
             tq.set_description(grid_path)
 
@@ -915,7 +916,7 @@ class CLI(BaseMLCLI):
 
         df_to_save = pd.concat(dfs_to_save).reset_index(drop=True)
         grains = 'coarse' if a.coarse else 'fine'
-        with pd.ExcelWriter(with_wrote(f'out/figs/results_{grains}_cv.xlsx')) as w:
+        with pd.ExcelWriter(with_wrote(f'out/tables/results_{grains}_cv.xlsx')) as w:
             for limit, df in df_to_save.groupby('limit'):
                 df.to_excel(w, sheet_name=f'{limit}')
 
@@ -1114,7 +1115,7 @@ class CLI(BaseMLCLI):
         df_results = pd.DataFrame(results)
 
         grains = 'coarse' if a.coarse else 'fine'
-        with pd.ExcelWriter(with_wrote(f'out/figs/results_{grains}_ebrains.xlsx')) as w:
+        with pd.ExcelWriter(with_wrote(f'out/tables/results_{grains}_ebrains.xlsx')) as w:
             for limit, df in df_results.groupby('limit'):
                 df.to_excel(w, sheet_name=f'{limit}')
 
@@ -1124,11 +1125,11 @@ class CLI(BaseMLCLI):
         train_file: str = 'features_train.pt'
         val_file: str = 'features_test.pt'
         eb_file: str = 'features_ebrains.pt'
-        train_count: int = 5
-        val_count: int = 20
-        eb_count: int = 10
-        n_neighbors: int = 40
-        min_dist: float = 0.2
+        train_count: int = 10
+        val_count: int = 10
+        eb_count: int = 5
+        n_neighbors: int = 70
+        min_dist: float = 0.5
         spread: float = 1.0
         with_suffix: bool = False
         show: bool = False
