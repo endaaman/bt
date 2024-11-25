@@ -546,9 +546,17 @@ class CLI(BaseMLCLI):
         model_dir: str = Field(..., s='-d')
         batch_size: int = Field(500, s='-B')
         target: str = Field('test', choices=['train', 'test', 'ebrains'])
+        diag: str = Field('', choices=list('LMGAOB'))
+        names: list[str] = Field([])
         nocrop: bool = False
 
     def run_draw_samples(self, a:DrawSamplesArgs):
+        m = re.match(r'^.*fold5_(\d).*$', a.model_dir)
+        if not m:
+            print('Invalid dir', a.model_dir)
+            return
+        fold = int(m[1])
+
         checkpoint = Checkpoint.from_file(J(a.model_dir, 'checkpoint_last.pt'))
         config = TrainerConfig.from_file(J(a.model_dir, 'config.json'))
 
@@ -601,6 +609,15 @@ class CLI(BaseMLCLI):
             transforms.Normalize(mean=MEAN, std=STD),
         ])
 
+        if a.diag:
+            items = [i for i in items if i['diag'] == a.diag]
+
+        if len(a.names) > 0:
+            items = [i for i in items if i['name'] in a.names]
+
+        if len(items) == 0:
+            print('No items are remained.')
+            return
 
         tq = tqdm(items, position=0)
         for item in tq:
@@ -670,7 +687,7 @@ class CLI(BaseMLCLI):
             os.makedirs(os.path.dirname(grid_path), exist_ok=True)
             grid_image.convert('RGB').save(grid_path)
 
-            orig_path = J(f'tmp/cam{dir_suffix}', a.target, diag, f'{name}.jpg')
+            orig_path = J(f'data/tmp/cam{dir_suffix}', f'{fold}_{a.target}', diag, f'{name}.jpg')
             os.makedirs(os.path.dirname(orig_path), exist_ok=True)
             if not os.path.exists(orig_path):
                 orig_image.save(orig_path)
