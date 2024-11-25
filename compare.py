@@ -947,7 +947,7 @@ class CLI(BaseMLCLI):
                     print('select second', p)
                 y_pred.append(p)
             m['pred'] = y_pred
-            if coarse:
+            if a.coarse:
                 m['gt'] = m['gt'].map(map3)
                 m['pred'] = m['pred'].map(map3)
             mm.append(m)
