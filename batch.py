@@ -568,7 +568,8 @@ class CLI(BaseMLCLI):
                 df_images.append(df_image)
         # df.to_excel('out/enda3_512/LMGGGB/acc.xlsx')
 
-        dest_dir = with_mkdir(f'out/enda3_512/LMGGGB/report_{a.model}')
+        dest_dir = f'out/enda3_512/LMGGGB/report_{a.model}'
+        os.makedirs(dest_dir, exist_ok=True)
 
         df_cases = pd.concat(df_cases, ignore_index=True)
         df_images = pd.concat(df_images, ignore_index=True)
@@ -682,6 +683,58 @@ class CLI(BaseMLCLI):
                 (mean_y - std_scale * std_y).clip(.0, 1.0),
                 (mean_y + std_scale * std_y).clip(.0, 1.0),
                 color=color[1], alpha=0.2, label='± 1.0 s.d.')
+
+
+    class GridAndSamplesArgs(CommonArgs):
+        path: str
+        size: int = 512
+        dest: str = 'out/figs/fig1/'
+        with_tiles: bool = False
+        width: 3200
+        height: 2000
+
+    def run_grid_and_samples(self, a:GridAndSamplesArgs):
+        path = a.path
+        if not os.path.exists(path):
+            path = {
+                'G': 'data/images/enda4/G/19-1132_30.jpg',
+                'M': 'data/images/enda4/M/N20-205_25.jpg',
+                'L': 'data/images/enda4/L/20-3557_09.jpg',
+            }[a.path]
+
+        org_img = Image.open(path).crop((0, 0, a.width, a.height))
+        img = org_img.copy()
+        draw = ImageDraw.Draw(img)
+
+        hor_sizes = n_split(img.width, max(img.width//512, 1))
+        ver_sizes = n_split(img.height, max(img.height//512, 1))
+
+        # Draw horizontal lines
+        y = 0
+        for h in ver_sizes:
+            if y > 0:
+                draw.line([(0, y), (img.width, y)], fill='red', width=4)
+            y += h
+
+        x = 0
+        for w in hor_sizes:
+            if x > 0:
+                draw.line([(x, 0), (x, img.height)], fill='red', width=4)
+            x += w
+
+        name = os.path.splitext(os.path.basename(path))[0]
+        img = img.crop((0, 0, x, y)).resize((x//4, y//4))
+        img.save(with_wrote(J(a.dest, f'grid_{name}.png')))
+
+        if a.with_tiles:
+            org_img = org_img.crop((0, 0, x, y))
+            tiles = grid_split(org_img, 512, overwrap=False, flattern=False)
+            # flatten
+            tiles = sum(tiles, [])
+            for i, tile in enumerate(tiles):
+                tile.save(with_mkdir(J(a.dest, f'tiles_{name}', f'{i}.png')))
+
+
 
 
 
