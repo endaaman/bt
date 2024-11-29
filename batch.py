@@ -690,8 +690,8 @@ class CLI(BaseMLCLI):
         size: int = 512
         dest: str = 'out/figs/fig1/'
         with_tiles: bool = False
-        width: 3200
-        height: 2000
+        width: int = 3600
+        height: int = 2400
 
     def run_grid_and_samples(self, a:GridAndSamplesArgs):
         path = a.path
@@ -724,7 +724,7 @@ class CLI(BaseMLCLI):
 
         name = os.path.splitext(os.path.basename(path))[0]
         img = img.crop((0, 0, x, y)).resize((x//4, y//4))
-        img.save(with_wrote(J(a.dest, f'grid_{name}.png')))
+        img.save(with_wrote(J(a.dest, f'grid_{name}.jpg')))
 
         if a.with_tiles:
             org_img = org_img.crop((0, 0, x, y))
