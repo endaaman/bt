@@ -865,13 +865,13 @@ class CLI(BaseMLCLI):
                 'frozen_ctranspath_{}', 'CTransPath(LP)',
                 [10, 25, 100, 500],
             ), (
-                'unfrozen_baseline-vit_{}', r'VIT-L$\mathrm{_{IN}}$(FT)',
+                'unfrozen_baseline-vit_{}', r'ViT-L$\mathrm{_{IN}}$(FT)',
                 [10, 25, 100, 500],
             ), (
-                'frozen_baseline-vit_{}', r'VIT-L$\mathrm{_{IN}}$(LP)',
+                'frozen_baseline-vit_{}', r'ViT-L$\mathrm{_{IN}}$(LP)',
                 [10, 25, 100, 500],
             ), (
-                'unfrozen_random-vit_{}', r'VIT-L(RI)',
+                'unfrozen_random-vit_{}', r'ViT-L(RI)',
                 [10, 25, 100, 500],
             ),(
                 'unfrozen_baseline-cnn_{}', r'ResNet-RS 50$\mathrm{_{IN}}$(FT)',
@@ -986,6 +986,8 @@ class CLI(BaseMLCLI):
         plt.xticks(rotation=0)
         plt.yticks(rotation=0)
         plt.tight_layout()
+        grains = 'coarse' if a.coarse else 'fine'
+        plt.savefig(with_wrote(J('out/figs/cm', f'cm_cv_{grains}_{a.encoder}_{a.base}.png'), True), dpi=300)
         plt.show()
 
 
@@ -1052,6 +1054,9 @@ class CLI(BaseMLCLI):
         plt.xticks(rotation=0)
         plt.yticks(rotation=0)
         plt.tight_layout()
+
+        grains = 'coarse' if a.coarse else 'fine'
+        plt.savefig(with_wrote(J('out/figs/cm', f'cm_{a.target}_{grains}_{a.encoder}_{a.base}.png'), True), dpi=300)
         plt.show()
 
     class SummaryEbrainsArgs(CommonArgs):
@@ -1075,13 +1080,13 @@ class CLI(BaseMLCLI):
                 'frozen_ctranspath_{}', 'CTransPath(LP)',
                 [10, 25, 100, 500],
             ), (
-                'unfrozen_baseline-vit_{}', r'VIT-L$\mathrm{_{IN}}$(FT)',
+                'unfrozen_baseline-vit_{}', r'ViT-L$\mathrm{_{IN}}$(FT)',
                 [10, 25, 100, 500],
             ), (
-                'frozen_baseline-vit_{}', r'VIT-L$\mathrm{_{IN}}$(LP)',
+                'frozen_baseline-vit_{}', r'ViT-L$\mathrm{_{IN}}$(LP)',
                 [10, 25, 100, 500],
             ), (
-                'unfrozen_random-vit_{}', r'VIT-L(RI)',
+                'unfrozen_random-vit_{}', r'ViT-L(RI)',
                 [10, 25, 100, 500],
             ),(
                 'unfrozen_baseline-cnn_{}', r'ResNet-RS 50$\mathrm{_{IN}}$(FT)',
