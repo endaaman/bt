@@ -14,7 +14,6 @@ from PIL import Image, ImageOps, ImageFile, ImageDraw, ImageFont
 import numpy as np
 import cv2
 from tqdm import tqdm
-import imagesize
 from matplotlib import pyplot as plt
 from matplotlib.offsetbox import OffsetImage, AnnotationBbox
 from matplotlib.legend_handler import HandlerTuple
@@ -735,7 +734,29 @@ class CLI(BaseMLCLI):
                 tile.save(with_mkdir(J(a.dest, f'tiles_{name}', f'{i}.png')))
 
 
+    def run_stats_ebrains(self, a):
+        ww = []
+        hh = []
+        # for d in sorted(os.listdir('data/EBRAINS')):
+        #     if re.match(r'^\d', d) is None:
+        #         print('skip', d)
+        #     for p in glob(J(f'data/EBRAINS/{d}/*.jpg')):
+        #         w, h = imagesize.get(p)
+        #         ww.append(w)
+        #         hh.append(h)
+        # ww = np.array(ww)
+        # hh = np.array(hh)
+        # print(f'W {ww.mean():.1f}±{ww.std():.1f}')
+        # print(f'H {hh.mean():.1f}±{hh.std():.1f}')
 
+        counts = []
+        for c in 'LMGAO':
+            for name in os.listdir(f'data//EBRAINS/cache/{c}'):
+                p = glob(f'data//EBRAINS/cache/{c}/{name}/*.jpg')
+                counts.append(len(p))
+                print(name, len(p))
+        counts = np.array(counts)
+        print(f'count: {counts.mean():.1f}±{counts.std():.1f}')
 
 
 if __name__ == '__main__':
