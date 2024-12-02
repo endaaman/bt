@@ -937,60 +937,6 @@ class CLI(BaseMLCLI):
             for limit, df in df_to_save.groupby('limit'):
                 df.to_excel(w, sheet_name=f'{limit}')
 
-    class CmCvArgs(CommonArgs):
-        base: str = 'uni'
-        encoder: str = Field('frozen', choices=['frozen', 'unfrozen'])
-        coarse: bool = False
-        limit: int = 500
-
-    def run_cm_cv(self, a):
-        map3 = {'L':'L', 'M':'M', 'G':'G', 'A':'G', 'O':'G', 'B':'B'}
-        unique_code = list('LMGAOB')
-
-        mm = []
-        for fold in range(5):
-            p = f'out/compare/LMGAOB/fold5_{fold}/{a.encoder}_{a.base}_{a.limit}/test/report.xlsx'
-            df = pd.read_excel(p, 'cases', index_col=0)
-            # drop B
-            df = df[df['gt'] != 'B']
-            m = df[['diag_org']].rename(columns={'diag_org': 'gt'}).copy()
-            y_pred = []
-            for i, row in df.iterrows():
-                p = row['pred(sum)']
-                if p == 'B':
-                    print('pred B')
-                    print(row)
-                    p = row[unique_code].argsort()[-2]
-                    print('select second', p)
-                y_pred.append(p)
-            m['pred'] = y_pred
-            if a.coarse:
-                m['gt'] = m['gt'].map(map3)
-                m['pred'] = m['pred'].map(map3)
-            mm.append(m)
-        labels = list('GAOML')
-        df = pd.concat(mm)
-        cm = skmetrics.confusion_matrix(df['gt'], df['pred'], labels=labels)
-
-        plt.figure(figsize=(4, 3))
-        sns.heatmap(cm,
-                    annot=True,
-                    fmt='d',
-                    cmap='Blues',
-                    xticklabels=labels,
-                    yticklabels=labels,
-                    square=True)
-        plt.xlabel('Predicted')
-        plt.ylabel('True')
-        plt.title('Confusion Matrix')
-        plt.xticks(rotation=0)
-        plt.yticks(rotation=0)
-        plt.tight_layout()
-        grains = 'coarse' if a.coarse else 'fine'
-        plt.savefig(with_wrote(J('out/figs/cm', f'cm_cv_{grains}_{a.encoder}_{a.base}.png'), True), dpi=300)
-        plt.show()
-
-
 
     class CmArgs(CommonArgs):
         target = 'cv'
@@ -1038,6 +984,24 @@ class CLI(BaseMLCLI):
         if a.with_b:
             labels += ['B']
         df = pd.concat(mm)
+
+        if a.target == 'ebrains':
+            # if ebrains do ensemble
+            new_data = []
+            for name, rows in df.groupby('name'):
+                counts = rows['pred'].value_counts()
+                top_pred = counts[counts == counts.max()]
+                if len(top_pred) == 1:
+                    pred = counts.index[0]
+                else:
+                    # 同率一位
+                    pred =top_pred.index[0]
+                new_data.append({
+                    'name': name,
+                    'gt': rows.iloc[0]['gt'],
+                    'pred': pred,
+                })
+            df = pd.DataFrame(new_data)
         cm = skmetrics.confusion_matrix(df['gt'], df['pred'], labels=labels)
 
         plt.figure(figsize=(4, 3))
