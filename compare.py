@@ -933,7 +933,7 @@ class CLI(BaseMLCLI):
 
         df_to_save = pd.concat(dfs_to_save).reset_index(drop=True)
         grains = 'coarse' if a.coarse else 'fine'
-        with pd.ExcelWriter(with_wrote(f'out/tables/results_{grains}_cv.xlsx')) as w:
+        with pd.ExcelWriter(with_wrote(f'out/figs/tables/results_{grains}_cv.xlsx')) as w:
             for limit, df in df_to_save.groupby('limit'):
                 df.to_excel(w, sheet_name=f'{limit}')
 
@@ -1101,7 +1101,7 @@ class CLI(BaseMLCLI):
         df_results = pd.DataFrame(results)
 
         grains = 'coarse' if a.coarse else 'fine'
-        with pd.ExcelWriter(with_wrote(f'out/tables/results_{grains}_ebrains.xlsx')) as w:
+        with pd.ExcelWriter(with_wrote(f'out/figs/tables/results_{grains}_ebrains.xlsx')) as w:
             for limit, df in df_results.groupby('limit'):
                 df.to_excel(w, sheet_name=f'{limit}')
 
