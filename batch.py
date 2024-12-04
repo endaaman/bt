@@ -689,8 +689,8 @@ class CLI(BaseMLCLI):
         size: int = 512
         dest: str = 'out/figs/fig1/'
         with_tiles: bool = False
-        width: int = 3600
-        height: int = 2400
+        width: int = 512*6
+        height: int = 512*4
 
     def run_grid_and_samples(self, a:GridAndSamplesArgs):
         path = a.path

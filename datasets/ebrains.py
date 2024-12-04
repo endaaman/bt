@@ -3,6 +3,7 @@ import re
 from glob import glob
 from typing import NamedTuple
 from dataclasses import dataclass, asdict
+import pandas as pd
 
 from tqdm import tqdm
 from PIL import Image
@@ -18,6 +19,37 @@ from . import as_unique_code, MEAN, STD, J
 J = os.path.join
 EBRAINS_BASE = 'data/EBRAINS'
 EBRAINS_CACHE = 'data/EBRAINS/cache'
+
+def get_ebrains_df():
+    mm = []
+    for d in sorted(os.listdir('./data/EBRAINS/')):
+        m = re.match(r'^\d.*?([A-Z])', d)
+        if not m:
+            continue
+        for filename in os.listdir(f'./data/EBRAINS/{d}'):
+            mm.append({
+                'name': os.path.splitext(filename)[0],
+                'diag': m[1],
+                'subdir': d,
+                'path': f'./data/EBRAINS/{d}/{filename}',
+            })
+
+    df_map = pd.DataFrame(mm)
+    df_map = df_map.set_index('name')
+    df_map['subtype'] = df_map['subdir'].replace({
+        '1. L': 'L',
+        '2. M': 'M',
+        '3. G_AA-IDH-wild': 'AA, IDH(-)',
+        '3. G_DA-IDH-wild': 'DA, IDH(-)',
+        '3. G_GBM-IDH-wild_001-100': 'GBM, IDH(-)',
+        '3. G_GBM-IDH-wild_101-200': 'GBM, IDH(-)',
+        '4. A_AA-IDH-mut': 'AA, IDH(+)',
+        '4. A_DA-IDH-mut': 'DA, IDH(+)',
+        '4. A_GBM-IDH-mut': 'GBM, IDH(+)',
+        '5. O_AO': 'AO',
+        '5. O_O': 'O',
+    })
+    return df_map
 
 
 @dataclass
