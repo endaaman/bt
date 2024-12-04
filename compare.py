@@ -37,7 +37,7 @@ from endaaman.ml.utils import hover_images_on_scatters
 
 from models import CompareModel
 from datasets import FoldDataset, MEAN, STD
-from datasets.ebrains import EBRAINSDataset
+from datasets.ebrains import EBRAINSDataset, get_ebrains_df
 from utils import draw_frame, pad16, grid_compose_image
 
 
@@ -939,22 +939,26 @@ class CLI(BaseMLCLI):
 
 
     class CmArgs(CommonArgs):
-        target = 'cv'
+        target = Field('cv', choices=['cv', 'ebrains'])
         base: str = 'uni'
         encoder: str = Field('frozen', choices=['frozen', 'unfrozen'])
         coarse: bool = False
         limit: int = 500
         with_b: bool= False
+        subtype: bool = False
+        noshow: bool = False
 
     def run_cm(self, a):
-        if a.target == 'cv':
+        if a.target != 'ebrains':
             gt_key = 'diag_org'
             pred_key = 'pred(sum)'
             base_path = 'out/compare/LMGAOB/fold5_{fold}/{cond}/test/report.xlsx'
+            target_label = 'Local'
         else:
             gt_key = 'label'
             pred_key = 'pred'
             base_path = 'out/compare/LMGAOB/fold5_{fold}/{cond}/ebrains.xlsx'
+            target_label = 'EBRAINS'
 
         unique_code = list('LMGAOB')
 
@@ -987,8 +991,12 @@ class CLI(BaseMLCLI):
 
         if a.target == 'ebrains':
             # if ebrains do ensemble
+            df_map = get_ebrains_df()
             new_data = []
             for name, rows in df.groupby('name'):
+                subtype = df_map.loc[name, 'subtype']
+                # if a.drop_transitional and (subtype in ['3. G_AA-IDH-wild', '3. G_DA-IDH-wild', '4. A_GBM-IDH-mut']):
+                #     continue
                 counts = rows['pred'].value_counts()
                 top_pred = counts[counts == counts.max()]
                 if len(top_pred) == 1:
@@ -998,30 +1006,77 @@ class CLI(BaseMLCLI):
                     pred =top_pred.index[0]
                 new_data.append({
                     'name': name,
+                    'subtype': subtype,
                     'gt': rows.iloc[0]['gt'],
                     'pred': pred,
                 })
             df = pd.DataFrame(new_data)
-        cm = skmetrics.confusion_matrix(df['gt'], df['pred'], labels=labels)
 
-        plt.figure(figsize=(4, 3))
-        sns.heatmap(cm,
-                    annot=True,
-                    fmt='d',
-                    cmap='Blues',
-                    xticklabels=labels,
-                    yticklabels=labels,
-                    square=True)
-        plt.xlabel('Predicted')
-        plt.ylabel('True')
-        plt.title('Confusion Matrix')
-        plt.xticks(rotation=0)
+        cond = f'{a.encoder}_{a.base}'
+        label = {
+            'frozen_uni': 'UNI(LP)',
+            'unfrozen_uni': 'UNI(FT)',
+            'frozen_baseline-vit': r'ViT-L$\mathrm{_{IN}}$(LP)',
+            'unfrozen_baseline-vit': r'ViT-L$\mathrm{_{IN}}$(FT)',
+        }.get(cond, cond)
+        label = f'{label} - {target_label}'
+
+        plt.rcParams.update({
+            # 'font.size': 12,
+            # 'axes.titlesize': 14,
+            # 'axes.labelsize': 12,
+            # 'xtick.labelsize': 12,
+            # 'ytick.labelsize': 10,
+            # 'legend.fontsize': 16,
+            'figure.dpi': 300,
+        })
+
+        if a.target == 'ebrains' and a.subtype:
+            subtypes = [
+                'GBM, IDH(-)',
+                'AA, IDH(-)',
+                'DA, IDH(-)',
+                'AA, IDH(+)',
+                'DA, IDH(+)',
+                'GBM, IDH(+)',
+                'AO',
+                'O',
+                'M',
+                'L',
+            ]
+            cm = pd.DataFrame(0, index=labels, columns=subtypes)
+            for _, row in df.iterrows():
+                cm.loc[row['pred'], row['subtype']] += 1
+            gt_labels = subtypes
+        else:
+            cm = skmetrics.confusion_matrix(df['pred'], df['gt'], labels=labels)
+            gt_labels = labels
+
+        plt.figure(figsize=(6, 4) if a.target == 'ebrains' and a.subtype else (4, 4))
+        heatmap = sns.heatmap(
+                cm,
+                annot=True,
+                fmt='d',
+                cmap='Blues',
+                xticklabels=gt_labels,
+                yticklabels=labels,
+                square=True)
+        plt.xlabel('Groud truth')
+        plt.ylabel('Predicted')
+        plt.title(label)
         plt.yticks(rotation=0)
-        plt.tight_layout()
+        if a.target == 'ebrains' and a.subtype:
+            plt.xticks(rotation=45, ha='right')
 
+        report = skmetrics.classification_report(df['gt'], df['pred'])
+        print(report)
+        plt.tight_layout()
+        # plt.subplots_adjust(bottom=0.4)
         grains = 'coarse' if a.coarse else 'fine'
-        plt.savefig(with_wrote(J('out/figs/cm', f'cm_{a.target}_{grains}_{a.encoder}_{a.base}.png'), True), dpi=300)
-        plt.show()
+        suffix = '_subtype' if a.subtype else ''
+        plt.savefig(with_wrote(J('out/figs/cm', f'cm_{a.target}_{grains}_{a.encoder}_{a.base}{suffix}.png'), True), dpi=300)
+        if not a.noshow:
+            plt.show()
 
     class SummaryEbrainsArgs(CommonArgs):
         coarse: bool = False
