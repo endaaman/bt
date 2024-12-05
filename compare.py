@@ -894,9 +894,15 @@ class CLI(BaseMLCLI):
             'O Recall': lambda df: df.loc['O', 'recall'],
             'M Recall': lambda df: df.loc['M', 'recall'],
             'L Recall': lambda df: df.loc['L', 'recall'],
+
+            'G Prec.': lambda df: df.loc['G', 'precision'],
+            'A Prec.': lambda df: df.loc['A', 'precision'],
+            'O Prec.': lambda df: df.loc['O', 'precision'],
+            'M Prec.': lambda df: df.loc['M', 'precision'],
+            'L Prec.': lambda df: df.loc['L', 'precision'],
         }
 
-        skip_when_coarse = ['A Recall', 'O Recall']
+        skip_when_coarse = ['A Recall', 'O Recall', 'A Prec.', 'O Prec.']
 
         dfs_to_save = []
 
@@ -1128,8 +1134,14 @@ class CLI(BaseMLCLI):
             'O Recall': lambda df: df.loc['O', 'recall'],
             'M Recall': lambda df: df.loc['M', 'recall'],
             'L Recall': lambda df: df.loc['L', 'recall'],
+
+            'G Prec.': lambda df: df.loc['G', 'precision'],
+            'A Prec.': lambda df: df.loc['A', 'precision'],
+            'O Prec.': lambda df: df.loc['O', 'precision'],
+            'M Prec.': lambda df: df.loc['M', 'precision'],
+            'L Prec.': lambda df: df.loc['L', 'precision'],
         }
-        skip_when_coarse = ['A Recall', 'O Recall']
+        skip_when_coarse = ['A Recall', 'O Recall', 'A Prec.', 'O Prec.']
         target_sheet_name = 'report3' if a.coarse else 'report'
 
         results = []
