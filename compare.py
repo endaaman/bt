@@ -883,11 +883,11 @@ class CLI(BaseMLCLI):
         ]
 
         metrics_fns = {
-            'Accuracy(Patch)': lambda df: df.loc['patch acc'].iloc[0],
-            'Accuracy': lambda df: df.loc['accuracy'].iloc[0],
-            'Recall': lambda df: df.loc['macro avg', 'recall'],
-            'Precision': lambda df: df.loc['macro avg', 'precision'],
-            'F1 score': lambda df: df.loc['macro avg', 'f1-score'],
+            'Patch Acc.': lambda df: df.loc['patch acc'].iloc[0],
+            'Macro Acc.': lambda df: df.loc['accuracy'].iloc[0],
+            'Macro Recall': lambda df: df.loc['macro avg', 'recall'],
+            'Macro Prec.': lambda df: df.loc['macro avg', 'precision'],
+            'Macro F1': lambda df: df.loc['macro avg', 'f1-score'],
             # 'AUROC ': lambda df: df[df.index == 'auc'].iloc[0, 0],
             'G Recall': lambda df: df.loc['G', 'recall'],
             'A Recall': lambda df: df.loc['A', 'recall'],
@@ -1117,11 +1117,11 @@ class CLI(BaseMLCLI):
         ]
 
         metrics_fns = {
-            'Accuracy(Patch)': lambda df: df.loc['patch acc'].iloc[0],
-            'Accuracy': lambda df: df.loc['accuracy'].iloc[0],
-            'Recall': lambda df: df.loc['macro avg', 'recall'],
-            'Precision': lambda df: df.loc['macro avg', 'precision'],
-            'F1 score': lambda df: df.loc['macro avg', 'f1-score'],
+            'Patch Acc.': lambda df: df.loc['patch acc'].iloc[0],
+            'Macro Acc.': lambda df: df.loc['accuracy'].iloc[0],
+            'Macro Recall': lambda df: df.loc['macro avg', 'recall'],
+            'Macro Prec.': lambda df: df.loc['macro avg', 'precision'],
+            'Macro F1': lambda df: df.loc['macro avg', 'f1-score'],
             # 'AUROC ': lambda df: df[df.index == 'auc'].iloc[0, 0],
             'G Recall': lambda df: df.loc['G', 'recall'],
             'A Recall': lambda df: df.loc['A', 'recall'],
