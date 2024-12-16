@@ -3,3 +3,4 @@ data
 tmp
 out
 out_old
+.virtual_documents
