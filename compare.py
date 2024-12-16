@@ -546,7 +546,7 @@ class CLI(BaseMLCLI):
         model_dir: str = Field(..., s='-d')
         batch_size: int = Field(500, s='-B')
         target: str = Field('test', choices=['train', 'test', 'ebrains'])
-        diag: str = Field('', choices=list('LMGAOB'))
+        diag: list[str] = Field(list('LMGAO'), choices=list('LMGAOB'))
         names: list[str] = Field([])
         nocrop: bool = False
 
@@ -609,8 +609,7 @@ class CLI(BaseMLCLI):
             transforms.Normalize(mean=MEAN, std=STD),
         ])
 
-        if a.diag:
-            items = [i for i in items if i['diag'] == a.diag]
+        items = [i for i in items if i['diag'] in a.diag]
 
         if len(a.names) > 0:
             items = [i for i in items if i['name'] in a.names]
