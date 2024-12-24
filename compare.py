@@ -548,6 +548,7 @@ class CLI(BaseMLCLI):
         target: str = Field('test', choices=['train', 'test', 'ebrains'])
         diag: list[str] = Field(list('LMGAO'), choices=list('LMGAOB'))
         names: list[str] = Field([])
+        order: int = 1
         nocrop: bool = False
 
     def run_draw_samples(self, a:DrawSamplesArgs):
@@ -580,7 +581,7 @@ class CLI(BaseMLCLI):
                 items.append({
                     'diag': diag,
                     'name': name,
-                    'path': f'data/images/enda4/{diag}/{name}_01.jpg',
+                    'path': f'data/images/enda4/{diag}/{name}_{a.order:02d}.jpg',
                 })
         elif a.target == 'ebrains':
             for d in sorted(os.listdir('data/EBRAINS/')):
@@ -688,8 +689,9 @@ class CLI(BaseMLCLI):
 
             orig_path = J(f'data/tmp/cam{dir_suffix}', f'{fold}_{a.target}', diag, f'{name}.jpg')
             os.makedirs(os.path.dirname(orig_path), exist_ok=True)
-            if not os.path.exists(orig_path):
-                orig_image.save(orig_path)
+            # if not os.path.exists(orig_path):
+            #     orig_image.save(orig_path)
+            orig_image.save(orig_path)
 
             tq.set_description(grid_path)
 
