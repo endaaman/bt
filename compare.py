@@ -186,6 +186,11 @@ class Trainer(BaseTrainer):
 
     def create_optimizer(self):
         if self.config.lr_scaling_factor == 1.0:
+            # Backward compat
+            # return optim.Adam([
+            #     {'params': self.model.base.parameters(), 'lr': self.config.lr},
+            #     {'params': self.model.fc.parameters(), 'lr': self.config.lr},
+            # ])
             return optim.Adam(self.model.parameters(), lr=self.config.lr)
         params = [
             {'params': self.model.base.parameters(), 'lr': self.config.lr * self.config.lr_scaling_factor},
