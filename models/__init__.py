@@ -17,6 +17,8 @@ from endaaman.ml import BaseMLCLI
 from .ctranspath import ctranspath
 from .loss import NestedCrossEntropyLoss, CrossEntropyLoss, SymmetricCosSimLoss, BarlowTwinsLoss
 from .compare import CompareModel
+from .vit import ViT, create_vit
+
 
 
 class TimmModel(nn.Module):
