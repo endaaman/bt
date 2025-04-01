@@ -12,6 +12,7 @@ from torch import nn
 from torch import optim
 from torchvision import transforms
 from torch.utils.data import DataLoader
+from schedulefree import RAdamScheduleFree
 import timm
 from matplotlib import pyplot as plt, cm as colormap
 import matplotlib
@@ -41,7 +42,6 @@ from datasets import FoldDataset, MEAN, STD
 from datasets.ebrains import EBRAINSDataset, get_ebrains_df
 from utils import draw_frame, pad16, grid_compose_image
 
-
 torch.multiprocessing.set_sharing_strategy('file_system')
 np.set_printoptions(suppress=True, floatmode='fixed')
 J = os.path.join
@@ -53,6 +53,7 @@ class TrainerConfig(BaseTrainerConfig):
     model_name: str = Field('vit_tiny', l='--model', s='-M')
     source: str = 'enda4_512'
     code: str = 'LMGGGB'
+    pretrained: bool = Field(False, s='-P')
 
     # dataset
     total_fold: int = 5
@@ -61,7 +62,7 @@ class TrainerConfig(BaseTrainerConfig):
 
     # training
     lr: float = 0.0001
-    scheduler: str = 'static'
+    scheduler: str = Field('static', choices=['static', 'free'])
 
     def unique_code(self):
         return [c for c in dict.fromkeys(self.code) if c in 'LMGAOB']
@@ -78,7 +79,7 @@ class Trainer(BaseTrainer):
         else:
             model = timm.create_model(self.config.model_name,
                                       num_classes=self.num_classes,
-                                      pretrained=False,
+                                      pretrained=self.config.pretrained,
                                       # dynamic_img_size=True
                                       )
             # raise RuntimeError('Invalid model', self.config.model_name)
@@ -86,6 +87,9 @@ class Trainer(BaseTrainer):
         return model
 
     def create_optimizer(self):
+        if self.config.scheduler == 'free':
+            return RAdamScheduleFree(self.model.parameters(), lr=self.config.lr)
+
         return optim.Adam(self.model.parameters(), lr=self.config.lr)
 
     def create_scheduler(self):
@@ -134,7 +138,7 @@ class CLI(BaseMLCLI):
         # train param
         batch_size: int = Field(50, s='-B')
         num_workers: int = Field(4, s='-N')
-        epoch: int = Field(10, s='-E')
+        epoch: int = Field(20, s='-E')
         overwrite:bool = Field(False, s='-O')
         suffix: str = ''
         out: str = 'out/simple/{fold}_{model_name}{suffix}'
