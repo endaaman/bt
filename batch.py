@@ -691,6 +691,8 @@ class CLI(BaseMLCLI):
         with_tiles: bool = False
         width: int = 512*6
         height: int = 512*4
+        nodraw: bool = False
+        scale: float = 0.25
 
     def run_grid_and_samples(self, a:GridAndSamplesArgs):
         path = a.path
@@ -708,21 +710,19 @@ class CLI(BaseMLCLI):
         hor_sizes = n_split(img.width, max(img.width//512, 1))
         ver_sizes = n_split(img.height, max(img.height//512, 1))
 
-        # Draw horizontal lines
         y = 0
         for h in ver_sizes:
-            if y > 0:
+            if y > 0 and not a.nodraw:
                 draw.line([(0, y), (img.width, y)], fill='red', width=4)
             y += h
-
         x = 0
         for w in hor_sizes:
-            if x > 0:
+            if x > 0 and not a.nodraw:
                 draw.line([(x, 0), (x, img.height)], fill='red', width=4)
             x += w
 
         name = os.path.splitext(os.path.basename(path))[0]
-        img = img.crop((0, 0, x, y)).resize((x//4, y//4))
+        img = img.crop((0, 0, x, y)).resize((int(x*a.scale), int(y*a.scale)))
         img.save(with_wrote(J(a.dest, f'grid_{name}.jpg')))
 
         if a.with_tiles:
